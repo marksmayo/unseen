@@ -1,0 +1,128 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a22d8c9f792acc647a36dfe216d1b0b5, type: 3}
+  m_Name: UnseenConfig
+  m_EditorClassIdentifier: Unseen.Runtime::Unseen.Core.UnseenConfig
+  Network:
+    BaseTickRate: 20
+    CombatTickRate: 60
+    CombatPocketRadius: 18
+    CombatPocketLinger: 6
+    ReplicationRadius: 120
+    PositionQuantum: 0.01
+    MaxPlayers: 64
+  Interest:
+    VoxelSize: 16
+    LosRaycastBudget: 3000
+    LosCacheLifetime: 0.15
+    VisibilityLinger: 0.35
+    ViewFieldOfView: 100
+    ViewPitchTolerance: 70
+    MaxSightRange: 90
+    NightVisionBonus: 35
+  Stealth:
+    AmbientHiddenFloor: 0.85
+    LightSamples: 3
+    CrouchBonus: 0.12
+    ProneBonus: 0.2
+    SprintPenalty: 0.18
+    SmokeBonus: 0.6
+    ConcealedThreshold: 0.72
+    StealthRangeScale: 0.85
+    SmoothingTime: 0.25
+  Audio:
+    MaxOccludersPerPath: 6
+    AudibilityFloor: 0.06
+    MuffledPositionError: 6
+    FootstepLoudness: 1
+    FootstepRadius: 26
+    SprintLoudnessScale: 2.1
+    CrouchLoudnessScale: 0.35
+    ProneLoudnessScale: 0.15
+    TabiBootsRadiusScale: 0.5
+    StrideInterval: 0.38
+  Movement:
+    WalkSpeed: 3.6
+    SprintSpeed: 6.8
+    CrouchSpeed: 1.7
+    ProneSpeed: 0.85
+    RafterSpeed: 1.4
+    Acceleration: 22
+    AirAcceleration: 6
+    Gravity: -22
+    JumpVelocity: 6.2
+    TerminalVelocity: -45
+    StandHeight: 1.8
+    CrouchHeight: 1.15
+    ProneHeight: 0.6
+    Radius: 0.32
+    EyeOffset: -0.12
+    WallClimbDuration: 2.4
+    WallClimbSpeed: 2.6
+    WallRunSpeed: 6.4
+    WallRunDuration: 1.8
+    LedgeGrabReach: 0.75
+    MantleDuration: 0.45
+    GrappleRange: 34
+    GrappleReelSpeed: 16
+    GrappleCooldown: 3.5
+    GrappleNoiseLoudness: 2.6
+    FallDamageThreshold: -14
+    FallDamagePerUnit: 3.4
+  Combat:
+    MeleeRange: 2.15
+    MeleeArcDegrees: 70
+    LightDamage: 34
+    HeavyDamage: 58
+    LightWindup: 0.22
+    HeavyWindup: 0.42
+    Recovery: 0.35
+    ParryWindowBase: 0.15
+    ParryWindowMax: 0.2
+    ParryLatencyCompensation: 0.5
+    StaggerDuration: 0.9
+    GuardBreakDuration: 1.4
+    BlockedDamageScale: 0.15
+    WrongZoneDamageScale: 1.35
+    TakedownDuration: 1.5
+    TakedownRearArc: 110
+    TakedownRange: 1.6
+    TakedownAboveHeight: 2.2
+    AwarenessMemory: 2.5
+    MaxHealth: 100
+  Match:
+    TargetEntityCount: 64
+    InfiltrationDuration: 45
+    FirstZoneDelay: 120
+    ZoneHoldDuration: 90
+    ZoneCloseDuration: 60
+    ZoneStages: 7
+    InitialZoneRadius: 620
+    FinalZoneRadius: 28
+    MistDamagePerSecond: 2.5
+    MistDamageGrowth: 1.55
+    MaxBotFraction: 1
+    BackfillGrace: 8
+    GliderDeployAltitude: 260
+    GliderSpeed: 42
+  Bots:
+    CombatTickRate: 30
+    AlertTickRate: 12
+    IdleTickRate: 4
+    ActiveRange: 60
+    InvestigateTimeout: 12
+    SearchTimeout: 18
+    NoiseInterestThreshold: 0.18
+    FleeHealthFraction: 0.3
+    ParryAptitude: 0.55
+    ReactionTime: 0.28
+    Sloppiness: 0.35

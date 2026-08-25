@@ -1,0 +1,23 @@
+{
+    "name": "Unseen.Editor",
+    "rootNamespace": "Unseen.EditorTools",
+    "references": [
+        "Unseen.Runtime",
+        "Unity.Mathematics",
+        "Unity.Collections",
+        "Unity.RenderPipelines.Core.Runtime",
+        "Unity.RenderPipelines.Universal.Runtime",
+        "Unity.RenderPipelines.Universal.Editor"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,49 @@
+# Text files are normalised to LF in the repository and checked out native.
+# Without this, files authored on Windows and files authored by tooling disagree on line endings
+# and every one of them shows as modified on someone else's machine.
+* text=auto eol=lf
+
+*.cs        text diff=csharp
+*.shader    text
+*.hlsl      text
+*.cginc     text
+*.md        text
+*.json      text
+*.yml       text
+*.yaml      text
+*.ps1       text eol=crlf
+*.sh        text eol=lf
+
+# Unity serialises these as YAML text. They must stay text so a merge is even possible, and the
+# project is set to Force Text serialisation for exactly that reason.
+*.meta          text
+*.asset         text
+*.prefab        text
+*.unity         text
+*.mat           text
+*.anim          text
+*.controller    text
+*.mask          text
+*.physicsMaterial text
+*.playable      text
+
+# Binary assets. Marked explicitly so Git never tries to normalise or diff them.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.tga   binary
+*.psd   binary
+*.exr   binary
+*.hdr   binary
+*.fbx   binary
+*.obj   binary
+*.blend binary
+*.wav   binary
+*.ogg   binary
+*.mp3   binary
+*.ttf   binary
+*.otf   binary
+*.dll   binary
+*.so    binary
+*.dylib binary
+*.pdf   binary

@@ -1,0 +1,36 @@
+# Local multi-server harness. Handy for the Phase 1 stress test: bring up several servers, each
+# running a full 64-entity match, and watch CPU and the per-tick timings in the logs.
+services:
+  unseen-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        BUILD_DIR: out/linux
+    image: unseen/server:dev
+    environment:
+      UNSEEN_PORT: "7770"
+      UNSEEN_ENTITIES: "64"
+      UNSEEN_SEED: "20260824"
+    ports:
+      - "7770:7770/udp"
+      - "7770:7770/tcp"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+
+  # A deliberately small match, useful when profiling a single fight rather than a full lobby.
+  unseen-server-small:
+    image: unseen/server:dev
+    depends_on:
+      - unseen-server
+    environment:
+      UNSEEN_PORT: "7771"
+      UNSEEN_ENTITIES: "8"
+      UNSEEN_SEED: "7"
+    ports:
+      - "7771:7771/udp"
+    restart: unless-stopped

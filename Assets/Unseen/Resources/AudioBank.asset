@@ -1,0 +1,130 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 002fa048a8eb8cb439ab8df60c358819, type: 3}
+  m_Name: AudioBank
+  m_EditorClassIdentifier: Unseen.Runtime::Unseen.Audio.AudioBank
+  Entries:
+  - Kind: 0
+    Clips:
+    - {fileID: 8300000, guid: bb685c6456cfab24a9a6c75e66f67412, type: 3}
+    - {fileID: 8300000, guid: 29363bd12eab5ca4f914d049728a9776, type: 3}
+    - {fileID: 8300000, guid: e47a4e2a84a31ed49b07598c9128dd45, type: 3}
+    - {fileID: 8300000, guid: 9ed0f6c1a9e0aee4193b83c202754c6e, type: 3}
+    Volume: 0.55
+    PitchJitter: 0.14
+    MaxDistance: 34
+  - Kind: 1
+    Clips:
+    - {fileID: 8300000, guid: ad9152d08be557447a3e171da012eb04, type: 3}
+    - {fileID: 8300000, guid: e14b1c2e76407644c9976623671fb93f, type: 3}
+    Volume: 0.9
+    PitchJitter: 0.08
+    MaxDistance: 45
+  - Kind: 2
+    Clips:
+    - {fileID: 8300000, guid: fc58ea5db759cd24e8aa21583385db19, type: 3}
+    - {fileID: 8300000, guid: e69425f8a340fed4e8b7aa96c4e80c62, type: 3}
+    - {fileID: 8300000, guid: 532bc0360fd0781479d9c2f939ec9431, type: 3}
+    Volume: 0.5
+    PitchJitter: 0.12
+    MaxDistance: 30
+  - Kind: 3
+    Clips:
+    - {fileID: 8300000, guid: 55c88e39011913d40986df0876966c54, type: 3}
+    Volume: 0.8
+    PitchJitter: 0.08
+    MaxDistance: 40
+  - Kind: 4
+    Clips:
+    - {fileID: 8300000, guid: 613d1efe0149994408528c99cf1911aa, type: 3}
+    - {fileID: 8300000, guid: 05dd574e4bb5a034b9d3003dca775b82, type: 3}
+    - {fileID: 8300000, guid: f8b6898645437c44296ba512009c85bc, type: 3}
+    Volume: 0.7
+    PitchJitter: 0.14
+    MaxDistance: 28
+  - Kind: 5
+    Clips:
+    - {fileID: 8300000, guid: 8e3faceb4fff53045b09240f8b8adc88, type: 3}
+    - {fileID: 8300000, guid: 43e9cd7483b5dd74f9b2b453f92cacea, type: 3}
+    - {fileID: 8300000, guid: 11ebffdf872289742936158e86cf1eeb, type: 3}
+    - {fileID: 8300000, guid: 22724003ae7383f4480fd05c763f0aeb, type: 3}
+    - {fileID: 8300000, guid: 42c61b2b8c4ffb740b84be9469925ed1, type: 3}
+    Volume: 1
+    PitchJitter: 0.1
+    MaxDistance: 50
+  - Kind: 6
+    Clips:
+    - {fileID: 8300000, guid: 7c2abb176fbf8a641a2e5b6cc0ba2701, type: 3}
+    Volume: 0.8
+    PitchJitter: 0.1
+    MaxDistance: 34
+  - Kind: 7
+    Clips:
+    - {fileID: 8300000, guid: 7c2abb176fbf8a641a2e5b6cc0ba2701, type: 3}
+    Volume: 0.9
+    PitchJitter: 0.1
+    MaxDistance: 40
+  - Kind: 8
+    Clips:
+    - {fileID: 8300000, guid: 1ffa7848422f4e24e8eb955b2dddc4e2, type: 3}
+    Volume: 0.95
+    PitchJitter: 0.1
+    MaxDistance: 44
+  - Kind: 9
+    Clips:
+    - {fileID: 8300000, guid: e6fc42b0555cc8f4e99ebd40d1be8de6, type: 3}
+    Volume: 1
+    PitchJitter: 0.08
+    MaxDistance: 55
+  - Kind: 10
+    Clips:
+    - {fileID: 8300000, guid: 768c10ab007862249b48267590201b52, type: 3}
+    Volume: 1
+    PitchJitter: 0.08
+    MaxDistance: 50
+  - Kind: 11
+    Clips:
+    - {fileID: 8300000, guid: 186184db0a35038418f939d3d3dd1b99, type: 3}
+    - {fileID: 8300000, guid: f8cd408d3f5e4a64ea144cf6232fbdfd, type: 3}
+    Volume: 1
+    PitchJitter: 0.06
+    MaxDistance: 60
+  - Kind: 12
+    Clips:
+    - {fileID: 8300000, guid: 68fdece7db4265f4c83aace196c82668, type: 3}
+    Volume: 0.8
+    PitchJitter: 0.1
+    MaxDistance: 34
+  FootstepHard:
+  - {fileID: 8300000, guid: bb685c6456cfab24a9a6c75e66f67412, type: 3}
+  - {fileID: 8300000, guid: 29363bd12eab5ca4f914d049728a9776, type: 3}
+  - {fileID: 8300000, guid: e47a4e2a84a31ed49b07598c9128dd45, type: 3}
+  - {fileID: 8300000, guid: 9ed0f6c1a9e0aee4193b83c202754c6e, type: 3}
+  FootstepSoft:
+  - {fileID: 8300000, guid: 9448785cfaa4f4d499ac48ae08d676a3, type: 3}
+  - {fileID: 8300000, guid: ea1e73f2b23a3f74ba868fd0046105a9, type: 3}
+  - {fileID: 8300000, guid: d8368032663ecec4faf843eced104380, type: 3}
+  - {fileID: 8300000, guid: f5d70602547b01e41a6fd86e6ca5ffae, type: 3}
+  FootstepWood:
+  - {fileID: 8300000, guid: fc58ea5db759cd24e8aa21583385db19, type: 3}
+  - {fileID: 8300000, guid: e69425f8a340fed4e8b7aa96c4e80c62, type: 3}
+  - {fileID: 8300000, guid: 532bc0360fd0781479d9c2f939ec9431, type: 3}
+  FootstepWater:
+  - {fileID: 8300000, guid: a391fe66764f98243896de5eedcef739, type: 3}
+  - {fileID: 8300000, guid: d90db3e1f9b064540acb0bb576ef925a, type: 3}
+  - {fileID: 8300000, guid: 22226736ecd493c46be9787bbafa1028, type: 3}
+  WindBed: {fileID: 8300000, guid: 71a907e88930bab4099c52039373a112, type: 3}
+  WindGusts:
+  - {fileID: 8300000, guid: 1d94dab599766c14b9098d38826eff40, type: 3}
+  - {fileID: 8300000, guid: 41f88f8e30d3c664288f2c7645ab6eaa, type: 3}
+  - {fileID: 8300000, guid: d1c73ed7f6aed114c9f64d1795e49af9, type: 3}
+  FallWind: {fileID: 8300000, guid: 4a8966e16a0850e4d976f62edcf4f3b5, type: 3}

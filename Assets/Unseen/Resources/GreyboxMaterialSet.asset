@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8aca8882f79a635449b055c8081a0902, type: 3}
+  m_Name: GreyboxMaterialSet
+  m_EditorClassIdentifier: Unseen.Runtime::Unseen.Environment.GreyboxMaterialSet
+  Stone: {fileID: 2100000, guid: a29b59b02a84ab64f9ac0ac90a6a863b, type: 2}
+  Timber: {fileID: 2100000, guid: dc14ed8e5dac0c24e8a2b3dd1b95c191, type: 2}
+  WoodFloor: {fileID: 2100000, guid: f0b6391800b4a474da446ea29f7c7472, type: 2}
+  Plaster: {fileID: 2100000, guid: 3b493fc5b15fae148882a4ba0333b019, type: 2}
+  DarkTimber: {fileID: 2100000, guid: b4ce5bb6a8b47054cbdddd140f3d6901, type: 2}
+  RoofTile: {fileID: 2100000, guid: 36ae8f4948e91b94389c45d404ea0f61, type: 2}
+  Tatami: {fileID: 2100000, guid: 5f8aa41878b84254197f86702c131876, type: 2}
+  Ground: {fileID: 2100000, guid: 5deeb786d156dcf45a6416d1d4148886, type: 2}
+  Water: {fileID: 2100000, guid: b4f28a64fae634646be8524721184755, type: 2}
+  Foliage: {fileID: 2100000, guid: ef358505901b7884d95b67b0f6afe054, type: 2}
+  Paper: {fileID: 2100000, guid: 06be09d387baae84383094f93fb8f9fa, type: 2}
+  LanternGlow: {fileID: 2100000, guid: 10166b0e67bad1f40a3022c78707c5bf, type: 2}
+  ShojiPaper: {fileID: 2100000, guid: db1469f0d849f56458c88be472bb15f7, type: 2}
+  Mist: {fileID: 2100000, guid: 72f2b9fb93dcf7e48b102def352c1398, type: 2}
+  Sky: {fileID: 2100000, guid: cae5632238b3aab49b3e4da8e652a29d, type: 2}
+  AmbientIntensity: 0.8
+  FogDensity: 0.0032
+  FogColor: {r: 0.05, g: 0.06, b: 0.11, a: 1}
+  TextureMetres: 2.5

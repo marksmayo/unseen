@@ -1,0 +1,68 @@
+# Agones fleet for Unseen match servers.
+#
+# One pod is one match. The plan calls for 64 entities per match with bots backfilling empty slots,
+# so a server is useful the moment it is scheduled - it does not have to wait for 64 humans.
+apiVersion: agones.dev/v1
+kind: Fleet
+metadata:
+  name: unseen
+  labels:
+    app: unseen
+spec:
+  replicas: 4
+  scheduling: Packed
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 25%
+      maxSurge: 25%
+  template:
+    metadata:
+      labels:
+        app: unseen
+    spec:
+      ports:
+        - name: game
+          portPolicy: Dynamic
+          containerPort: 7770
+          protocol: UDP
+      health:
+        initialDelaySeconds: 30
+        periodSeconds: 10
+        failureThreshold: 3
+      template:
+        spec:
+          terminationGracePeriodSeconds: 30
+          containers:
+            - name: unseen-server
+              image: ghcr.io/example/unseen-server:latest
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: UNSEEN_ENTITIES
+                  value: "64"
+                - name: UNSEEN_PORT
+                  value: "7770"
+              resources:
+                requests:
+                  # One match is dominated by the perception raycast batches; two cores gives the
+                  # job system room to keep the 60 Hz combat pockets inside frame.
+                  cpu: "1500m"
+                  memory: "1Gi"
+                limits:
+                  cpu: "2000m"
+                  memory: "2Gi"
+---
+# Scale on demand rather than running a fixed fleet: buffer keeps spare servers warm so a queue pop
+# never waits on a cold start.
+apiVersion: autoscaling.agones.dev/v1
+kind: FleetAutoscaler
+metadata:
+  name: unseen-autoscaler
+spec:
+  fleetName: unseen
+  policy:
+    type: Buffer
+    buffer:
+      bufferSize: 3
+      minReplicas: 2
+      maxReplicas: 60

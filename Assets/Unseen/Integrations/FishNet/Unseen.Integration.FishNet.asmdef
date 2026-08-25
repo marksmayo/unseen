@@ -1,0 +1,20 @@
+{
+    "name": "Unseen.Integration.FishNet",
+    "rootNamespace": "Unseen.Integrations.FishNet",
+    "references": [
+        "Unseen.Runtime",
+        "Unity.Mathematics",
+        "FishNet.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "UNSEEN_FISHNET"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
