@@ -238,6 +238,18 @@ namespace Unseen.Core
             public float InitialZoneRadius = 620f;
             public float FinalZoneRadius = 28f;
 
+            [Tooltip("Radius the last circle collapses to, in metres.\n\n" +
+                     "The final stage used to be the end of it: the circle reached its final " +
+                     "radius and then held there for the rest of the match, because the Final " +
+                     "phase had no behaviour. Two players content to sit still in a 28 m circle " +
+                     "were never made to fight, and now that the bamboo stands on the boundary it " +
+                     "visibly stopped closing, which reads as the mechanic breaking.")]
+            public float FinalCollapseRadius = 5f;
+
+            [Tooltip("Seconds the last circle takes to collapse. Slow, so it is a tightening " +
+                     "noose rather than a sudden squeeze - but it always ends.")]
+            public float FinalCollapseDuration = 150f;
+
             [Tooltip("Damage per second at stage 1, scaling up each stage.")]
             public float MistDamagePerSecond = 2.5f;
 

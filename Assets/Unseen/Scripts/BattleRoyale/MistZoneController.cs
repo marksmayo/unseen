@@ -26,6 +26,7 @@ namespace Unseen.BattleRoyale
         private float _radius;
         private float _nextRadius;
         private float _initialRadius;
+        private float _finalBegan;
         private float _phaseEnd;
 
         public ZonePhase Phase { get; private set; } = ZonePhase.Waiting;
@@ -63,6 +64,7 @@ namespace Unseen.BattleRoyale
             _radius = initial;
             _nextRadius = initial;
             _initialRadius = initial;
+            _finalBegan = 0f;
             Stage = 0;
             Phase = ZonePhase.Waiting;
             _phaseEnd = time + cfg.FirstZoneDelay;
@@ -94,8 +96,20 @@ namespace Unseen.BattleRoyale
                         _center = _nextCenter;
                         Phase = Stage >= cfg.ZoneStages ? ZonePhase.Final : ZonePhase.Holding;
                         _phaseEnd = frame.Time + cfg.ZoneHoldDuration;
+                        if (Phase == ZonePhase.Final) _finalBegan = frame.Time;
                     }
 
+                    break;
+
+                case ZonePhase.Final:
+                    // The last circle keeps closing. Without this the mist reached its final
+                    // radius and stopped forever, so a match between two people who both refused
+                    // to move had no way to end - and with the bamboo standing on the boundary,
+                    // a boundary that stops closing is a wall that visibly stops working.
+                    float collapse = math.max(1f, cfg.FinalCollapseDuration);
+                    float into = math.saturate((frame.Time - _finalBegan) / collapse);
+                    _radius = math.lerp(cfg.FinalZoneRadius,
+                        math.min(cfg.FinalCollapseRadius, cfg.FinalZoneRadius), into);
                     break;
             }
 
@@ -108,6 +122,7 @@ namespace Unseen.BattleRoyale
             {
                 Phase = ZonePhase.Final;
                 _phaseEnd = now + cfg.ZoneHoldDuration;
+                _finalBegan = now;
                 return;
             }
 
