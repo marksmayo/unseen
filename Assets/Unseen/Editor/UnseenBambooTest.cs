@@ -113,6 +113,15 @@ namespace Unseen.EditorTools
                               $"(wanted {wanted:0.0} m)");
                 }
 
+                // And there must be no walkable ground between the damaging circle and the wall.
+                // A margin outside the mist line is exactly the bug that let a player run across
+                // the boundary, take damage and hear rustling with the bamboo still ten metres
+                // further out.
+                float overshoot = forest.InnerEdge - Mathf.Min(mist.CurrentRadius, forest.MaxRadius);
+                bool noGap = overshoot < 0.5f;
+                Debug.Log($"[bamboo] wall stands {overshoot:0.00} m outside the damaging circle: " +
+                          $"{(noGap ? "PASS" : "FAIL")}");
+
                 bool tracks = agreed == samples;
                 Debug.Log($"[bamboo] the wall stands on the mist line: {(tracks ? "PASS" : "FAIL")} " +
                           $"({agreed}/{samples}, worst gap {worstGap:0.00} m)");
@@ -234,18 +243,39 @@ namespace Unseen.EditorTools
                     // the wrong reason, and the first version of this check did exactly that: it
                     // reported travelling zero metres and called the wall solid.
                     //
-                    // Yaw zero faces +Z, so the run goes outward along +Z and the subject is placed
-                    // on that bearing.
+                    // The control spot is searched for rather than assumed. This is a dense town
+                    // and a fixed offset from the middle lands against a compound wall as often as
+                    // not, which fails the control for a reason that has nothing to do with
+                    // bamboo. Yaw zero faces +Z, so a clear spot is one with fifteen metres of
+                    // nothing in front of it along +Z.
                     Vector3 open = centre + new Vector3(0f, 1f, forest.InnerEdge * 0.4f);
+                    for (int attempt = 0; attempt < 24; attempt++)
+                    {
+                        float angle = attempt * 61f * Mathf.Deg2Rad;
+                        float reach = forest.InnerEdge * (0.25f + 0.02f * attempt);
+                        var candidate = new Vector3(
+                            centre.x + Mathf.Sin(angle) * reach, 1.2f,
+                            centre.z + Mathf.Cos(angle) * reach);
+
+                        if (Physics.CapsuleCast(candidate + Vector3.up * 0.4f,
+                                candidate + Vector3.up * 1.4f, 0.35f, Vector3.forward,
+                                15f, UnseenLayers.WorldGeometry, QueryTriggerInteraction.Ignore))
+                            continue;
+
+                        open = candidate;
+                        break;
+                    }
+
                     subject.Motor.Teleport(open);
                     Drive(boot, subject, 60, Vector2.zero);
 
-                    float controlStart = Radial(subject.Position, centre);
                     Drive(boot, subject, 120, new Vector2(0f, 1f));
-                    float controlTravel = Radial(subject.Position, centre) - controlStart;
+                    float controlTravel = Vector2.Distance(
+                        new Vector2(subject.Position.x, subject.Position.z),
+                        new Vector2(open.x, open.z));
 
                     controlMoved = controlTravel > 4f;
-                    Debug.Log($"[bamboo] control run in the open: {controlTravel:0.0} m outward " +
+                    Debug.Log($"[bamboo] control run from {open}: travelled {controlTravel:0.0} m " +
                               $"({(controlMoved ? "moves" : "DID NOT MOVE")})");
 
                     // Now the same run, started three metres short of the wall.
@@ -265,7 +295,7 @@ namespace Unseen.EditorTools
 
                 Debug.Log($"[bamboo] a body cannot run out through it: {(held ? "PASS" : "FAIL")}");
 
-                if (dormant && shoots && tall && tracks && solid && solidFarOut && pushed && held)
+                if (dormant && shoots && tall && tracks && noGap && solid && solidFarOut && pushed && held)
                     Debug.Log("[bamboo] PASSED");
                 else
                     Debug.LogError("[bamboo] FAILED");

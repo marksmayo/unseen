@@ -276,10 +276,14 @@ namespace Unseen.Core
             public float FirstGrowth = 180f;
 
             [Tooltip("How far outside the mist line the wall of bamboo stands, in metres.\n\n" +
-                     "Not zero. On the line exactly, the bamboo would seal the mist off and the " +
-                     "mist damage would never fire on anybody; this leaves a band of poison in " +
-                     "front of the wall that you can step into and regret.")]
-            public float MistMargin = 10f;
+                     "Zero: the wall IS the boundary. A margin here was a mistake. It left a " +
+                     "walkable band between the circle that damages you and the bamboo that stops " +
+                     "you, so the boundary still read as an invisible line you could run across " +
+                     "with a wall somewhere behind it - which is the whole thing the bamboo " +
+                     "exists to fix.\n\n" +
+                     "The mist damage is not made redundant by this. It fires on anyone the ring " +
+                     "closes over, for as long as it takes the wall to shove them back inside.")]
+            public float MistMargin;
 
             [Tooltip("Seconds the first band takes to reach full height.")]
             public float FirstBandDuration = 60f;
