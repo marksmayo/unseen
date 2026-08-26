@@ -64,7 +64,9 @@ namespace Unseen.EditorTools
                 Entry(SoundKind.SmokeBomb, 1f, 0.08f, 50f, Both("smoke_bomb")),
                 Entry(SoundKind.Death, 1f, 0.06f, 60f, Series("death_", 2)),
                 Entry(SoundKind.LootContainer, 0.8f, 0.1f, 34f, Both("loot_container")),
-                Entry(SoundKind.BambooRustle, 0.85f, 0.14f, 40f, Series("bamboo_rustle_", 3))
+                Entry(SoundKind.BambooRustle, 0.85f, 0.14f, 40f, Series("bamboo_rustle_", 3)),
+                Entry(SoundKind.BirdFlush, 0.9f, 0.12f, 46f, Series("bird_flush_", 3)),
+                Entry(SoundKind.AnimalScatter, 0.7f, 0.16f, 28f, Series("animal_scatter_", 3))
             };
 
             entries.RemoveAll(e => e.Clips == null || e.Clips.Length == 0);

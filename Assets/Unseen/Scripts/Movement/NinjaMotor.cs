@@ -175,8 +175,24 @@ namespace Unseen.Movement
         private void TickGrounded(SimContext ctx, in MoveIntent intent, UnseenConfig cfg, float dt, int tick)
         {
             float3 wish = WishDirection(intent);
-            bool sprinting = intent.Sprint && _agent.Stance == Stance.Stand && math.lengthsq(wish) > 0.01f;
+
+            // How much water is standing on the ground under us. Zero almost everywhere; the river
+            // is the only place it is not.
+            float wade = Unseen.Environment.WaterVolume.DepthAt(_agent.Position);
+
+            bool sprinting = intent.Sprint && _agent.Stance == Stance.Stand &&
+                             math.lengthsq(wish) > 0.01f &&
+                             wade <= cfg.Movement.WadeSprintDepth;
+
             float speed = cfg.StanceSpeed(_agent.Stance, sprinting);
+
+            // Wading. The river is meant to be a decision - cover and a route that costs you your
+            // legs - and it is not one if you cross it at walking pace.
+            if (wade > 0.02f)
+            {
+                float t = math.saturate(wade / math.max(0.05f, cfg.Movement.WadeFullDepth));
+                speed *= math.lerp(1f, cfg.Movement.WadeSlowest, t);
+            }
 
             float3 planar = UnseenMath.Horizontal(_velocity);
             planar = math.lerp(planar, wish * speed, math.saturate(cfg.Movement.Acceleration * dt));

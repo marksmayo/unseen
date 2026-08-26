@@ -125,6 +125,17 @@ namespace Unseen.Core
         {
             public float WalkSpeed = 3.6f;
             public float SprintSpeed = 6.8f;
+
+            [Tooltip("Water depth at which wading is at its slowest, in metres. Deeper than this " +
+                     "costs nothing extra - you are already pushing your whole body through it.")]
+            public float WadeFullDepth = 1.2f;
+
+            [Tooltip("Fraction of normal speed in water at WadeFullDepth.")]
+            [Range(0.15f, 1f)] public float WadeSlowest = 0.45f;
+
+            [Tooltip("Water deeper than this stops anyone sprinting. You can splash through a " +
+                     "puddle at a run; you cannot run through your own thighs.")]
+            public float WadeSprintDepth = 0.4f;
             public float CrouchSpeed = 1.7f;
             public float ProneSpeed = 0.85f;
             public float RafterSpeed = 1.4f;
@@ -264,13 +275,20 @@ namespace Unseen.Core
             [Tooltip("Seconds into the match before the first shoots appear.")]
             public float FirstGrowth = 180f;
 
+            [Tooltip("How far outside the mist line the wall of bamboo stands, in metres.\n\n" +
+                     "Not zero. On the line exactly, the bamboo would seal the mist off and the " +
+                     "mist damage would never fire on anybody; this leaves a band of poison in " +
+                     "front of the wall that you can step into and regret.")]
+            public float MistMargin = 10f;
+
             [Tooltip("Seconds the first band takes to reach full height.")]
             public float FirstBandDuration = 60f;
 
-            [Tooltip("Seconds each later band takes. Fast, once the forest has taken hold.")]
+            [Tooltip("Unused since the forest started following the mist. Kept because the " +
+                     "growth-schedule test still reads it.")]
             public float BandDuration = 15f;
 
-            [Tooltip("How far inward one band reaches, in metres.")]
+            [Tooltip("Unused since the forest started following the mist.")]
             public float BandDepth = 1f;
 
             [Tooltip("Height as a multiple of the rampart's. Tall enough that it cannot be " +
@@ -287,6 +305,25 @@ namespace Unseen.Core
 
             [Tooltip("Seconds between rustles from one agent, so contact is a sound not a siren.")]
             public float RustleInterval = 0.45f;
+        }
+
+        [Serializable]
+        public sealed class CritterSection
+        {
+            [Tooltip("Place birds and animals at all.")]
+            public bool Enabled = true;
+
+            [Tooltip("Loudness of a bird going up. Louder than a footstep on purpose: it is the " +
+                     "price of moving carelessly through a garden.")]
+            public float BirdLoudness = 1.15f;
+
+            [Tooltip("How far a flushed bird is heard, in metres.")]
+            public float BirdRadius = 44f;
+
+            [Tooltip("Loudness of something small bolting. Quieter and lower than a bird.")]
+            public float AnimalLoudness = 0.7f;
+
+            public float AnimalRadius = 26f;
         }
 
         [Serializable]
@@ -333,6 +370,9 @@ namespace Unseen.Core
         public CombatSection Combat = new CombatSection();
         public MatchSection Match = new MatchSection();
         public BambooSection Bamboo = new BambooSection();
+
+        [Tooltip("Birds and small animals, and how loudly they give you away.")]
+        public CritterSection Critters = new CritterSection();
         public BotSection Bots = new BotSection();
 
         private static UnseenConfig _default;

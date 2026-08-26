@@ -99,7 +99,13 @@ namespace Unseen.Core
 
         /// <summary>Bamboo disturbed by a body pushing against it. Appended, never renumbered:
         /// SoundKind travels on the wire as a byte.</summary>
-        BambooRustle = 13
+        BambooRustle = 13,
+
+        /// <summary>A bird going up off a branch because somebody came past too fast.</summary>
+        BirdFlush = 14,
+
+        /// <summary>Something small bolting out of the undergrowth.</summary>
+        AnimalScatter = 15
     }
 
     public enum DamageKind : byte

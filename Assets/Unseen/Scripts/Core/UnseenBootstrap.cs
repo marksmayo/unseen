@@ -211,8 +211,9 @@ namespace Unseen.Core
             CombatDirector combat = _sim.Add(new CombatDirector());
             _sim.Add(new AgentEffectsSystem());
             _match = _sim.Add(new MatchDirector());
-            _sim.Add(new MistZoneController());
+            MistZoneController mist = _sim.Add(new MistZoneController());
             _bamboo = _sim.Add(new BambooGrowthSystem());
+            _sim.Add(new Unseen.Perception.CritterStartleSystem());
             _replication = _sim.Add(new ReplicationSystem());
 
             combat.SmokePrefab = SmokePrefab;
@@ -228,10 +229,18 @@ namespace Unseen.Core
             // generator planted rather than building its own.
             var forest = map != null ? map.GetComponentInChildren<BambooForest>() : null;
             if (forest == null) forest = FindAnyObjectByType<BambooForest>();
-            if (forest != null) _bamboo.Configure(forest, center, radius);
+            if (forest != null) _bamboo.Configure(forest, center, radius, mist);
             else Debug.LogWarning("[Unseen] no BambooForest in the level; the spirit forest will not grow");
 
             _match.MatchStarted += _ => _bamboo.Begin(_sim.Time);
+
+            // Birds back on their branches for a new match, or the second match of a session is
+            // played in a town where everything has already been frightened off.
+            _match.MatchStarted += _ => Unseen.Environment.Critter.ResetAll();
+
+            // Put the forest away when the match ends, or the ring stays standing through the
+            // results screen and the next lobby - fourteen metres of bamboo around an empty town.
+            _match.MatchEnded += _ => _bamboo.Stop();
             _match.AgentDied += OnAgentDied;
             _match.MatchStarted += _ => _hud?.NoteMatchStarted();
             _match.Configure(_spawner, center, radius, Seed);

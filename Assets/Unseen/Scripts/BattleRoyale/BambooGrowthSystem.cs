@@ -10,17 +10,24 @@ namespace Unseen.BattleRoyale
     /// <summary>
     /// Grows the spirit forest and holds everyone inside it.
     ///
-    /// The mist and the bamboo squeeze the map in different ways on purpose. The mist is a line you
-    /// can cross, at a price - running through it to reach better ground is a real decision. The
-    /// bamboo is not negotiable: it takes the ground away and will not give it back, so the map
-    /// genuinely shrinks rather than merely becoming expensive at the edges.
+    /// The forest is the visible body of the shrinking boundary. It used to grow inward from the
+    /// rampart on a schedule of its own while the mist closed on a different one, which meant the
+    /// two were never in the same place: the mist would be a hundred metres inside the bamboo, so
+    /// the wall the player was actually being killed by was an invisible circle and the bamboo was
+    /// scenery nobody could reach. Now the ring rides the mist. What closes on you is a wall of
+    /// bamboo, and the mist is the band of poison in front of it.
     ///
-    /// Growth is a pure function of match time, so a client that joins late, a server that hitches,
-    /// and a headless test all agree on how deep the forest is without replicating anything.
+    /// The forest sits a margin OUTSIDE the mist line rather than on it, so there is still a strip
+    /// of mist you can step into and take damage in. Without that margin the bamboo would seal the
+    /// mist off entirely and the damage would never fire.
+    ///
+    /// Position is a pure function of the mist and of match time, so a client that joins late, a
+    /// server that hitches, and a headless test all agree on where the wall is without replicating
+    /// anything.
     /// </summary>
     public sealed class BambooGrowthSystem : SimSystem
     {
-        public override int Order => SimOrder.Mist - 5;
+        public override int Order => SimOrder.Mist + 5;
         public override SimRate Rate => SimRate.Base;
 
         private BambooForest _forest;
@@ -31,20 +38,33 @@ namespace Unseen.BattleRoyale
 
         private readonly Dictionary<int, float> _lastRustle = new Dictionary<int, float>(64);
 
-        /// <summary>How far in front of the solid mass the culms stand, and so are audible.</summary>
+        /// <summary>How far in front of the wall the culms stand, and so are audible.</summary>
         private const float RustleReach = 1.6f;
-
-        /// <summary>Metres the forest has taken from the map edge. Zero before it starts.</summary>
-        public float Depth => _forest != null ? _forest.Depth : 0f;
 
         /// <summary>How far from the centre the bamboo now stands.</summary>
         public float InnerEdge => _forest != null && _forest.IsGrown ? _forest.InnerEdge : float.MaxValue;
 
-        public void Configure(BambooForest forest, float3 centre, float ringRadius)
+        /// <summary>Metres the forest has taken from the map edge. Zero before it starts.</summary>
+        public float Depth => _forest != null && _forest.IsGrown
+            ? math.max(0f, _ring - _forest.InnerEdge)
+            : 0f;
+
+        private MistZoneController _mist;
+
+        /// <summary>
+        /// Wires the forest to the boundary it follows.
+        ///
+        /// The mist is passed in rather than looked up, because the simulation's service registry
+        /// holds services and not systems, and a system reaching sideways into the system list to
+        /// find another one is the kind of coupling that quietly breaks when the order changes.
+        /// </summary>
+        public void Configure(BambooForest forest, float3 centre, float ringRadius,
+            MistZoneController mist)
         {
             _forest = forest;
             _centre = centre;
             _ring = ringRadius;
+            _mist = mist;
         }
 
         /// <summary>Restarts growth. Called when a match begins, so every match grows its own.</summary>
@@ -53,23 +73,54 @@ namespace Unseen.BattleRoyale
             _matchStart = now;
             _running = true;
             _lastRustle.Clear();
-            _forest?.SetDepth(0f, 0f);
+            _forest?.Hide();
         }
 
         public void Stop()
         {
             _running = false;
-            _forest?.SetDepth(0f, 0f);
+            _forest?.Hide();
         }
 
         public override void Tick(in SimFrame frame)
         {
             UnseenConfig.BambooSection cfg = Ctx.Config.Bamboo;
             if (!cfg.Enabled || !_running || _forest == null) return;
-            if (Ctx.Match == null || Ctx.Match.Phase == MatchPhase.Lobby) return;
+            if (Ctx.Match == null || Ctx.Match.Phase == MatchPhase.Lobby)
+            {
+                _forest.Hide();
+                return;
+            }
 
             float elapsed = frame.Time - _matchStart;
-            Advance(cfg, elapsed);
+
+            // Dormant for the first stretch of the match. The town has to be worth exploring before
+            // anything starts taking it away.
+            if (elapsed < cfg.FirstGrowth)
+            {
+                _forest.Hide();
+                return;
+            }
+
+            // Shoots for the first minute, rising to a full wall. After that it is simply the
+            // boundary, and it goes where the boundary goes.
+            float risen = math.saturate((elapsed - cfg.FirstGrowth) /
+                                        math.max(0.01f, cfg.FirstBandDuration));
+
+            float3 centre = _centre;
+            float radius = _ring;
+
+            if (_mist != null && _mist.CurrentRadius > 0f)
+            {
+                centre = _mist.Center;
+                radius = _mist.CurrentRadius + cfg.MistMargin;
+            }
+
+            // Never outside the rampart: a ring of bamboo standing beyond the wall is invisible and
+            // pointless, and at the start of a match the mist is the whole map.
+            radius = math.min(radius, _ring);
+
+            _forest.SetRing(centre, radius, risen);
 
             if (!_forest.IsGrown) return;
 
@@ -77,51 +128,17 @@ namespace Unseen.BattleRoyale
         }
 
         /// <summary>
-        /// Works out how deep the forest is at this moment.
+        /// Pushes anyone the forest has closed over back towards the middle.
         ///
-        /// The first band is slow - a minute of shoots coming up in front of the wall - and every
-        /// band after it is quick. That shape is the point: the forest announces itself, and then
-        /// it starts eating.
-        /// </summary>
-        private void Advance(UnseenConfig.BambooSection cfg, float elapsed)
-        {
-            float since = elapsed - cfg.FirstGrowth;
-            if (since <= 0f)
-            {
-                _forest.SetDepth(0f, 0f);
-                return;
-            }
-
-            float first = Mathf.Max(0.01f, cfg.FirstBandDuration);
-
-            if (since < first)
-            {
-                // The first band: one metre deep, rising over the whole minute.
-                _forest.SetDepth(cfg.BandDepth, since / first);
-                return;
-            }
-
-            float later = Mathf.Max(0.01f, cfg.BandDuration);
-            float afterFirst = since - first;
-
-            int completeBands = 1 + Mathf.FloorToInt(afterFirst / later);
-            float intoBand = (afterFirst % later) / later;
-
-            float depth = completeBands * cfg.BandDepth + intoBand * cfg.BandDepth;
-            _forest.SetDepth(depth, 1f);
-        }
-
-        /// <summary>
-        /// Pushes anyone the forest has grown over back towards the middle.
-        ///
-        /// The collider stops a player walking in, but it cannot stop the bamboo growing around
-        /// somebody who was already standing there - a collider that changes size does not shove a
-        /// character controller. So the growing edge does the shoving itself, and does it on the
-        /// server where a client cannot decline.
+        /// The collider stops a player walking in, but it cannot stop the bamboo closing around
+        /// somebody who was already standing there - a collider that moves does not shove a
+        /// character controller. So the wall does the shoving itself, and does it on the server
+        /// where a client cannot decline.
         /// </summary>
         private void HoldAgentsInside(UnseenConfig.BambooSection cfg, in SimFrame frame)
         {
             float edge = _forest.InnerEdge;
+            float3 centre = _forest.Centre;
             EntityRegistry registry = Ctx.Entities;
 
             for (int i = 0; i < registry.Count; i++)
@@ -129,28 +146,27 @@ namespace Unseen.BattleRoyale
                 AgentEntity agent = registry.BySlot(i);
                 if (agent == null || !agent.IsAlive || agent.Motor == null) continue;
 
-                // The forest is a square ring, so the test is a square one: the deepest axis wins.
-                float3 offset = agent.Position - _centre;
-                float reach = math.max(math.abs(offset.x), math.abs(offset.z));
+                float3 offset = agent.Position - centre;
+                offset.y = 0f;
+
+                float reach = math.length(offset);
 
                 // Two thresholds, because the bamboo is two things. The culms stand over a metre
-                // proud of the solid mass, so brushing into them is heard well before anything
-                // stops you - which is the point of cover you cannot use quietly.
+                // proud of the wall behind them, so brushing into them is heard well before
+                // anything stops you - which is the point of cover you cannot use quietly.
                 if (reach > edge - RustleReach) Rustle(cfg, agent, frame);
                 if (reach <= edge - 0.35f) continue;
 
-                float3 corrected = agent.Position;
-                float push = cfg.PushSpeed * frame.Dt;
+                float limit = edge - 0.35f;
+                float3 inward = math.normalizesafe(offset, new float3(1f, 0f, 0f));
 
-                if (math.abs(offset.x) > edge - 0.35f)
-                    corrected.x = _centre.x + math.sign(offset.x) *
-                        math.max(0f, math.abs(offset.x) - math.max(push, math.abs(offset.x) - (edge - 0.35f)));
+                // Move at the push speed, or straight to the face if that is nearer: a body deep
+                // inside the wall after a teleport should not spend ten seconds oozing out of it.
+                float target = math.max(limit, reach - math.max(cfg.PushSpeed * frame.Dt,
+                                                                reach - limit));
 
-                if (math.abs(offset.z) > edge - 0.35f)
-                    corrected.z = _centre.z + math.sign(offset.z) *
-                        math.max(0f, math.abs(offset.z) - math.max(push, math.abs(offset.z) - (edge - 0.35f)));
-
-                agent.Motor.MoveDirect(corrected);
+                float3 corrected = centre + inward * target;
+                agent.Motor.MoveDirect(new float3(corrected.x, agent.Position.y, corrected.z));
             }
         }
 

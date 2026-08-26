@@ -170,7 +170,9 @@ namespace Unseen.EditorTools
                 var forest = host.GetComponentInChildren<Unseen.Environment.BambooForest>();
                 if (forest != null)
                 {
-                    forest.SetDepth(4f, 1f);
+                    // Stood at the rampart at full height, which is where it is when it first
+                    // rises. In a match it closes from here.
+                    forest.SetRing(Vector3.zero, forest.MaxRadius, 1f);
 
                     // Above the rooftops rather than at head height: a fixed ground-level camera
                     // ends up inside whatever building the generator happens to put there, and
@@ -186,7 +188,8 @@ namespace Unseen.EditorTools
 
                     var list = new System.Collections.Generic.List<Shot>(shots) { wallShot };
                     shots = list.ToArray();
-                    Debug.Log($"[shot] spirit forest grown to {forest.Depth:0.0} m for the capture");
+                    Debug.Log($"[shot] spirit forest stood at {forest.InnerEdge:0.0} m, " +
+                              $"{forest.CurrentHeight:0.0} m tall, for the capture");
                 }
 
                 // The deck is segmented into an arch, and the middle segment is the crown - which

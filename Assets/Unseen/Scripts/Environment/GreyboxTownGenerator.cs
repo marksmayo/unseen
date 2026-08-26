@@ -52,6 +52,12 @@ namespace Unseen.Environment
         [Tooltip("Depth of water above the bed. Most of the channel, so the river looks like one.")]
         public float WaterDepth = 2.6f;
 
+        [Tooltip("Water over the shelves along each bank, in metres. Waist deep on a 1.8 m ninja.")]
+        public float WadeShallow = 0.8f;
+
+        [Tooltip("Water down the middle of the channel. Deep enough that crouching submerges you.")]
+        public float WadeDeep = 1.35f;
+
         [Tooltip("How far the towpath ledge stands above the waterline.")]
         public float TowpathFreeboard = 0.55f;
 
@@ -175,6 +181,8 @@ namespace Unseen.Environment
         private Material _riverStone;
         private Material _bambooMass;
         private BambooForest _forest;
+        private int _birds;
+        private int _animals;
 
         /// <summary>The spirit forest, for the growth system to drive.</summary>
         public BambooForest Forest => _forest;
@@ -279,6 +287,7 @@ namespace Unseen.Environment
             BuildStreetLanterns(extent, pitch);
             BuildStreetFurniture(extent, pitch);
             BuildVerges(extent, pitch);
+            BuildHedges(extent, pitch);
             BuildFoliage(extent, pitch);
             BuildRampart(extent);
             BuildSpiritForest();
@@ -294,6 +303,10 @@ namespace Unseen.Environment
             // patrol picker and the bounds clamp all read this, and they should all agree with the
             // wall the player can actually see.
             descriptor.Radius = _rampartRing > 0f ? _rampartRing + 1f : extent * 1.15f;
+
+            // The rampart is four straight walls, not a ring, and the bounds clamp has to agree
+            // with it or the corners of the town become unreachable.
+            descriptor.HalfExtent = _rampartRing > 0f ? _rampartRing : 0f;
             descriptor.FloorY = -SewerDepth - 2f;
             descriptor.CeilingY = WallHeight + SecondStoreyHeight + 12f;
 
@@ -306,6 +319,7 @@ namespace Unseen.Environment
                       $"{_root.GetComponentsInChildren<Collider>(true).Length} colliders, " +
                       $"{_pagodas} pagodas, {_kura} kura, {_nagaya} nagaya, " +
                       $"{_gardens} gardens, {_shrines} shrines, {_trees} trees, {_shrubs} shrubs, " +
+                      $"{_birds} birds, {_animals} animals, " +
                       $"river={(_riverColumn >= 0 ? "yes" : "no")}, " +
                       $"{(_sketch != null ? _sketch.Landmarks.Count : 0)} map landmarks");
 
@@ -918,10 +932,21 @@ namespace Unseen.Environment
             float waterTop = bedY + WaterDepth;
             float pathTop = waterTop + TowpathFreeboard;
 
-            Transform water = Box(river, "Water",
+            // The surface is NOT a floor. It used to be an ordinary collider, which meant a
+            // player walked across the river with dry feet and the whole channel was a bridge.
+            // What you stand on is the bed; this is only the thing you look at.
+            Transform water = Detail(river, "Water",
                 new Vector3(_riverCentreX, bedY + WaterDepth * 0.5f, 0f),
-                new Vector3(RiverWidth, WaterDepth, length), UnseenLayers.Default, _water);
-            Acoustics(water, 0.2f, 2.2f, 2.4f);
+                new Vector3(RiverWidth, WaterDepth, length), _water);
+
+            water.gameObject.AddComponent<WaterVolume>().Configure(
+                waterTop, new Vector2(RiverWidth * 0.5f, length * 0.5f), WadeDeep + 0.2f);
+
+            // The bottom you actually walk on: shallow shelves either side and a deeper channel
+            // down the middle. A river of one uniform depth is a trench; this one you can cross at
+            // the edges and hide in at the centre, and crouching in the middle puts your head
+            // under the surface.
+            BuildRiverBed(river, length, waterTop, bedY);
 
             // Sound and surface motion. Both are driven from one component so the emitters and the
             // scroll cannot disagree about where the river is.
@@ -949,6 +974,46 @@ namespace Unseen.Environment
             BuildRiverDressing(river, length, channelHalf, bedY, waterTop, pathTop);
             BuildRiverStairs(river, extent, pitch, channelHalf, bedY);
             BuildBridges(river, extent, pitch, channelHalf, bedY);
+        }
+
+        /// <summary>
+        /// The bed of the river: what a wading player actually stands on.
+        ///
+        /// Three slabs rather than one flat bottom. The shelves along each bank are waist deep, so
+        /// crossing is possible but slow and loud; the middle is deep enough that a standing ninja
+        /// is in it to the chest and a crouching one is under it. That difference is the whole
+        /// reason to be in the river rather than on the bridge above it.
+        ///
+        /// All three carry the water acoustic profile, which is what makes footsteps here splash:
+        /// the footstep sound is chosen from the surface underfoot, and underfoot is the bed.
+        /// </summary>
+        private void BuildRiverBed(Transform river, float length, float waterTop, float bedY)
+        {
+            float shelfTop = waterTop - WadeShallow;
+            float channelTop = waterTop - WadeDeep;
+
+            float channelWidth = RiverWidth * 0.5f;
+            float shelfWidth = (RiverWidth - channelWidth) * 0.5f;
+
+            Transform channel = Box(river, "RiverbedChannel",
+                new Vector3(_riverCentreX, (bedY + channelTop) * 0.5f, 0f),
+                new Vector3(channelWidth, channelTop - bedY, length),
+                UnseenLayers.Default, _riverStone);
+            Acoustics(channel, 0.2f, 2.2f, 2.4f);
+
+            for (int side = -1; side <= 1; side += 2)
+            {
+                float centre = _riverCentreX + side * (channelWidth + shelfWidth) * 0.5f;
+
+                Transform shelf = Box(river, $"RiverbedShelf_{side}",
+                    new Vector3(centre, (bedY + shelfTop) * 0.5f, 0f),
+                    new Vector3(shelfWidth, shelfTop - bedY, length),
+                    UnseenLayers.Default, _riverStone);
+                Acoustics(shelf, 0.2f, 2.2f, 2.4f);
+            }
+
+            Debug.Log($"[Unseen] riverbed: {WadeShallow:0.00} m over the shelves, " +
+                      $"{WadeDeep:0.00} m down the middle");
         }
 
         /// <summary>
@@ -1407,6 +1472,183 @@ namespace Unseen.Environment
             }
         }
 
+        // ---------------------------------------------------------------- greenery and wildlife
+
+        /// <summary>
+        /// Clipped hedges, potted plants and climbing growth along the streets.
+        ///
+        /// Separate from the groves because it serves a different purpose: the trees break
+        /// sightlines down a long street, and this fills the ankle-to-waist band that was bare
+        /// gravel everywhere. It is also where most of the birds and animals live, which is the
+        /// point of putting it near where people walk rather than out in the gardens.
+        /// </summary>
+        private void BuildHedges(float extent, float pitch)
+        {
+            var green = new GameObject("Greenery").transform;
+            green.SetParent(_root, false);
+
+            int hedges = 0;
+            int pots = 0;
+
+            for (int gx = 0; gx <= GridSize; gx++)
+            for (int gz = 0; gz <= GridSize; gz++)
+            {
+                float baseX = (gx - GridSize * 0.5f) * pitch;
+                float baseZ = (gz - GridSize * 0.5f) * pitch;
+
+                if (Mathf.Abs(baseX) > extent || Mathf.Abs(baseZ) > extent) continue;
+                if (_riverColumn >= 0 && Mathf.Abs(baseX - _riverCentreX) < RiverWidth) continue;
+
+                // A run of clipped hedge along one side of the crossing. Occluders, because a hedge
+                // at chest height genuinely hides a crouching body - which is the whole reason to
+                // put one on a street in a game about not being seen.
+                if (_random.NextDouble() < 0.4)
+                {
+                    bool alongX = _random.NextDouble() < 0.5;
+                    float length = pitch * (0.28f + (float)_random.NextDouble() * 0.3f);
+                    float height = 0.9f + (float)_random.NextDouble() * 0.5f;
+                    float offset = 7.5f + (float)_random.NextDouble() * 2.5f;
+                    float side = _random.NextDouble() < 0.5 ? 1f : -1f;
+
+                    var at = alongX
+                        ? new Vector3(baseX, height * 0.5f, baseZ + side * offset)
+                        : new Vector3(baseX + side * offset, height * 0.5f, baseZ);
+
+                    var size = alongX
+                        ? new Vector3(length, height, 0.9f)
+                        : new Vector3(0.9f, height, length);
+
+                    Transform hedge = Box(green, $"Hedge_{gx}_{gz}", at, size,
+                        UnseenLayers.Occluder, _foliage);
+                    Acoustics(hedge, 0.3f, 0.8f, 0.9f);
+                    hedges++;
+
+                    // Sprigs breaking the top line, so it is a hedge rather than a green wall.
+                    int sprigs = 3 + _random.Next(4);
+                    for (int i = 0; i < sprigs; i++)
+                    {
+                        float t = (i + 0.5f) / sprigs;
+                        Vector3 sprigAt = at + (alongX
+                            ? new Vector3(Mathf.Lerp(-length * 0.45f, length * 0.45f, t), 0f, 0f)
+                            : new Vector3(0f, 0f, Mathf.Lerp(-length * 0.45f, length * 0.45f, t)));
+
+                        sprigAt.y = height + 0.16f;
+                        Detail(green, $"Sprig_{gx}_{gz}_{i}", sprigAt,
+                            new Vector3(0.5f, 0.34f, 0.5f), _reed);
+                    }
+
+                    // Birds sit on hedges. Perched at the top, which is where a startled one is
+                    // most visible going up.
+                    if (_random.NextDouble() < 0.45)
+                        BuildBird(green, at + new Vector3(0f, height * 0.5f + 0.2f, 0f));
+                }
+
+                // Potted plants against a wall, the way a shop front is dressed.
+                if (_random.NextDouble() < 0.45)
+                {
+                    int count = 1 + _random.Next(3);
+                    float side = _random.NextDouble() < 0.5 ? 1f : -1f;
+
+                    for (int i = 0; i < count; i++)
+                    {
+                        var at = new Vector3(
+                            baseX + side * (6.4f + i * 0.85f),
+                            0f,
+                            baseZ + (float)(_random.NextDouble() * 2f - 1f) * 4f);
+
+                        Detail(green, $"Pot_{gx}_{gz}_{i}",
+                            at + new Vector3(0f, 0.22f, 0f),
+                            new Vector3(0.5f, 0.44f, 0.5f), _stone);
+
+                        Detail(green, $"Potted_{gx}_{gz}_{i}",
+                            at + new Vector3(0f, 0.72f, 0f),
+                            new Vector3(0.62f, 0.6f, 0.62f), _foliage);
+                        pots++;
+                    }
+                }
+
+                // Something small living in the gap between the hedge and the wall.
+                if (_random.NextDouble() < 0.3)
+                    BuildAnimal(green, new Vector3(
+                        baseX + (float)(_random.NextDouble() * 2f - 1f) * 6f, 0f,
+                        baseZ + (float)(_random.NextDouble() * 2f - 1f) * 6f));
+            }
+
+            Debug.Log($"[Unseen] greenery: {hedges} hedges, {pots} potted plants");
+        }
+
+        /// <summary>
+        /// A bird: body, head, tail and a wing either side.
+        ///
+        /// Small and dark on purpose. It is meant to be almost invisible until it moves, so that
+        /// what a player notices is the departure rather than the bird.
+        /// </summary>
+        private void BuildBird(Transform parent, Vector3 at)
+        {
+            if (!CrittersEnabled()) return;
+
+            var bird = new GameObject($"Bird_{_birds}").transform;
+            bird.SetParent(parent, false);
+            bird.localPosition = at;
+            bird.localRotation = Quaternion.Euler(0f, (float)_random.NextDouble() * 360f, 0f);
+            _birds++;
+
+            Detail(bird, "Body", new Vector3(0f, 0f, 0f),
+                new Vector3(0.17f, 0.15f, 0.28f), _darkTimber);
+            Detail(bird, "Head", new Vector3(0f, 0.09f, 0.15f),
+                new Vector3(0.12f, 0.11f, 0.12f), _darkTimber);
+            Detail(bird, "Tail", new Vector3(0f, 0.02f, -0.22f),
+                new Vector3(0.1f, 0.04f, 0.18f), _darkTimber);
+
+            Transform left = Detail(bird, "WingL", new Vector3(-0.11f, 0.03f, 0f),
+                new Vector3(0.2f, 0.04f, 0.24f), _darkTimber);
+            Transform right = Detail(bird, "WingR", new Vector3(0.11f, 0.03f, 0f),
+                new Vector3(0.2f, 0.04f, 0.24f), _darkTimber);
+
+            var critter = bird.gameObject.AddComponent<Critter>();
+            critter.StartleRadius = 9f;
+            critter.Configure(Critter.Species.Bird, left, right);
+        }
+
+        /// <summary>A cat or a fox: low body, four short legs, a tail that gives it away.</summary>
+        private void BuildAnimal(Transform parent, Vector3 at)
+        {
+            if (!CrittersEnabled()) return;
+
+            var animal = new GameObject($"Animal_{_animals}").transform;
+            animal.SetParent(parent, false);
+            animal.localPosition = at;
+            animal.localRotation = Quaternion.Euler(0f, (float)_random.NextDouble() * 360f, 0f);
+            _animals++;
+
+            Detail(animal, "Body", new Vector3(0f, 0.22f, 0f),
+                new Vector3(0.2f, 0.18f, 0.46f), _darkTimber);
+            Detail(animal, "Head", new Vector3(0f, 0.3f, 0.29f),
+                new Vector3(0.16f, 0.15f, 0.16f), _darkTimber);
+            Detail(animal, "Tail", new Vector3(0f, 0.28f, -0.32f),
+                new Vector3(0.07f, 0.07f, 0.26f), _darkTimber);
+
+            for (int i = 0; i < 4; i++)
+            {
+                float x = (i % 2 == 0 ? -1f : 1f) * 0.07f;
+                float z = (i < 2 ? 1f : -1f) * 0.15f;
+                Detail(animal, $"Leg_{i}", new Vector3(x, 0.07f, z),
+                    new Vector3(0.06f, 0.15f, 0.06f), _darkTimber);
+            }
+
+            // Smaller radius than a bird: something on the ground lets you get closer before it
+            // decides, and it is much quieter when it goes.
+            var critter = animal.gameObject.AddComponent<Critter>();
+            critter.StartleRadius = 6f;
+            critter.Configure(Critter.Species.Animal, null, null);
+        }
+
+        private static bool CrittersEnabled()
+        {
+            UnseenConfig config = UnseenConfig.Default;
+            return config == null || config.Critters.Enabled;
+        }
+
         // ---------------------------------------------------------------- verges
 
         /// <summary>
@@ -1655,13 +1897,16 @@ namespace Unseen.Environment
                 float streetX = (gx - GridSize * 0.5f) * pitch;
                 float streetZ = (gz - GridSize * 0.5f) * pitch;
 
-                // Corners are for lamp posts; trees go along the streets between them.
-                for (int step = 1; step <= 2; step++)
+                // Corners are for lamp posts; trees go along the streets between them. Three
+                // planting points per street rather than two, and taken more often: a town whose
+                // streets are lined with green is a town where a sprint has somewhere to be heard
+                // from, now that most trees have a bird in them.
+                for (int step = 1; step <= 3; step++)
                 {
-                    if (_random.NextDouble() > 0.34) continue;
+                    if (_random.NextDouble() > 0.45) continue;
 
                     bool alongZ = _random.NextDouble() < 0.5;
-                    float slide = pitch * (step / 3f);
+                    float slide = pitch * (step / 4f);
 
                     var spot = new Vector3(
                         alongZ ? streetX + (float)(_random.NextDouble() - 0.5) * 3f : streetX + slide,
@@ -1736,6 +1981,14 @@ namespace Unseen.Environment
                     BuildBambooClump(tree, height, spread);
                     break;
             }
+
+            // Most trees have something in them. A tree-lined street is now a street you cannot
+            // sprint down without announcing it.
+            if (_random.NextDouble() < 0.7)
+                BuildBird(tree, new Vector3(
+                    (float)(_random.NextDouble() * 2f - 1f) * spread * 0.4f,
+                    height * (0.62f + (float)_random.NextDouble() * 0.25f),
+                    (float)(_random.NextDouble() * 2f - 1f) * spread * 0.4f));
         }
 
         /// <summary>A pine: bare trunk, branches near the top, tiered plates of needles.</summary>
@@ -1856,8 +2109,9 @@ namespace Unseen.Environment
             var forest = host.gameObject.AddComponent<BambooForest>();
             _forest = forest;
 
-            // Inside the wall-walk, so the bamboo grows in front of the rampart rather than
-            // through it.
+            // The ring starts at the rampart and closes from there, so its maximum radius is the
+            // inside of the wall-walk: any further out and the bamboo would be standing behind the
+            // wall where nobody can see it.
             const float bankHeight = 5.4f;
             const float parapetHeight = 1.6f;
             const float walkWidth = 4f;
@@ -1865,9 +2119,8 @@ namespace Unseen.Environment
             float wallHeight = bankHeight + parapetHeight;
             float inner = _rampartRing - walkWidth * 0.5f;
 
-            forest.Build(inner, wallHeight,
-                wallHeight * Mathf.Max(1f, MaterialSetBambooHeight()),
-                inner * 0.85f, _bamboo, _bambooMass, _foliage);
+            forest.Build(inner, wallHeight * Mathf.Max(1f, MaterialSetBambooHeight()),
+                _bamboo, _bambooMass, _foliage);
         }
 
         /// <summary>Height multiple, read from config so the forest and the rules agree.</summary>
