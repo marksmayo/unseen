@@ -30,7 +30,13 @@ namespace Unseen.Client
 
         [Tooltip("How far the pivot drops when crouched. Crouching has to be visible from the " +
                  "player's seat, and the capsule shrinking is not something you can see.")]
-        public float CrouchPivotDrop = 0.55f;
+        public float CrouchPivotDrop = 0.42f;
+
+        [Tooltip("How far the pivot drops when prone.")]
+        public float PronePivotDrop = 0.95f;
+
+        /// <summary>Set by the bootstrap from the local agent's stance.</summary>
+        public bool Prone;
 
         [Tooltip("How quickly the pivot follows a stance change.")]
         public float StanceSmoothing = 8f;
@@ -82,7 +88,7 @@ namespace Unseen.Client
         private void SnapBehind()
         {
             Quaternion rotation = Quaternion.Euler(Input.Pitch, Input.Yaw, 0f);
-            _pivotDrop = Crouched ? CrouchPivotDrop : 0f;
+            _pivotDrop = Prone ? PronePivotDrop : Crouched ? CrouchPivotDrop : 0f;
             Vector3 pivot = Follow.position + Vector3.up * (PivotHeight - _pivotDrop);
             transform.position = pivot + rotation * Vector3.back * _currentDistance + rotation * Vector3.right * ShoulderOffset;
             transform.rotation = rotation;
@@ -93,7 +99,8 @@ namespace Unseen.Client
             if (Follow == null || Input == null) return;
 
             Quaternion rotation = Quaternion.Euler(Input.Pitch, Input.Yaw, 0f);
-            _pivotDrop = Mathf.Lerp(_pivotDrop, Crouched ? CrouchPivotDrop : 0f,
+            float wanted = Prone ? PronePivotDrop : Crouched ? CrouchPivotDrop : 0f;
+            _pivotDrop = Mathf.Lerp(_pivotDrop, wanted,
                 1f - Mathf.Exp(-StanceSmoothing * Time.deltaTime));
 
             Vector3 pivot = Follow.position + Vector3.up * (PivotHeight - _pivotDrop);

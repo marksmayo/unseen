@@ -29,6 +29,10 @@ namespace Unseen.Entities
 
         private const int CombatLayer = 1;
         private const int StanceLayer = 2;
+        private const int ParkourLayer = 3;
+
+        private static readonly int StanceParam = Animator.StringToHash("Stance");
+        private static readonly int ParkourParam = Animator.StringToHash("Parkour");
 
         [Tooltip("Animator driven by locomotion state. Optional - the mesh renders fine without one.")]
         public Animator Rig;
@@ -43,10 +47,12 @@ namespace Unseen.Entities
         public float ActionBlendSpeed = 9f;
 
         [Tooltip("How far the body sinks when crouched. The crouch pose folds the knees, which " +
-                 "lifts the feet; this puts them back on the floor. Measured, not guessed: the " +
-                 "authored pose lifts the left foot by 0.236 m and leaves the head level, so this " +
-                 "figure is what converts a knee fold into a visible crouch.")]
-        public float CrouchBodyDrop = 0.236f;
+                 "lifts the feet; this puts them back on the floor. Measured with " +
+                 "Unseen > Art > Capture Animation Poses rather than guessed.")]
+        public float CrouchBodyDrop = 0.412f;
+
+        [Tooltip("How far the body sinks when prone. Same measurement, a much deeper fold.")]
+        public float ProneBodyDrop = 0.517f;
 
         [Tooltip("How quickly the body settles into and out of a crouch.")]
         public float CrouchBlendSpeed = 7f;
@@ -62,7 +68,11 @@ namespace Unseen.Entities
         private Vector3 _authoredScale;
         private int _action = -1;
         private float _actionWeight;
-        private float _crouchWeight;
+        private float _stanceWeight;
+        private float _bodyDrop;
+        private int _stance = -1;
+        private float _parkourWeight;
+        private int _parkour = -1;
         private float _authoredLocalY;
 
         private void Awake()
@@ -153,7 +163,8 @@ namespace Unseen.Entities
             Rig.SetBool(CrouchParam, crouched);
 
             DriveCombatLayer();
-            DriveStanceLayer(crouched);
+            DriveStanceLayer();
+            DriveParkourLayer();
         }
 
         /// <summary>
@@ -163,18 +174,69 @@ namespace Unseen.Entities
         /// floor; sinking the whole body by roughly the same amount puts them back. Without both
         /// halves a crouch is either a float or a squat with the feet through the boards.
         /// </summary>
-        private void DriveStanceLayer(bool crouched)
+        private void DriveStanceLayer()
         {
-            _crouchWeight = Mathf.MoveTowards(_crouchWeight, crouched ? 1f : 0f,
+            Stance stance = _agent != null ? _agent.Stance : Stance.Stand;
+
+            int wanted = stance == Stance.Prone ? 2 : stance == Stance.Crouch ? 1 : 0;
+            if (wanted != _stance)
+            {
+                _stance = wanted;
+                Rig.SetInteger(StanceParam, wanted);
+            }
+
+            float targetDrop = stance == Stance.Prone ? ProneBodyDrop
+                : stance == Stance.Crouch ? CrouchBodyDrop
+                : 0f;
+
+            _stanceWeight = Mathf.MoveTowards(_stanceWeight, wanted == 0 ? 0f : 1f,
                 CrouchBlendSpeed * Time.deltaTime);
 
-            if (Rig.layerCount > StanceLayer) Rig.SetLayerWeight(StanceLayer, _crouchWeight);
+            // The drop is interpolated separately from the layer weight so a crouch-to-prone
+            // change slides between two depths instead of standing up on the way through.
+            _bodyDrop = Mathf.MoveTowards(_bodyDrop, targetDrop,
+                (ProneBodyDrop + CrouchBodyDrop) * CrouchBlendSpeed * Time.deltaTime);
+
+            if (Rig.layerCount > StanceLayer) Rig.SetLayerWeight(StanceLayer, _stanceWeight);
 
             if (_authoredScale.sqrMagnitude <= 0f) return;
 
             Vector3 local = transform.localPosition;
-            local.y = _authoredLocalY - CrouchBodyDrop * _crouchWeight;
+            local.y = _authoredLocalY - _bodyDrop;
             transform.localPosition = local;
+        }
+
+        /// <summary>
+        /// Climbing, wall running and hanging, driven straight off the locomotion state.
+        ///
+        /// Full body: none of these are things the legs and the arms can disagree about, and until
+        /// now every one of them was mimed in the airborne pose.
+        /// </summary>
+        private void DriveParkourLayer()
+        {
+            if (Rig.layerCount <= ParkourLayer) return;
+
+            LocomotionState state = _agent != null ? _agent.Locomotion : LocomotionState.Grounded;
+
+            int wanted;
+            switch (state)
+            {
+                case LocomotionState.WallClimb: wanted = 1; break;
+                case LocomotionState.WallRun: wanted = 2; break;
+                case LocomotionState.RafterCrawl:
+                case LocomotionState.Grapple: wanted = 3; break;
+                default: wanted = 0; break;
+            }
+
+            if (wanted != _parkour)
+            {
+                _parkour = wanted;
+                Rig.SetInteger(ParkourParam, wanted);
+            }
+
+            _parkourWeight = Mathf.MoveTowards(_parkourWeight, wanted == 0 ? 0f : 1f,
+                ActionBlendSpeed * Time.deltaTime);
+            Rig.SetLayerWeight(ParkourLayer, _parkourWeight);
         }
 
         /// <summary>

@@ -346,6 +346,14 @@ namespace Unseen.Net
             if (intent.AttackHeavy) buttons |= 1 << 6;
             if (intent.Guard) buttons |= 1 << 7;
             writer.WriteByte(buttons);
+
+            // A second button byte. The first is full - eight buttons, eight bits - and prone had
+            // nowhere to go. One byte per input packet is a cheaper price than packing a ninth
+            // button into a field that means something else.
+            byte extra = 0;
+            if (intent.Prone) extra |= 1 << 0;
+            writer.WriteByte(extra);
+
             writer.WriteByte((byte)intent.Zone);
             writer.WriteByte(intent.UseUtility);
         }
@@ -371,6 +379,9 @@ namespace Unseen.Net
             intent.AttackLight = (buttons & (1 << 5)) != 0;
             intent.AttackHeavy = (buttons & (1 << 6)) != 0;
             intent.Guard = (buttons & (1 << 7)) != 0;
+
+            byte extra = reader.ReadByte();
+            intent.Prone = (extra & (1 << 0)) != 0;
             intent.Zone = (GuardZone)reader.ReadByte();
             intent.UseUtility = reader.ReadByte();
 

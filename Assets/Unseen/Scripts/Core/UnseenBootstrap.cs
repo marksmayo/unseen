@@ -398,6 +398,7 @@ namespace Unseen.Core
             _spectating = null;
             if (_camera.Follow != local.transform) _camera.SetTarget(local.transform);
             _camera.Crouched = local.Stance != Stance.Stand;
+            _camera.Prone = local.Stance == Stance.Prone;
 
             // Own-audio binds here for the same reason the camera does: the agent does not exist
             // until the match spawns it, which is after the client rig is built.

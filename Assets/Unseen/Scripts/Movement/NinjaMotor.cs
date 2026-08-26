@@ -466,13 +466,25 @@ namespace Unseen.Movement
 
         private void UpdateStance(in MoveIntent intent, UnseenConfig cfg)
         {
-            Stance desired = intent.Crouch ? Stance.Crouch : Stance.Stand;
+            // Prone beats crouch: holding both should put you as low as you asked to go.
+            Stance desired = intent.Prone ? Stance.Prone
+                : intent.Crouch ? Stance.Crouch
+                : Stance.Stand;
 
-            if (desired == Stance.Stand && _agent.Stance != Stance.Stand)
+            // Refuse to rise into a low ceiling, at whichever height was asked for. Checked
+            // against the height being stood up INTO, so crawling out from under a rafter can
+            // still reach a crouch even when standing is blocked.
+            if (desired != _agent.Stance && cfg.StanceHeight(desired) > cfg.StanceHeight(_agent.Stance))
             {
-                // Refuse to stand up into a low ceiling.
-                if (!ParkourProbe.HasClearance(_agent.Position, cfg.Movement.Radius, cfg.Movement.StandHeight))
-                    desired = _agent.Stance;
+                if (!ParkourProbe.HasClearance(_agent.Position, cfg.Movement.Radius,
+                        cfg.StanceHeight(desired)))
+                {
+                    desired = cfg.StanceHeight(Stance.Crouch) > cfg.StanceHeight(_agent.Stance) &&
+                              ParkourProbe.HasClearance(_agent.Position, cfg.Movement.Radius,
+                                  cfg.StanceHeight(Stance.Crouch))
+                        ? Stance.Crouch
+                        : _agent.Stance;
+                }
             }
 
             if (desired == _agent.Stance) return;

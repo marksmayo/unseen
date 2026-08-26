@@ -36,7 +36,7 @@ namespace Unseen.EditorTools
             {
                 "ninja_guard", "ninja_attack_light", "ninja_attack_heavy",
                 "ninja_stagger", "ninja_takedown_attacker", "ninja_takedown_victim",
-                "ninja_crouch"
+                "ninja_crouch", "ninja_prone", "ninja_climb", "ninja_wallrun", "ninja_hang"
             };
 
             GameObject subject = Object.Instantiate(prefab);

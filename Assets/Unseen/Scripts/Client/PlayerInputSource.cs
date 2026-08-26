@@ -22,6 +22,7 @@ namespace Unseen.Client
         [Header("Bindings")]
         public KeyCode SprintKey = KeyCode.LeftShift;
         public KeyCode CrouchKey = KeyCode.LeftControl;
+        public KeyCode ProneKey = KeyCode.C;
         public KeyCode JumpKey = KeyCode.Space;
         public KeyCode GrappleKey = KeyCode.F;
         public KeyCode InteractKey = KeyCode.E;
@@ -71,6 +72,7 @@ namespace Unseen.Client
             InvertY = settings.InvertY;
             SprintKey = settings.Key(settings.Sprint, KeyCode.LeftShift);
             CrouchKey = settings.Key(settings.Crouch, KeyCode.LeftControl);
+            ProneKey = settings.Key(settings.Prone, KeyCode.C);
             JumpKey = settings.Key(settings.Jump, KeyCode.Space);
             GrappleKey = settings.Key(settings.Grapple, KeyCode.F);
             InteractKey = settings.Key(settings.Interact, KeyCode.E);
@@ -128,6 +130,7 @@ namespace Unseen.Client
                 Pitch = Pitch,
                 Sprint = Input.GetKey(SprintKey),
                 Crouch = Input.GetKey(CrouchKey),
+                Prone = Input.GetKey(ProneKey),
                 Jump = Input.GetKey(JumpKey),
                 Grapple = Input.GetKey(GrappleKey),
                 Interact = Input.GetKeyDown(InteractKey),

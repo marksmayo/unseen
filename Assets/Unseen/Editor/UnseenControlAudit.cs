@@ -53,6 +53,7 @@ namespace Unseen.EditorTools
                 Check(report, "W/A/S/D  move", Move(boot, player));
                 Check(report, "Shift    sprint", Sprint(boot, player));
                 Check(report, "Ctrl     crouch", Crouch(boot, player));
+                Check(report, "C        prone", Prone(boot, player));
                 Check(report, "Space    jump", Jump(boot, player));
                 Check(report, "LMB      light attack", Attack(boot, player, heavy: false));
                 Check(report, "Alt+LMB  heavy attack", Attack(boot, player, heavy: true));
@@ -130,6 +131,29 @@ namespace Unseen.EditorTools
             return crouched == Stance.Crouch && stood == Stance.Stand
                 ? $"WORKS (height {height:0.00} m while crouched)"
                 : $"DEAD (stance went {crouched} then {stood})";
+        }
+
+        private static string Prone(UnseenBootstrap boot, AgentEntity player)
+        {
+            PlaceOnOpenGround(boot, player);
+
+            Drive(boot, player, 25, i => new MoveIntent { Sequence = (uint)i, Prone = true });
+            Stance flat = player.Stance;
+            float height = player.Controller != null ? player.Controller.height : -1f;
+
+            // Prone must also beat crouch when both are held, or the deeper stance is unreachable
+            // for anyone who rests a finger on control.
+            Drive(boot, player, 20, i => new MoveIntent { Sequence = (uint)i, Prone = true, Crouch = true });
+            Stance both = player.Stance;
+
+            Drive(boot, player, 25, i => new MoveIntent { Sequence = (uint)i });
+            Stance stood = player.Stance;
+
+            if (flat != Stance.Prone) return $"DEAD (stance stayed {flat})";
+            if (both != Stance.Prone) return $"DEAD (crouch overrode prone: {both})";
+            if (stood != Stance.Stand) return $"DEAD (could not stand up again: {stood})";
+
+            return $"WORKS (height {height:0.00} m while prone)";
         }
 
         private static string Jump(UnseenBootstrap boot, AgentEntity player)

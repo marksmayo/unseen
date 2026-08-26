@@ -120,6 +120,9 @@ namespace Unseen.Core
         public float Pitch;
         public bool Sprint;
         public bool Crouch;
+
+        /// <summary>Flat on the ground. Slower and quieter than a crouch, and much harder to see.</summary>
+        public bool Prone;
         public bool Jump;
         public bool Grapple;
         public bool Interact;

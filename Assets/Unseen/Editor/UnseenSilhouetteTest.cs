@@ -92,6 +92,17 @@ namespace Unseen.EditorTools
 
                 SetContacts(0, Vector3.zero);
 
+                // And the slice. ShojiPanel drives _SliceAmount through a MaterialPropertyBlock,
+                // which is a per-renderer override on a property living in the shader's
+                // UnityPerMaterial buffer - exactly the combination that silently stops working
+                // when a shader is rewritten, and the shader was rewritten under it.
+                var block = new MaterialPropertyBlock();
+                block.SetFloat("_SliceAmount", 1f);
+                panel.GetComponent<MeshRenderer>().SetPropertyBlock(block);
+
+                float sliced = MeanCentre(camera, Path.Combine(OutputDir, "14-shoji-sliced.png"));
+                panel.GetComponent<MeshRenderer>().SetPropertyBlock(null);
+
                 float drop = clear - printed;
                 Debug.Log($"[silhouette] centre brightness: clear {clear:0.000}, " +
                           $"contact behind centre {printed:0.000} (drop {drop:0.000}), " +
@@ -100,10 +111,17 @@ namespace Unseen.EditorTools
                 bool prints = drop > 0.04f;
                 bool positional = offset > printed + 0.02f;
 
+                // A cut panel fades toward the dark background, so the centre gets darker. The
+                // threshold is loose because the test only needs to tell "the hole opened" from
+                // "the property went nowhere".
+                bool cuts = clear - sliced > 0.08f;
+
+                Debug.Log($"[silhouette] sliced centre {sliced:0.000} against clear {clear:0.000}");
                 Debug.Log($"[silhouette] prints a shape: {(prints ? "PASS" : "FAIL")}");
                 Debug.Log($"[silhouette] respects position: {(positional ? "PASS" : "FAIL")}");
+                Debug.Log($"[silhouette] slice opens a hole: {(cuts ? "PASS" : "FAIL")}");
 
-                if (prints && positional) Debug.Log("[silhouette] PASSED");
+                if (prints && positional && cuts) Debug.Log("[silhouette] PASSED");
                 else Debug.LogError("[silhouette] FAILED");
             }
             finally

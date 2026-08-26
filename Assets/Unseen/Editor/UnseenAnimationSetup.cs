@@ -141,12 +141,22 @@ namespace Unseen.EditorTools
                 built.Add(Write(root, "ninja_takedown_attacker", TakedownAttacker(), loop: false));
                 built.Add(Write(root, "ninja_takedown_victim", TakedownVictim(), loop: false));
                 AnimationClip crouch = Write(root, "ninja_crouch", Crouch(), loop: true);
+                AnimationClip prone = Write(root, "ninja_prone", Prone(), loop: true);
+                AnimationClip climb = Write(root, "ninja_climb", Climb(), loop: true);
+                AnimationClip wallRun = Write(root, "ninja_wallrun", WallRun(), loop: true);
+                AnimationClip hang = Write(root, "ninja_hang", Hang(), loop: true);
 
                 AvatarMask mask = BuildMask(root);
                 AvatarMask stanceMask = BuildStanceMask(root);
                 WireController(built, mask);
-                WireStanceLayer(crouch, stanceMask);
+                WireStanceLayer(crouch, prone, stanceMask);
+                WireParkourLayer(climb, wallRun, hang);
+
                 built.Add(crouch);
+                built.Add(prone);
+                built.Add(climb);
+                built.Add(wallRun);
+                built.Add(hang);
 
                 AssetDatabase.SaveAssets();
                 AssetDatabase.Refresh();
@@ -377,36 +387,191 @@ namespace Unseen.EditorTools
         /// </summary>
         private static Key[] Crouch()
         {
+            // Folded much deeper than the first pass, which dropped the body by 0.24 m against a
+            // capsule that shrinks by 0.65 m: the ninja barely dipped while the collider halved.
+            // The knee angle is what sets that drop, and AgentVisual sinks the body by whatever
+            // the fold actually lifts the foot - measured, not guessed.
             Pose[] down =
             {
-                new Pose(LeftUpLeg, Right, -62f),
-                new Pose(LeftLeg, Right, 84f),
-                new Pose(LeftFoot, Right, -26f),
-                new Pose(RightUpLeg, Right, -62f),
-                new Pose(RightLeg, Right, 84f),
-                new Pose(RightFoot, Right, -26f),
-                new Pose(Hips, Right, 16f),
-                new Pose(Spine, Right, -14f),
-                new Pose(Chest, Right, -8f),
-                new Pose(Head, Right, 10f)
+                new Pose(LeftUpLeg, Right, -92f),
+                new Pose(LeftLeg, Right, 126f),
+                new Pose(LeftFoot, Right, -38f),
+                new Pose(RightUpLeg, Right, -92f),
+                new Pose(RightLeg, Right, 126f),
+                new Pose(RightFoot, Right, -38f),
+                new Pose(Hips, Right, 26f),
+                new Pose(Spine, Right, -22f),
+                new Pose(Chest, Right, -12f),
+                new Pose(Head, Right, 16f)
             };
 
             // Two near-identical keys so a held crouch has a breath in it.
             Pose[] settle =
             {
-                new Pose(LeftUpLeg, Right, -60f),
-                new Pose(LeftLeg, Right, 82f),
-                new Pose(LeftFoot, Right, -25f),
-                new Pose(RightUpLeg, Right, -60f),
-                new Pose(RightLeg, Right, 82f),
-                new Pose(RightFoot, Right, -25f),
-                new Pose(Hips, Right, 15f),
-                new Pose(Spine, Right, -12f),
-                new Pose(Chest, Right, -7f),
-                new Pose(Head, Right, 9f)
+                new Pose(LeftUpLeg, Right, -89f),
+                new Pose(LeftLeg, Right, 123f),
+                new Pose(LeftFoot, Right, -36f),
+                new Pose(RightUpLeg, Right, -89f),
+                new Pose(RightLeg, Right, 123f),
+                new Pose(RightFoot, Right, -36f),
+                new Pose(Hips, Right, 24f),
+                new Pose(Spine, Right, -20f),
+                new Pose(Chest, Right, -11f),
+                new Pose(Head, Right, 15f)
             };
 
             return new[] { new Key(0f, down), new Key(1.1f, settle), new Key(2.2f, down) };
+        }
+
+        /// <summary>
+        /// Flat to the boards: hips rolled forward, legs trailing, chest low, head up to see.
+        ///
+        /// Prone had a height, a speed and a stealth bonus in config and no way to reach it - no
+        /// key, no pose, nothing. This is the pose half.
+        /// </summary>
+        private static Key[] Prone()
+        {
+            Pose[] flat =
+            {
+                new Pose(Hips, Right, 84f),
+                new Pose(Spine, Right, -14f),
+                new Pose(Chest, Right, -10f),
+                new Pose(Head, Right, -34f),
+                new Pose(LeftUpLeg, Right, -8f),
+                new Pose(LeftLeg, Right, 18f),
+                new Pose(RightUpLeg, Right, -6f),
+                new Pose(RightLeg, Right, 24f),
+                new Pose(LeftArm, Right, -74f),
+                new Pose(LeftArm, Up, 26f),
+                new Pose(LeftForeArm, Right, -52f),
+                new Pose(RightArm, Right, -70f),
+                new Pose(RightArm, Up, -24f),
+                new Pose(RightForeArm, Right, -56f)
+            };
+
+            Pose[] breathe =
+            {
+                new Pose(Hips, Right, 83f),
+                new Pose(Spine, Right, -12f),
+                new Pose(Chest, Right, -9f),
+                new Pose(Head, Right, -32f),
+                new Pose(LeftUpLeg, Right, -7f),
+                new Pose(LeftLeg, Right, 20f),
+                new Pose(RightUpLeg, Right, -5f),
+                new Pose(RightLeg, Right, 22f),
+                new Pose(LeftArm, Right, -72f),
+                new Pose(LeftArm, Up, 26f),
+                new Pose(LeftForeArm, Right, -50f),
+                new Pose(RightArm, Right, -68f),
+                new Pose(RightArm, Up, -24f),
+                new Pose(RightForeArm, Right, -54f)
+            };
+
+            return new[] { new Key(0f, flat), new Key(1.4f, breathe), new Key(2.8f, flat) };
+        }
+
+        /// <summary>Hauling up a wall: alternating reaches, knees driving into the face.</summary>
+        private static Key[] Climb()
+        {
+            Pose[] left =
+            {
+                new Pose(Spine, Right, -18f),
+                new Pose(Head, Right, -22f),
+                new Pose(LeftArm, Right, -158f),
+                new Pose(LeftForeArm, Right, -16f),
+                new Pose(RightArm, Right, -74f),
+                new Pose(RightForeArm, Right, -66f),
+                new Pose(LeftUpLeg, Right, -18f),
+                new Pose(RightUpLeg, Right, -72f),
+                new Pose(RightLeg, Right, 88f)
+            };
+
+            Pose[] right =
+            {
+                new Pose(Spine, Right, -18f),
+                new Pose(Head, Right, -22f),
+                new Pose(RightArm, Right, -158f),
+                new Pose(RightForeArm, Right, -16f),
+                new Pose(LeftArm, Right, -74f),
+                new Pose(LeftForeArm, Right, -66f),
+                new Pose(RightUpLeg, Right, -18f),
+                new Pose(LeftUpLeg, Right, -72f),
+                new Pose(LeftLeg, Right, 88f)
+            };
+
+            return new[] { new Key(0f, left), new Key(0.5f, right), new Key(1f, left) };
+        }
+
+        /// <summary>Running along a wall: body canted into it, stride wide, arms driving.</summary>
+        private static Key[] WallRun()
+        {
+            Pose[] a =
+            {
+                new Pose(Hips, Fwd, 24f),
+                new Pose(Spine, Fwd, 14f),
+                new Pose(Spine, Right, -12f),
+                new Pose(Head, Fwd, -18f),
+                new Pose(LeftUpLeg, Right, -74f),
+                new Pose(LeftLeg, Right, 52f),
+                new Pose(RightUpLeg, Right, 26f),
+                new Pose(RightLeg, Right, 34f),
+                new Pose(LeftArm, Right, -52f),
+                new Pose(RightArm, Right, 34f)
+            };
+
+            Pose[] b =
+            {
+                new Pose(Hips, Fwd, 24f),
+                new Pose(Spine, Fwd, 14f),
+                new Pose(Spine, Right, -12f),
+                new Pose(Head, Fwd, -18f),
+                new Pose(RightUpLeg, Right, -74f),
+                new Pose(RightLeg, Right, 52f),
+                new Pose(LeftUpLeg, Right, 26f),
+                new Pose(LeftLeg, Right, 34f),
+                new Pose(RightArm, Right, -52f),
+                new Pose(LeftArm, Right, 34f)
+            };
+
+            return new[] { new Key(0f, a), new Key(0.32f, b), new Key(0.64f, a) };
+        }
+
+        /// <summary>Hanging: both hands above, body long, legs loose. Rafters and the rope.</summary>
+        private static Key[] Hang()
+        {
+            Pose[] hold =
+            {
+                new Pose(LeftArm, Right, -168f),
+                new Pose(LeftArm, Up, 12f),
+                new Pose(LeftForeArm, Right, -10f),
+                new Pose(RightArm, Right, -168f),
+                new Pose(RightArm, Up, -12f),
+                new Pose(RightForeArm, Right, -10f),
+                new Pose(Spine, Right, -6f),
+                new Pose(Head, Right, -14f),
+                new Pose(LeftUpLeg, Right, -16f),
+                new Pose(LeftLeg, Right, 30f),
+                new Pose(RightUpLeg, Right, -8f),
+                new Pose(RightLeg, Right, 22f)
+            };
+
+            Pose[] sway =
+            {
+                new Pose(LeftArm, Right, -166f),
+                new Pose(LeftArm, Up, 12f),
+                new Pose(LeftForeArm, Right, -12f),
+                new Pose(RightArm, Right, -166f),
+                new Pose(RightArm, Up, -12f),
+                new Pose(RightForeArm, Right, -12f),
+                new Pose(Spine, Right, -4f),
+                new Pose(Head, Right, -12f),
+                new Pose(LeftUpLeg, Right, -10f),
+                new Pose(LeftLeg, Right, 24f),
+                new Pose(RightUpLeg, Right, -14f),
+                new Pose(RightLeg, Right, 28f)
+            };
+
+            return new[] { new Key(0f, hold), new Key(0.9f, sway), new Key(1.8f, hold) };
         }
 
         // ---------------------------------------------------------------- clip writing
@@ -615,35 +780,102 @@ namespace Unseen.EditorTools
         }
 
         /// <summary>
-        /// The stance layer: one clip, weight driven from code by whether the agent is crouched.
-        /// A single-state layer needs no state machine wiring beyond its default.
+        /// The stance layer: crouch and prone, chosen by an integer, weight driven from code.
         /// </summary>
-        private static void WireStanceLayer(AnimationClip crouch, AvatarMask mask)
+        private static void WireStanceLayer(AnimationClip crouch, AnimationClip prone, AvatarMask mask)
         {
-            var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(ControllerPath);
-            if (controller == null || crouch == null) return;
+            AnimatorControllerLayer layer = AddLayer("Stance", mask, out AnimatorController controller);
+            if (layer == null) return;
 
-            const string layerName = "Stance";
+            const string parameter = "Stance";
+            EnsureIntParameter(controller, parameter);
+
+            AnimatorState idle = layer.stateMachine.AddState("Upright");
+            layer.stateMachine.defaultState = idle;
+
+            AddDrivenState(layer.stateMachine, idle, crouch, "Crouch", parameter, 1);
+            AddDrivenState(layer.stateMachine, idle, prone, "Prone", parameter, 2);
+
+            EditorUtility.SetDirty(controller);
+            Debug.Log($"[anim] stance layer: crouch and prone; controller has {controller.layers.Length} layers");
+        }
+
+        /// <summary>
+        /// The parkour layer: climbing, wall running and hanging.
+        ///
+        /// Full body and unmasked, because none of these are things the legs and the arms can
+        /// disagree about - a ninja halfway up a wall is not also idling from the waist down.
+        /// </summary>
+        private static void WireParkourLayer(AnimationClip climb, AnimationClip wallRun, AnimationClip hang)
+        {
+            AnimatorControllerLayer layer = AddLayer("Parkour", null, out AnimatorController controller);
+            if (layer == null) return;
+
+            const string parameter = "Parkour";
+            EnsureIntParameter(controller, parameter);
+
+            AnimatorState idle = layer.stateMachine.AddState("Grounded");
+            layer.stateMachine.defaultState = idle;
+
+            AddDrivenState(layer.stateMachine, idle, climb, "Climb", parameter, 1);
+            AddDrivenState(layer.stateMachine, idle, wallRun, "WallRun", parameter, 2);
+            AddDrivenState(layer.stateMachine, idle, hang, "Hang", parameter, 3);
+
+            EditorUtility.SetDirty(controller);
+            Debug.Log($"[anim] parkour layer: climb, wall run and hang; " +
+                      $"controller has {controller.layers.Length} layers");
+        }
+
+        /// <summary>Removes any layer of this name and adds a fresh one, so the tool is idempotent.</summary>
+        private static AnimatorControllerLayer AddLayer(string name, AvatarMask mask,
+            out AnimatorController controller)
+        {
+            controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(ControllerPath);
+            if (controller == null) return null;
+
             for (int i = controller.layers.Length - 1; i >= 1; i--)
-                if (controller.layers[i].name == layerName)
+                if (controller.layers[i].name == name)
                     controller.RemoveLayer(i);
 
-            controller.AddLayer(layerName);
+            controller.AddLayer(name);
             AnimatorControllerLayer[] layers = controller.layers;
             AnimatorControllerLayer layer = layers[layers.Length - 1];
 
             layer.avatarMask = mask;
             layer.blendingMode = AnimatorLayerBlendingMode.Override;
-            layer.defaultWeight = 0f;
+            layer.defaultWeight = 0f; // raised from code, never left on
             layers[layers.Length - 1] = layer;
             controller.layers = layers;
+            return layer;
+        }
 
-            AnimatorState state = layer.stateMachine.AddState("Crouch");
-            state.motion = crouch;
-            layer.stateMachine.defaultState = state;
+        private static void EnsureIntParameter(AnimatorController controller, string parameter)
+        {
+            foreach (AnimatorControllerParameter p in controller.parameters)
+                if (p.name == parameter)
+                    return;
 
-            EditorUtility.SetDirty(controller);
-            Debug.Log($"[anim] stance layer added; controller now has {controller.layers.Length} layers");
+            controller.AddParameter(parameter, AnimatorControllerParameterType.Int);
+        }
+
+        private static void AddDrivenState(AnimatorStateMachine machine, AnimatorState idle,
+            AnimationClip clip, string name, string parameter, int value)
+        {
+            if (clip == null) return;
+
+            AnimatorState state = machine.AddState(name);
+            state.motion = clip;
+
+            AnimatorStateTransition enter = machine.AddAnyStateTransition(state);
+            enter.AddCondition(AnimatorConditionMode.Equals, value, parameter);
+            enter.duration = 0.12f;
+            enter.hasExitTime = false;
+            enter.canTransitionToSelf = false;
+
+            AnimatorStateTransition leave = state.AddTransition(idle);
+            leave.AddCondition(AnimatorConditionMode.NotEqual, value, parameter);
+            leave.duration = 0.15f;
+            leave.hasExitTime = false;
         }
 
         /// <summary>

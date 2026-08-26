@@ -27,6 +27,7 @@ namespace Unseen.Client
         [Header("Bindings")]
         public string Sprint = KeyCode.LeftShift.ToString();
         public string Crouch = KeyCode.LeftControl.ToString();
+        public string Prone = KeyCode.C.ToString();
         public string Jump = KeyCode.Space.ToString();
         public string Grapple = KeyCode.F.ToString();
         public string Interact = KeyCode.E.ToString();
@@ -111,6 +112,7 @@ namespace Unseen.Client
             InvertY = defaults.InvertY;
             Sprint = defaults.Sprint;
             Crouch = defaults.Crouch;
+            Prone = defaults.Prone;
             Jump = defaults.Jump;
             Grapple = defaults.Grapple;
             Interact = defaults.Interact;
@@ -139,6 +141,7 @@ namespace Unseen.Client
             var defaults = new GameSettings();
             Sprint = Repair(Sprint, defaults.Sprint);
             Crouch = Repair(Crouch, defaults.Crouch);
+            Prone = Repair(Prone, defaults.Prone);
             Jump = Repair(Jump, defaults.Jump);
             Grapple = Repair(Grapple, defaults.Grapple);
             Interact = Repair(Interact, defaults.Interact);
@@ -158,6 +161,7 @@ namespace Unseen.Client
         {
             yield return new Binding("Sprint", () => Sprint, v => Sprint = v);
             yield return new Binding("Crouch", () => Crouch, v => Crouch = v);
+            yield return new Binding("Prone", () => Prone, v => Prone = v);
             yield return new Binding("Jump", () => Jump, v => Jump = v);
             yield return new Binding("Grapple", () => Grapple, v => Grapple = v);
             yield return new Binding("Interact", () => Interact, v => Interact = v);
