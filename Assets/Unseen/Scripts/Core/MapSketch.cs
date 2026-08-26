@@ -21,7 +21,10 @@ namespace Unseen.Core
             Keep = 1,
             Pagoda = 2,
             Water = 3,
-            Bridge = 4
+            Bridge = 4,
+
+            /// <summary>Open ground where a block would have been: a square, a yard, a burnt gap.</summary>
+            Plaza = 5
         }
 
         [System.Serializable]

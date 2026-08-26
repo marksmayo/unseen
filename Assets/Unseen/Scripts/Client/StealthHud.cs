@@ -96,6 +96,7 @@ namespace Unseen.Client
             DrawMatchState();
             DrawGuardZone();
             DrawEliminations();
+            DrawResults();
             DrawCrosshair();
             DrawPrompts();
             DrawUtilityBar();
@@ -262,6 +263,65 @@ namespace Unseen.Client
             GUI.Label(new Rect(banner.x + 20f, banner.y + 58f, banner.width - 40f, 22f),
                 watching, _small);
         }
+
+        /// <summary>
+        /// The end of a match: how you did, and how long until the next one.
+        ///
+        /// Driven entirely from the snapshot rather than a server event. MatchDirector fires
+        /// MatchEnded exactly once, and a client that had dropped that packet - or that connected
+        /// during the post-match window - would never find out it had won. Result state is cheap
+        /// enough to send with every snapshot, so it is.
+        /// </summary>
+        private void DrawResults()
+        {
+            if (_snapshot == null) return;
+            if ((BattleRoyale.MatchPhase)_snapshot.MatchPhase != BattleRoyale.MatchPhase.PostMatch) return;
+
+            bool won = _snapshot.Winner.IsValid && _snapshot.Winner == _snapshot.SelfId;
+
+            var panel = new Rect(Screen.width * 0.5f - 230f, Screen.height * 0.28f, 460f, 168f);
+            Fill(panel, new Color(0f, 0f, 0f, 0.78f));
+
+            var accent = won ? new Color(1f, 0.86f, 0.45f) : new Color(0.78f, 0.79f, 0.84f);
+            Fill(new Rect(panel.x, panel.y, panel.width, 3f), accent);
+
+            GUI.color = accent;
+            GUI.Label(new Rect(panel.x + 24f, panel.y + 16f, panel.width - 48f, 32f),
+                won ? "THE LAST UNSEEN" : "MATCH OVER", _label);
+            GUI.color = Color.white;
+
+            // Placement reads better as a rank than a raw number, and zero means the match ended
+            // while this player was still alive but not the winner - which only happens if the
+            // match was cut short, so it is reported honestly rather than shown as "#0".
+            string placement = _snapshot.SelfPlacement > 0
+                ? $"placed #{_snapshot.SelfPlacement}"
+                : won ? "placed #1" : "still standing";
+
+            GUI.Label(new Rect(panel.x + 24f, panel.y + 52f, panel.width - 48f, 22f),
+                $"{placement}    {_snapshot.SelfKills} eliminated", _small);
+
+            if (_ownDeath != null)
+                GUI.Label(new Rect(panel.x + 24f, panel.y + 76f, panel.width - 48f, 22f),
+                    _ownDeath, _small);
+
+            float countdown = Mathf.Max(0f, _snapshot.PhaseSecondsRemaining);
+            GUI.Label(new Rect(panel.x + 24f, panel.y + 112f, panel.width - 48f, 22f),
+                countdown > 0f
+                    ? $"next match in {countdown:0}s"
+                    : "next match starting",
+                _small);
+
+            // A progress bar for the countdown, so the wait has a visible end.
+            var bar = new Rect(panel.x + 24f, panel.y + 138f, panel.width - 48f, 6f);
+            Fill(bar, new Color(1f, 1f, 1f, 0.12f));
+
+            float span = Mathf.Max(1f, PostMatchSpan);
+            Fill(new Rect(bar.x, bar.y, bar.width * Mathf.Clamp01(1f - countdown / span), bar.height),
+                accent);
+        }
+
+        [Tooltip("Expected post-match window, used only to scale the countdown bar.")]
+        public float PostMatchSpan = 12f;
 
         /// <summary>A dot, so aiming the grapple and the guard zone has something to aim with.</summary>
         private void DrawCrosshair()

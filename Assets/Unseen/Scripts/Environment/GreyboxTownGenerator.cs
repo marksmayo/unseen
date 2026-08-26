@@ -56,6 +56,32 @@ namespace Unseen.Environment
         public float SewerCorridorWidth = 5f;
         public float SewerHeight = 3.2f;
 
+        [Header("Street layout")]
+        [Tooltip("How far a block may wander from its cell centre, in metres. Breaks the ruled " +
+                 "line of a grid without letting neighbours touch.")]
+        [Range(0f, 6f)] public float BlockJitter = 2.2f;
+
+        [Tooltip("How far a block may turn off square, in degrees. The single strongest cue that " +
+                 "a town grew rather than being set out.")]
+        [Range(0f, 12f)] public float BlockRotation = 5f;
+
+        [Tooltip("Smallest a block may shrink to, as a fraction of BlockSize. Uneven plot sizes " +
+                 "widen some streets and pinch others.")]
+        [Range(0.6f, 1f)] public float MinBlockScale = 0.82f;
+
+        [Tooltip("How many discrete plot sizes exist between MinBlockScale and full size. Kept " +
+                 "small on purpose: the box mesh cache is keyed on dimensions, so every extra " +
+                 "size multiplies the number of meshes the town holds.")]
+        [Range(1, 6)] public int BlockSizeSteps = 3;
+
+        [Tooltip("How far alternate rows slide along the street, as a fraction of the block pitch. " +
+                 "This is the dog-leg a castle town used deliberately: a cross-street that does " +
+                 "not run straight cannot be charged down.")]
+        [Range(0f, 0.5f)] public float RowStagger = 0.28f;
+
+        [Tooltip("Fraction of cells left as open ground - a market square, a shrine yard, a gap.")]
+        [Range(0f, 0.3f)] public float PlazaChance = 0.07f;
+
         [Header("Content density")]
         [Range(0f, 1f)] public float TwoStoreyChance = 0.45f;
         [Range(0f, 4f)] public float LanternsPerCompound = 2.5f;
@@ -148,14 +174,49 @@ namespace Unseen.Environment
                 if (gx == _riverColumn) continue;
 
                 bool isCentre = gx == GridSize / 2 && gz == GridSize / 2;
-                var origin = new Vector3(
-                    (gx - (GridSize - 1) * 0.5f) * pitch,
-                    0f,
-                    (gz - (GridSize - 1) * 0.5f) * pitch);
 
-                if (isCentre) BuildKeep(origin);
-                else if (_random.NextDouble() < PagodaChance) BuildPagoda(origin, gx * 31 + gz);
-                else BuildCompound(origin, gx * 31 + gz);
+                // Alternate rows slide along the street, so no cross-street runs the full width of
+                // the town. This is the kagimagari dog-leg a jokamachi was laid out with on
+                // purpose - a straight road is a road cavalry can charge down - and it happens to
+                // be the fastest way to stop a generated grid reading as graph paper.
+                float rowShift = (gz % 2 == 0 ? 1f : -1f) * pitch * RowStagger * 0.5f;
+                float columnShift = (gx % 2 == 0 ? -1f : 1f) * pitch * RowStagger * 0.35f;
+
+                var origin = new Vector3(
+                    (gx - (GridSize - 1) * 0.5f) * pitch + rowShift,
+                    0f,
+                    (gz - (GridSize - 1) * 0.5f) * pitch + columnShift);
+
+                if (isCentre)
+                {
+                    // The keep stays square to the world and centred. It is the one building the
+                    // town was laid out around, and a crooked castle reads as a mistake.
+                    BuildKeep(new Vector3(
+                        (gx - (GridSize - 1) * 0.5f) * pitch,
+                        0f,
+                        (gz - (GridSize - 1) * 0.5f) * pitch));
+                    continue;
+                }
+
+                // A few cells are simply left open: a market square, a shrine yard, a gap where
+                // something burned down. Irregular open space does as much for the feel of a place
+                // as irregular buildings.
+                if (_random.NextDouble() < PlazaChance)
+                {
+                    _sketch?.Add(MapSketch.Feature.Plaza, origin,
+                        new Vector2(BlockSize * 0.5f, BlockSize * 0.5f));
+                    continue;
+                }
+
+                origin += new Vector3(
+                    (float)(_random.NextDouble() * 2f - 1f) * BlockJitter,
+                    0f,
+                    (float)(_random.NextDouble() * 2f - 1f) * BlockJitter);
+
+                float turn = (float)(_random.NextDouble() * 2f - 1f) * BlockRotation;
+
+                if (_random.NextDouble() < PagodaChance) BuildPagoda(origin, gx * 31 + gz, turn);
+                else BuildCompound(origin, gx * 31 + gz, turn);
             }
 
             if (_riverColumn >= 0) BuildRiverChannel(extent, pitch);
@@ -282,16 +343,30 @@ namespace Unseen.Environment
         }
 
         /// <summary>One walled compound: outer wall, paper-divided interior, walkable roof, rafters.</summary>
-        private void BuildCompound(Vector3 origin, int salt)
+        private void BuildCompound(Vector3 origin, int salt, float turn = 0f)
         {
             var compound = new GameObject($"Compound_{salt}").transform;
             compound.SetParent(_root, false);
             compound.localPosition = origin;
 
-            _sketch?.Add(MapSketch.Feature.Block, origin,
-                new Vector2(BlockSize * 0.5f, BlockSize * 0.5f));
+            // Everything below is built in the compound's local space, so turning the parent turns
+            // the walls, the shoji, the rafters, the roof and the colliders together.
+            compound.localRotation = Quaternion.Euler(0f, turn, 0f);
 
-            float half = BlockSize * 0.5f;
+            // Plot sizes vary, which is what actually widens one street and pinches the next -
+            // but only across a few discrete sizes.
+            //
+            // A continuously random size gives every compound in the town its own dimensions, and
+            // BoxMeshFactory caches by dimension: the first version of this took the cache from
+            // 603 meshes to 5,598. Three sizes read as varied and share their geometry.
+            int step = _random.Next(BlockSizeSteps);
+            float scale = Mathf.Lerp(MinBlockScale, 1f, BlockSizeSteps <= 1 ? 1f : step / (float)(BlockSizeSteps - 1));
+            float blockSize = BlockSize * scale;
+
+            _sketch?.Add(MapSketch.Feature.Block, origin,
+                new Vector2(blockSize * 0.5f, blockSize * 0.5f));
+
+            float half = blockSize * 0.5f;
             bool twoStorey = _random.NextDouble() < TwoStoreyChance;
             float height = twoStorey ? WallHeight + SecondStoreyHeight : WallHeight;
 
@@ -305,13 +380,13 @@ namespace Unseen.Environment
                     ? new Vector3(0f, height * 0.5f, half * sign)
                     : new Vector3(half * sign, height * 0.5f, 0f);
                 Vector3 size = horizontal
-                    ? new Vector3(BlockSize, height, 0.4f)
-                    : new Vector3(0.4f, height, BlockSize);
+                    ? new Vector3(blockSize, height, 0.4f)
+                    : new Vector3(0.4f, height, blockSize);
 
                 if (side == doorSide)
                 {
                     // Split the wall to leave a 3 m doorway in the middle.
-                    float segment = (BlockSize - 3f) * 0.5f;
+                    float segment = (blockSize - 3f) * 0.5f;
                     for (int s = -1; s <= 1; s += 2)
                     {
                         Vector3 offset = horizontal
@@ -338,11 +413,11 @@ namespace Unseen.Environment
 
             // Interior: tatami floor plus a paper cross that divides four rooms.
             Transform floor = Box(compound, "Floor", new Vector3(0f, 0.05f, 0f),
-                new Vector3(BlockSize - 1f, 0.1f, BlockSize - 1f), UnseenLayers.Default, _tatami);
+                new Vector3(blockSize - 1f, 0.1f, blockSize - 1f), UnseenLayers.Default, _tatami);
             Acoustics(floor, 0.6f, 0.55f, 0.6f);
 
-            BuildShojiRun(compound, new Vector3(0f, WallHeight * 0.5f, 0f), BlockSize - 2f, true, WallHeight);
-            BuildShojiRun(compound, new Vector3(0f, WallHeight * 0.5f, 0f), BlockSize - 2f, false, WallHeight);
+            BuildShojiRun(compound, new Vector3(0f, WallHeight * 0.5f, 0f), blockSize - 2f, true, WallHeight);
+            BuildShojiRun(compound, new Vector3(0f, WallHeight * 0.5f, 0f), blockSize - 2f, false, WallHeight);
 
             // Rafters under the roof: the classic overhead ambush lane.
             int rafters = 3;
@@ -352,16 +427,16 @@ namespace Unseen.Environment
                 float z = Mathf.Lerp(-half + 2f, half - 2f, t);
                 Transform beam = Box(compound, $"Rafter_{i}",
                     new Vector3(0f, height - 0.6f, z),
-                    new Vector3(BlockSize - 1.5f, 0.3f, 0.5f),
+                    new Vector3(blockSize - 1.5f, 0.3f, 0.5f),
                     UnseenLayers.Rafter, _rafter);
                 Acoustics(beam, 0.3f, 0.4f, 0.5f);
             }
 
-            float roofTop = BuildHipRoof(compound, BlockSize + EaveOverhang * 2f, height);
+            float roofTop = BuildHipRoof(compound, blockSize + EaveOverhang * 2f, height);
 
             Transform ridge = Box(compound, "Ridge",
                 new Vector3(0f, roofTop + 0.5f, 0f),
-                new Vector3(BlockSize * 0.6f, 1f, 1.2f),
+                new Vector3(blockSize * 0.6f, 1f, 1.2f),
                 UnseenLayers.GrappleAnchor, _tile);
             Acoustics(ridge, 0.5f, 1.2f, 1.3f);
 
@@ -369,7 +444,7 @@ namespace Unseen.Environment
             {
                 Transform midFloor = Box(compound, "UpperFloor",
                     new Vector3(0f, WallHeight, 0f),
-                    new Vector3(BlockSize - 3f, 0.3f, BlockSize - 3f),
+                    new Vector3(blockSize - 3f, 0.3f, blockSize - 3f),
                     UnseenLayers.Default, _woodFloor);
                 Acoustics(midFloor, 0.65f, 0.7f, 0.8f);
             }
@@ -612,11 +687,12 @@ namespace Unseen.Environment
         /// anchor, and the storeys are spaced so a grapple from one balcony reaches the next -
         /// which makes a tower a route to the rooftops rather than scenery.
         /// </summary>
-        private void BuildPagoda(Vector3 origin, int salt)
+        private void BuildPagoda(Vector3 origin, int salt, float turn = 0f)
         {
             var pagoda = new GameObject($"Pagoda_{salt}").transform;
             pagoda.SetParent(_root, false);
             pagoda.localPosition = origin;
+            pagoda.localRotation = Quaternion.Euler(0f, turn, 0f);
             _pagodas++;
 
             _sketch?.Add(MapSketch.Feature.Pagoda, origin,
@@ -919,11 +995,14 @@ namespace Unseen.Environment
         private void DressWall(Transform compound, int side, bool horizontal, float sign,
             float half, float height, bool hasDoorway)
         {
+            // Derived from the plot rather than the grid: blocks vary in size, and trim sized to
+            // the nominal block would overhang a small one and fall short on a large one.
+            float length = half * 2f;
+
             const float faceOffset = 0.22f; // just proud of the 0.4 m wall, so nothing z-fights
             const int bays = 5;
 
             float outward = (half + faceOffset) * sign;
-            float length = BlockSize;
 
             // Axis helper: pieces on a north/south wall run along x, pieces on an east/west wall
             // run along z, and the two swap which component of the size vector is the thickness.
@@ -960,7 +1039,7 @@ namespace Unseen.Environment
                 horizontal
                     ? new Vector3(0f, height + 0.02f, (half + EaveOverhang) * sign)
                     : new Vector3((half + EaveOverhang) * sign, height + 0.02f, 0f),
-                Size(BlockSize + EaveOverhang * 2f, 0.34f, 0.18f), _darkTimber);
+                Size(length + EaveOverhang * 2f, 0.34f, 0.18f), _darkTimber);
         }
 
         /// <summary>Timber posts and a lintel around the 3 m gap in a compound wall.</summary>

@@ -48,6 +48,10 @@ namespace Unseen.BattleRoyale
         public float MapRadius => _mapRadius;
         public float SecondsInPhase { get; private set; }
 
+        /// <summary>Seconds until the current phase ends, or 0 when it has no end. Replicated so a
+        /// results screen can count down to the next match rather than guessing.</summary>
+        public float SecondsToPhaseEnd { get; private set; }
+
         /// <summary>Seconds to wait in the lobby before starting anyway.</summary>
         public float LobbyTimeout = 10f;
 
@@ -81,6 +85,7 @@ namespace Unseen.BattleRoyale
         public override void Tick(in SimFrame frame)
         {
             SecondsInPhase = frame.Time - _phaseStart;
+            SecondsToPhaseEnd = _phaseEnd >= float.MaxValue ? 0f : math.max(0f, _phaseEnd - frame.Time);
 
             switch (Phase)
             {

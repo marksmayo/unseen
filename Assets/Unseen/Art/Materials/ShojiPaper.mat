@@ -29,10 +29,12 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
+    - _AmbientFloor: 0.18
     - _Grain: 0.3
     - _Radius: 0.95
     - _SliceAmount: 0
     - _Softness: 0.7
+    - _Translucency: 0.85
     m_Colors:
     - _BaseColor: {r: 0.86, g: 0.83, b: 0.72, a: 0.94}
     - _SilhouetteColor: {r: 0.05, g: 0.045, b: 0.07, a: 1}

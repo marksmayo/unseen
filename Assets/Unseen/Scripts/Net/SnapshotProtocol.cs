@@ -51,6 +51,16 @@ namespace Unseen.Net
         public byte MatchPhase;
         public ushort AliveCount;
 
+        /// <summary>Winner of the match just finished, or None while one is running.</summary>
+        public AgentId Winner;
+
+        /// <summary>Seconds until the phase ends. Zero when the phase has no end.</summary>
+        public float PhaseSecondsRemaining;
+
+        /// <summary>Where this player finished, and how many they took with them.</summary>
+        public ushort SelfPlacement;
+        public ushort SelfKills;
+
         public void Clear()
         {
             Entities.Clear();
@@ -212,6 +222,14 @@ namespace Unseen.Net
             writer.WriteByte((byte)(ctx.Mist != null ? ctx.Mist.Stage : 0));
             writer.WriteByte((byte)(ctx.Match != null ? (byte)ctx.Match.Phase : 0));
             writer.WriteUShort((ushort)ctx.Entities.AliveCount);
+
+            // Result state. Sent every snapshot rather than as a one-off event on match end: a
+            // client that joins, reconnects or simply drops the packet carrying a single
+            // end-of-match message would otherwise never learn how it did.
+            writer.WriteInt(ctx.Match != null ? ctx.Match.Winner.Value : AgentId.None.Value);
+            writer.WriteFloat(ctx.Match != null ? ctx.Match.SecondsToPhaseEnd : 0f);
+            writer.WriteUShort((ushort)math.min(self.Placement, ushort.MaxValue));
+            writer.WriteUShort((ushort)math.min(self.Kills, ushort.MaxValue));
         }
 
         public static bool DecodeSnapshot(NetReader reader, SnapshotData into, float quantum)
@@ -302,6 +320,10 @@ namespace Unseen.Net
             into.ZoneStage = reader.ReadByte();
             into.MatchPhase = reader.ReadByte();
             into.AliveCount = reader.ReadUShort();
+            into.Winner = new AgentId(reader.ReadInt());
+            into.PhaseSecondsRemaining = reader.ReadFloat();
+            into.SelfPlacement = reader.ReadUShort();
+            into.SelfKills = reader.ReadUShort();
             return true;
         }
 

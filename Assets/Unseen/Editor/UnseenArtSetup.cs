@@ -84,8 +84,10 @@ namespace Unseen.EditorTools
             // without another 4 MB of maps to import and keep in sync.
             // Derived from Paper, not Stone: lime plaster is a flat, fine surface, and the stone
             // albedo tiled at wall scale read as pebbledash.
+            // Bump dialled right back: the paper normal map tiles into a visible basketweave on a
+            // long plaster wall seen at a grazing angle, which is most walls in a street.
             set.Plaster = BuildTint(lit, Pick(built, "Paper"), "Plaster",
-                new Color(0.62f, 0.60f, 0.55f), 0.10f, bumpScale: 0.3f);
+                new Color(0.62f, 0.60f, 0.55f), 0.10f, bumpScale: 0.1f);
             set.DarkTimber = BuildTint(lit, Pick(built, "Timber"), "DarkTimber",
                 new Color(0.30f, 0.22f, 0.16f), 0.28f);
 

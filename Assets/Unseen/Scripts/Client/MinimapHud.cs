@@ -49,6 +49,7 @@ namespace Unseen.Client
         private static readonly Color PagodaColour = new Color(0.48f, 0.38f, 0.52f, 1f);
         private static readonly Color WaterColour = new Color(0.16f, 0.30f, 0.42f, 1f);
         private static readonly Color BridgeColour = new Color(0.45f, 0.36f, 0.24f, 1f);
+        private static readonly Color PlazaColour = new Color(0.19f, 0.20f, 0.23f, 0.9f);
         private static readonly Color MistColour = new Color(0.62f, 0.40f, 0.85f, 0.9f);
         private static readonly Color SelfColour = new Color(0.95f, 0.93f, 0.80f, 1f);
 
@@ -151,6 +152,7 @@ namespace Unseen.Client
                 case MapSketch.Feature.Pagoda: return PagodaColour;
                 case MapSketch.Feature.Water: return WaterColour;
                 case MapSketch.Feature.Bridge: return BridgeColour;
+                case MapSketch.Feature.Plaza: return PlazaColour;
                 default: return BlockColour;
             }
         }
