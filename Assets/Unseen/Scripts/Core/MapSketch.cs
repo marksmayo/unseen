@@ -24,7 +24,19 @@ namespace Unseen.Core
             Bridge = 4,
 
             /// <summary>Open ground where a block would have been: a square, a yard, a burnt gap.</summary>
-            Plaza = 5
+            Plaza = 5,
+
+            /// <summary>A kura storehouse: blank, tall and windowless.</summary>
+            Store = 6,
+
+            /// <summary>A nagaya terrace: long, low, doors onto the street.</summary>
+            Row = 7,
+
+            /// <summary>A walled garden with a teahouse in it.</summary>
+            Garden = 8,
+
+            /// <summary>A shrine and its torii.</summary>
+            Shrine = 9
         }
 
         [System.Serializable]

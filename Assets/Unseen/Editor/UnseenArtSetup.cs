@@ -96,6 +96,8 @@ namespace Unseen.EditorTools
             set.Foliage = BuildTint(lit, Pick(built, "Tatami"), "Foliage",
                 new Color(0.13f, 0.20f, 0.13f), 0.2f, bumpScale: 0.7f);
 
+            set.Vermilion = BuildTint(lit, Pick(built, "Timber"), "Vermilion",
+                new Color(0.62f, 0.17f, 0.12f), 0.35f, bumpScale: 0.5f);
             set.Bamboo = BuildTint(lit, Pick(built, "Tatami"), "Bamboo",
                 new Color(0.42f, 0.48f, 0.24f), 0.3f, bumpScale: 0.6f);
             set.BambooMass = BuildTint(lit, Pick(built, "Tatami"), "BambooMass",

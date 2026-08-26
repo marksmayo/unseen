@@ -47,6 +47,9 @@ namespace Unseen.Environment
         [Tooltip("Tree canopies and shrubs. Falls back to Timber.")]
         public Material Foliage;
 
+        [Tooltip("Vermilion lacquer: shrine bridges and torii. Falls back to Timber.")]
+        public Material Vermilion;
+
         [Tooltip("Bamboo culms on the growing face of the spirit forest. Falls back to Foliage.")]
         public Material Bamboo;
 

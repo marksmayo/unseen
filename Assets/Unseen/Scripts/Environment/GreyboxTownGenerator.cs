@@ -42,8 +42,17 @@ namespace Unseen.Environment
                  "streets either side.")]
         public float RiverDepth = 5.6f;
 
+        [Tooltip("How high the middle of a bridge stands above its ends.")]
+        public float BridgeArchRise = 1.8f;
+
         [Tooltip("Width of the water itself. The towpaths sit either side of it.")]
         public float RiverWidth = 16f;
+
+        [Tooltip("Depth of water above the bed. Most of the channel, so the river looks like one.")]
+        public float WaterDepth = 2.6f;
+
+        [Tooltip("How far the towpath ledge stands above the waterline.")]
+        public float TowpathFreeboard = 0.55f;
 
         [Header("Pagodas")]
         [Tooltip("Fraction of blocks given over to a climbable pagoda instead of a compound.")]
@@ -83,6 +92,21 @@ namespace Unseen.Environment
 
         [Tooltip("Fraction of cells left as open ground - a market square, a shrine yard, a gap.")]
         [Range(0f, 0.3f)] public float PlazaChance = 0.07f;
+
+        [Tooltip("Fraction of blocks built as a kura: a fireproof storehouse with thick plaster " +
+                 "walls, few openings and a heavy roof. Tall, blank and unclimbable.")]
+        [Range(0f, 0.4f)] public float KuraChance = 0.12f;
+
+        [Tooltip("Fraction built as a nagaya: a long low terrace of one-room dwellings, doors " +
+                 "every few metres onto the street.")]
+        [Range(0f, 0.4f)] public float NagayaChance = 0.12f;
+
+        [Tooltip("Fraction built as a walled garden with a teahouse in it. Mostly open ground, " +
+                 "which makes a compound-dense town breathe.")]
+        [Range(0f, 0.3f)] public float TeahouseChance = 0.08f;
+
+        [Tooltip("Fraction of open plazas given a small shrine and a torii gate.")]
+        [Range(0f, 1f)] public float ShrineChance = 0.55f;
 
         [Header("Content density")]
         [Range(0f, 1f)] public float TwoStoreyChance = 0.45f;
@@ -129,6 +153,10 @@ namespace Unseen.Environment
         private int _pagodas;
         private int _trees;
         private int _shrubs;
+        private int _kura;
+        private int _nagaya;
+        private int _gardens;
+        private int _shrines;
         private MapSketch _sketch;
         private bool _textured;
         private GreyboxMaterialSet _set;
@@ -138,6 +166,7 @@ namespace Unseen.Environment
         private Material _water;
         private Material _foliage;
         private Material _shojiPaper;
+        private Material _vermilion;
         private Material _bamboo;
         private Material _bambooMass;
         private BambooForest _forest;
@@ -213,6 +242,8 @@ namespace Unseen.Environment
                 {
                     _sketch?.Add(MapSketch.Feature.Plaza, origin,
                         new Vector2(BlockSize * 0.5f, BlockSize * 0.5f));
+
+                    if (_random.NextDouble() < ShrineChance) BuildShrine(origin, gx * 31 + gz);
                     continue;
                 }
 
@@ -223,8 +254,19 @@ namespace Unseen.Environment
 
                 float turn = (float)(_random.NextDouble() * 2f - 1f) * BlockRotation;
 
-                if (_random.NextDouble() < PagodaChance) BuildPagoda(origin, gx * 31 + gz, turn);
-                else BuildCompound(origin, gx * 31 + gz, turn);
+                // Which kind of building stands here. A castle town was not built to one plan:
+                // storehouses, terraces, gardens and shrines sat between the walled compounds, and
+                // a street of nothing but identical courtyard houses is the tell that a place was
+                // generated rather than grown.
+                double roll = _random.NextDouble();
+                int salt = gx * 31 + gz;
+
+                if (roll < PagodaChance) BuildPagoda(origin, salt, turn);
+                else if (roll < PagodaChance + KuraChance) BuildKura(origin, salt, turn);
+                else if (roll < PagodaChance + KuraChance + NagayaChance) BuildNagaya(origin, salt, turn);
+                else if (roll < PagodaChance + KuraChance + NagayaChance + TeahouseChance)
+                    BuildTeahouseGarden(origin, salt, turn);
+                else BuildCompound(origin, salt, turn);
             }
 
             if (_riverColumn >= 0) BuildRiverChannel(extent, pitch);
@@ -255,7 +297,8 @@ namespace Unseen.Environment
                       $"{BoxMeshFactory.CachedMeshCount} box meshes, " +
                       $"{_root.GetComponentsInChildren<Renderer>(true).Length} renderers, " +
                       $"{_root.GetComponentsInChildren<Collider>(true).Length} colliders, " +
-                      $"{_pagodas} pagodas, {_trees} trees, {_shrubs} shrubs, " +
+                      $"{_pagodas} pagodas, {_kura} kura, {_nagaya} nagaya, " +
+                      $"{_gardens} gardens, {_shrines} shrines, {_trees} trees, {_shrubs} shrubs, " +
                       $"river={(_riverColumn >= 0 ? "yes" : "no")}, " +
                       $"{(_sketch != null ? _sketch.Landmarks.Count : 0)} map landmarks");
 
@@ -526,7 +569,312 @@ namespace Unseen.Environment
             }
         }
 
-        // ---------------------------------------------------------------- river
+        // ---------------------------------------------------------------- other buildings
+
+        /// <summary>
+        /// A kura: the fireproof storehouse a merchant kept his stock in.
+        ///
+        /// Thick white plaster over a timber frame, almost no openings, and a heavy tiled roof.
+        /// Blank, tall and windowless, which makes it the one building on a street with nothing to
+        /// climb and nothing to see through - useful cover to move behind and a dead end to be
+        /// caught against.
+        /// </summary>
+        private void BuildKura(Vector3 origin, int salt, float turn)
+        {
+            var kura = new GameObject($"Kura_{salt}").transform;
+            kura.SetParent(_root, false);
+            kura.localPosition = origin;
+            kura.localRotation = Quaternion.Euler(0f, turn, 0f);
+            _kura++;
+
+            float size = BlockSize * (0.4f + (float)_random.NextDouble() * 0.12f);
+            float height = 7.5f + (float)_random.NextDouble() * 2.5f;
+            float half = size * 0.5f;
+
+            _sketch?.Add(MapSketch.Feature.Store, origin, new Vector2(half, half));
+
+            Transform plinth = Box(kura, "Plinth", new Vector3(0f, 0.35f, 0f),
+                new Vector3(size + 1.2f, 0.7f, size + 1.2f), UnseenLayers.Default, _stone);
+            Acoustics(plinth, 0.9f, 1.1f, 1.1f);
+
+            for (int side = 0; side < 4; side++)
+            {
+                bool horizontal = side % 2 == 0;
+                float sign = side < 2 ? 1f : -1f;
+
+                Transform wall = Box(kura, $"Wall_{side}",
+                    horizontal
+                        ? new Vector3(0f, 0.7f + height * 0.5f, half * sign)
+                        : new Vector3(half * sign, 0.7f + height * 0.5f, 0f),
+                    horizontal
+                        ? new Vector3(size, height, 0.7f)
+                        : new Vector3(0.7f, height, size),
+                    UnseenLayers.Occluder, _plaster);
+                Acoustics(wall, 0.95f, 1f, 1f);
+
+                // One small barred opening high up, and a band of dark plaster at the foot: the
+                // two details that make a kura read as a kura rather than a white box.
+                Detail(kura, $"Skirt_{side}",
+                    horizontal
+                        ? new Vector3(0f, 1.5f, (half + 0.12f) * sign)
+                        : new Vector3((half + 0.12f) * sign, 1.5f, 0f),
+                    horizontal ? new Vector3(size, 1.6f, 0.2f) : new Vector3(0.2f, 1.6f, size),
+                    _darkTimber);
+
+                Detail(kura, $"Vent_{side}",
+                    horizontal
+                        ? new Vector3(0f, 0.7f + height * 0.72f, (half + 0.12f) * sign)
+                        : new Vector3((half + 0.12f) * sign, 0.7f + height * 0.72f, 0f),
+                    horizontal ? new Vector3(1.4f, 0.9f, 0.2f) : new Vector3(0.2f, 0.9f, 1.4f),
+                    _darkTimber);
+            }
+
+            Transform floor = Box(kura, "Floor", new Vector3(0f, 0.75f, 0f),
+                new Vector3(size - 1f, 0.2f, size - 1f), UnseenLayers.Default, _woodFloor);
+            Acoustics(floor, 0.6f, 0.7f, 0.8f);
+
+            float roofTop = BuildHipRoof(kura, size + EaveOverhang * 1.4f, 0.7f + height);
+
+            Transform crest = Box(kura, "Ridge", new Vector3(0f, roofTop + 0.5f, 0f),
+                new Vector3(size * 0.5f, 0.9f, 1f), UnseenLayers.GrappleAnchor, _tile);
+            Acoustics(crest, 0.5f, 1.2f, 1.3f);
+
+            PlaceContainers(kura, half * 0.6f);
+        }
+
+        /// <summary>
+        /// A nagaya: the long low terrace ordinary townspeople lived in, one room per family with
+        /// a door straight onto the street.
+        ///
+        /// Low and deep rather than square, so it breaks the rhythm of walled compounds, and its
+        /// roof is a single long run - the easiest roof in the town to travel along and the most
+        /// exposed while you do.
+        /// </summary>
+        private void BuildNagaya(Vector3 origin, int salt, float turn)
+        {
+            var row = new GameObject($"Nagaya_{salt}").transform;
+            row.SetParent(_root, false);
+            row.localPosition = origin;
+            row.localRotation = Quaternion.Euler(0f, turn, 0f);
+            _nagaya++;
+
+            float length = BlockSize * (0.78f + (float)_random.NextDouble() * 0.12f);
+            float depth = BlockSize * 0.3f;
+            const float height = 3.6f;
+
+            _sketch?.Add(MapSketch.Feature.Row, origin, new Vector2(length * 0.5f, depth * 0.5f));
+
+            Transform plinth = Box(row, "Plinth", new Vector3(0f, 0.25f, 0f),
+                new Vector3(length + 0.8f, 0.5f, depth + 0.8f), UnseenLayers.Default, _stone);
+            Acoustics(plinth, 0.9f, 1.1f, 1.1f);
+
+            Transform back = Box(row, "Back", new Vector3(0f, 0.5f + height * 0.5f, -depth * 0.5f),
+                new Vector3(length, height, 0.35f), UnseenLayers.Occluder, _plaster);
+            Acoustics(back, 0.75f, 1f, 1f);
+
+            for (int side = -1; side <= 1; side += 2)
+            {
+                Transform end = Box(row, $"End_{side}",
+                    new Vector3(length * 0.5f * side, 0.5f + height * 0.5f, 0f),
+                    new Vector3(0.35f, height, depth), UnseenLayers.Occluder, _plaster);
+                Acoustics(end, 0.75f, 1f, 1f);
+            }
+
+            // The street face: a run of doorways with a post between each, which is the whole
+            // character of a nagaya.
+            int doors = Mathf.Max(3, Mathf.RoundToInt(length / 4.5f));
+            float bay = length / doors;
+
+            for (int i = 0; i <= doors; i++)
+            {
+                float x = -length * 0.5f + bay * i;
+                Transform post = Box(row, $"Post_{i}", new Vector3(x, 0.5f + height * 0.5f, depth * 0.5f),
+                    new Vector3(0.32f, height, 0.4f), UnseenLayers.Occluder, _darkTimber);
+                Acoustics(post, 0.6f, 1f, 1f);
+
+                if (i >= doors) continue;
+
+                float centre = x + bay * 0.5f;
+
+                Detail(row, $"Lintel_{i}", new Vector3(centre, 0.5f + height - 0.3f, depth * 0.5f + 0.1f),
+                    new Vector3(bay, 0.34f, 0.3f), _darkTimber);
+
+                Detail(row, $"Noren_{i}", new Vector3(centre, 0.5f + height - 1.1f, depth * 0.5f + 0.16f),
+                    new Vector3(bay * 0.7f, 1.1f, 0.06f), _paper);
+
+                if (i % 2 == 0)
+                    MountLantern(row, new Vector3(x + 0.2f, 0.5f + height - 0.5f, depth * 0.5f),
+                        Vector3.forward, 9f, 0.9f);
+            }
+
+            Transform floor = Box(row, "Floor", new Vector3(0f, 0.55f, 0f),
+                new Vector3(length - 0.7f, 0.2f, depth - 0.7f), UnseenLayers.Default, _tatami);
+            Acoustics(floor, 0.6f, 0.55f, 0.6f);
+
+            BuildShojiRun(row, new Vector3(0f, 0.5f + height * 0.5f, 0f), length - 2f, true, height);
+            BuildHipRoof(row, depth + EaveOverhang * 2f, 0.5f + height);
+            PlaceContainers(row, depth * 0.3f);
+        }
+
+        /// <summary>
+        /// A walled garden with a teahouse in the corner of it.
+        ///
+        /// Mostly open ground behind a low wall, which a town of walled compounds badly needs: it
+        /// is the only block type here that gives a sightline through the middle of a plot, and the
+        /// only one where a lantern lights something worth looking at.
+        /// </summary>
+        private void BuildTeahouseGarden(Vector3 origin, int salt, float turn)
+        {
+            var garden = new GameObject($"Garden_{salt}").transform;
+            garden.SetParent(_root, false);
+            garden.localPosition = origin;
+            garden.localRotation = Quaternion.Euler(0f, turn, 0f);
+            _gardens++;
+
+            float half = BlockSize * 0.45f;
+            _sketch?.Add(MapSketch.Feature.Garden, origin, new Vector2(half, half));
+
+            // A low wall, so the garden is enclosed but not blind.
+            for (int side = 0; side < 4; side++)
+            {
+                bool horizontal = side % 2 == 0;
+                float sign = side < 2 ? 1f : -1f;
+                if (side == salt % 4) continue; // one open side, the way in
+
+                Transform wall = Box(garden, $"Wall_{side}",
+                    horizontal ? new Vector3(0f, 1.1f, half * sign) : new Vector3(half * sign, 1.1f, 0f),
+                    horizontal ? new Vector3(half * 2f, 2.2f, 0.4f) : new Vector3(0.4f, 2.2f, half * 2f),
+                    UnseenLayers.Occluder, _plaster);
+                Acoustics(wall, 0.75f, 1f, 1f);
+
+                Detail(garden, $"Coping_{side}",
+                    horizontal ? new Vector3(0f, 2.3f, half * sign) : new Vector3(half * sign, 2.3f, 0f),
+                    horizontal ? new Vector3(half * 2f, 0.2f, 0.7f) : new Vector3(0.7f, 0.2f, half * 2f),
+                    _tile);
+            }
+
+            // The teahouse itself: small, low, and set into one corner.
+            float hutHalf = 4.2f;
+            var hut = new Vector3(half * 0.42f, 0f, -half * 0.42f);
+
+            Transform deck = Box(garden, "TeahouseDeck", hut + new Vector3(0f, 0.45f, 0f),
+                new Vector3(hutHalf * 2f + 1.4f, 0.9f, hutHalf * 2f + 1.4f),
+                UnseenLayers.Default, _woodFloor);
+            Acoustics(deck, 0.55f, 0.8f, 0.9f);
+
+            for (int side = 0; side < 4; side++)
+            {
+                bool horizontal = side % 2 == 0;
+                float sign = side < 2 ? 1f : -1f;
+                if (side == 0) continue; // open to the garden
+
+                Transform wall = Box(garden, $"HutWall_{side}",
+                    hut + (horizontal
+                        ? new Vector3(0f, 0.9f + 1.3f, hutHalf * sign)
+                        : new Vector3(hutHalf * sign, 0.9f + 1.3f, 0f)),
+                    horizontal
+                        ? new Vector3(hutHalf * 2f, 2.6f, 0.3f)
+                        : new Vector3(0.3f, 2.6f, hutHalf * 2f),
+                    UnseenLayers.Occluder, _plaster);
+                Acoustics(wall, 0.7f, 1f, 1f);
+            }
+
+            BuildShojiRun(garden, hut + new Vector3(0f, 2.1f, 0f), hutHalf * 1.6f, true, 2.6f);
+            BuildHipRoof(garden, hutHalf * 2f + 3f, 3.5f);
+
+            // A stone lantern on the path, a few stepping stones and some planting. This is the
+            // one block in the town where the decoration IS the building.
+            Transform pedestal = Box(garden, "StoneLantern", new Vector3(-half * 0.3f, 0.8f, half * 0.25f),
+                new Vector3(0.5f, 1.6f, 0.5f), UnseenLayers.Occluder, _stone);
+            Acoustics(pedestal, 0.9f, 1f, 1f);
+            CreateLantern(garden, new Vector3(-half * 0.3f, 1.9f, half * 0.25f), 9f, 0.9f);
+
+            for (int i = 0; i < 7; i++)
+            {
+                float t = i / 6f;
+                var at = new Vector3(Mathf.Lerp(-half * 0.7f, hut.x, t),
+                    0.08f, Mathf.Lerp(half * 0.7f, hut.z + hutHalf, t));
+                Detail(garden, $"Stone_{i}", at, new Vector3(0.8f, 0.16f, 0.7f), _stone);
+            }
+
+            for (int i = 0; i < 5; i++)
+            {
+                var at = new Vector3(
+                    (float)(_random.NextDouble() * 2f - 1f) * half * 0.7f, 0f,
+                    (float)(_random.NextDouble() * 2f - 1f) * half * 0.7f);
+                BuildShrub(garden, at);
+            }
+        }
+
+        /// <summary>
+        /// A small shrine with a torii gate in front of it, standing in an open plaza.
+        ///
+        /// The torii is the most recognisable silhouette in the whole town and costs six boxes.
+        /// </summary>
+        private void BuildShrine(Vector3 origin, int salt)
+        {
+            var shrine = new GameObject($"Shrine_{salt}").transform;
+            shrine.SetParent(_root, false);
+            shrine.localPosition = origin;
+            shrine.localRotation = Quaternion.Euler(0f, (salt % 4) * 90f, 0f);
+            _shrines++;
+
+            _sketch?.Add(MapSketch.Feature.Shrine, origin, new Vector2(6f, 6f));
+
+            // Torii: two pillars, a curved-looking lintel of two beams, and a tie bar.
+            const float gateHalf = 3.2f;
+            const float gateHeight = 5.4f;
+
+            for (int side = -1; side <= 1; side += 2)
+            {
+                Transform pillar = Box(shrine, $"ToriiPillar_{side}",
+                    new Vector3(gateHalf * side, gateHeight * 0.5f, 8f),
+                    new Vector3(0.55f, gateHeight, 0.55f), UnseenLayers.Occluder, _vermilion);
+                Acoustics(pillar, 0.6f, 1f, 1f);
+            }
+
+            Detail(shrine, "ToriiKasagi", new Vector3(0f, gateHeight + 0.35f, 8f),
+                new Vector3(gateHalf * 2f + 2.2f, 0.42f, 0.8f), _vermilion);
+            Detail(shrine, "ToriiShimagi", new Vector3(0f, gateHeight - 0.15f, 8f),
+                new Vector3(gateHalf * 2f + 1.2f, 0.3f, 0.6f), _vermilion);
+            Detail(shrine, "ToriiNuki", new Vector3(0f, gateHeight * 0.72f, 8f),
+                new Vector3(gateHalf * 2f + 0.6f, 0.28f, 0.42f), _vermilion);
+            Detail(shrine, "ToriiGakuzuka", new Vector3(0f, gateHeight * 0.86f, 8f),
+                new Vector3(0.3f, 1.1f, 0.34f), _vermilion);
+
+            // The hall behind it, raised on a stone platform.
+            Transform platform = Box(shrine, "Platform", new Vector3(0f, 0.55f, -2f),
+                new Vector3(11f, 1.1f, 9f), UnseenLayers.Default, _stone);
+            Acoustics(platform, 0.9f, 1.1f, 1.1f);
+
+            for (int side = 0; side < 4; side++)
+            {
+                bool horizontal = side % 2 == 0;
+                float sign = side < 2 ? 1f : -1f;
+                if (side == 0) continue; // open front, facing the gate
+
+                Transform wall = Box(shrine, $"HallWall_{side}",
+                    new Vector3(0f, 0f, -2f) + (horizontal
+                        ? new Vector3(0f, 1.1f + 1.7f, 4f * sign)
+                        : new Vector3(5f * sign, 1.1f + 1.7f, 0f)),
+                    horizontal ? new Vector3(10f, 3.4f, 0.4f) : new Vector3(0.4f, 3.4f, 8f),
+                    UnseenLayers.Occluder, _plaster);
+                Acoustics(wall, 0.8f, 1f, 1f);
+            }
+
+            for (int side = -1; side <= 1; side += 2)
+                Detail(shrine, $"HallPost_{side}", new Vector3(4.6f * side, 2.8f, 2f),
+                    new Vector3(0.42f, 3.4f, 0.42f), _vermilion);
+
+            BuildHipRoof(shrine, 13f, 4.5f);
+
+            for (int side = -1; side <= 1; side += 2)
+                HangLantern(shrine, new Vector3(3.6f * side, 3.6f, 2.2f), 10f, 1f);
+
+            PlaceContainers(shrine, 3f);
+        }
+
+        // ---------------------------------------------------------------- river        // ---------------------------------------------------------------- river
 
         /// <summary>
         /// The river: a sunken channel down one column of the grid, with a towpath either side and
@@ -553,10 +901,18 @@ namespace Unseen.Environment
                 new Vector3(RiverWidth, 0.6f, length), UnseenLayers.Default, _stone);
             Acoustics(bed, 0.9f, 1.3f, 1.4f);
 
-            // A real body of water rather than a puddle: walkable across the top, loud to cross,
-            // and the worst place in the town to be seen standing.
-            Transform water = Box(river, "Water", new Vector3(_riverCentreX, bedY + 0.45f, 0f),
-                new Vector3(RiverWidth, 0.9f, length), UnseenLayers.Default, _water);
+            // The channel runs full.
+            //
+            // The water used to sit two centimetres proud of the towpaths, so the river read as a
+            // damp floor with kerbs. It now fills most of the channel and the paths are a dry ledge
+            // above it: crossing means stepping down into the water, which is the whole reason the
+            // river is a risk worth routing around.
+            float waterTop = bedY + WaterDepth;
+            float pathTop = waterTop + TowpathFreeboard;
+
+            Transform water = Box(river, "Water",
+                new Vector3(_riverCentreX, bedY + WaterDepth * 0.5f, 0f),
+                new Vector3(RiverWidth, WaterDepth, length), UnseenLayers.Default, _water);
             Acoustics(water, 0.2f, 2.2f, 2.4f);
 
             // Sound and surface motion. Both are driven from one component so the emitters and the
@@ -568,9 +924,11 @@ namespace Unseen.Environment
             {
                 float pathCentre = _riverCentreX + side * (RiverWidth * 0.5f + towpath * 0.5f);
 
+                // The ledge, standing clear of the water rather than under it.
+                float pathThickness = pathTop - bedY;
                 Transform path = Box(river, $"Towpath_{side}",
-                    new Vector3(pathCentre, bedY + 0.35f, 0f),
-                    new Vector3(towpath, 0.7f, length), UnseenLayers.Default, _stone);
+                    new Vector3(pathCentre, bedY + pathThickness * 0.5f, 0f),
+                    new Vector3(towpath, pathThickness, length), UnseenLayers.Default, _stone);
                 Acoustics(path, 0.85f, 1.1f, 1.15f);
 
                 float wallX = _riverCentreX + side * channelHalf;
@@ -607,7 +965,7 @@ namespace Unseen.Environment
                         // Bottom step lands ON the towpath, not inside it. Ending the run at the
                         // towpath's centre height buried the last three steps in the slab, and the
                         // wall-intrusion sampler duly found bots standing inside geometry there.
-                        float top = Mathf.Lerp(0.1f, bedY + 1.2f, t);
+                        float top = Mathf.Lerp(0.1f, bedY + WaterDepth + TowpathFreeboard + 0.5f, t);
                         const float depth = 0.7f;
 
                         // Each step is a solid block down to the bed rather than a floating slab.
@@ -649,8 +1007,13 @@ namespace Unseen.Environment
                 const float deckWidth = 9f;
                 const float deckY = 0.55f;
 
-                Transform deck = Box(bridge, "Deck", new Vector3(_riverCentreX, deckY, z),
-                    new Vector3(span, 0.5f, deckWidth), UnseenLayers.Default, _woodFloor);
+                // A taiko-bashi: an arched drum bridge rather than a plank.
+                //
+                // Built as stepped segments along the arc, each riser kept under the character
+                // controller's step offset so the bridge is walked over rather than bumped into.
+                // A true curved mesh would need its own collider and its own generator; a
+                // staircase that follows a circle reads as one from every angle that matters.
+                Transform deck = BuildArchedDeck(bridge, z, span, deckWidth, deckY);
                 Acoustics(deck, 0.55f, 1.4f, 1.5f);
 
                 // Piers, standing in the water. They also break the sightline along the channel.
@@ -666,33 +1029,95 @@ namespace Unseen.Environment
                 {
                     float railZ = z + r * (deckWidth * 0.5f - 0.2f);
 
-                    Detail(bridge, $"Rail_{r}",
-                        new Vector3(_riverCentreX, deckY + 0.85f, railZ),
-                        new Vector3(span, 0.16f, 0.16f), _darkTimber);
-
-                    for (int post = 0; post < 6; post++)
+                    // The handrail follows the arc in short chords, and the balusters below it are
+                    // vermilion - the one colour that reads as a shrine bridge at any distance.
+                    const int chords = 12;
+                    for (int c = 0; c < chords; c++)
                     {
-                        float t = post / 5f;
-                        float x = Mathf.Lerp(_riverCentreX - span * 0.46f, _riverCentreX + span * 0.46f, t);
-                        Detail(bridge, $"RailPost_{r}_{post}",
-                            new Vector3(x, deckY + 0.5f, railZ),
-                            new Vector3(0.16f, 0.9f, 0.16f), _darkTimber);
+                        float t0 = c / (float)chords;
+                        float t1 = (c + 1) / (float)chords;
+
+                        float x0 = Mathf.Lerp(_riverCentreX - span * 0.5f, _riverCentreX + span * 0.5f, t0);
+                        float x1 = Mathf.Lerp(_riverCentreX - span * 0.5f, _riverCentreX + span * 0.5f, t1);
+                        float y0 = deckY + ArchHeight(t0) + 1.05f;
+                        float y1 = deckY + ArchHeight(t1) + 1.05f;
+
+                        var mid = new Vector3((x0 + x1) * 0.5f, (y0 + y1) * 0.5f, railZ);
+                        float run = x1 - x0;
+                        float rise = y1 - y0;
+                        float len = Mathf.Sqrt(run * run + rise * rise);
+
+                        Transform rail = Detail(bridge, $"Rail_{r}_{c}", mid,
+                            new Vector3(len + 0.05f, 0.16f, 0.18f), _vermilion);
+                        rail.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(rise, run) * Mathf.Rad2Deg);
+
+                        float postX = x0 + run * 0.5f;
+                        float postBase = deckY + ArchHeight(t0 + (t1 - t0) * 0.5f);
+                        Detail(bridge, $"Baluster_{r}_{c}",
+                            new Vector3(postX, postBase + 0.52f, railZ),
+                            new Vector3(0.13f, 1.04f, 0.13f), _vermilion);
                     }
 
-                    // Lanterns on the end posts, where a bridge keeper would actually hang them.
+                    // Newel posts at each end, with a lantern on top, where a bridge keeper would
+                    // actually hang one.
                     for (int end = -1; end <= 1; end += 2)
                     {
-                        float x = _riverCentreX + end * span * 0.46f;
-                        Detail(bridge, $"LampPost_{r}_{end}",
-                            new Vector3(x, deckY + 1.1f, railZ),
-                            new Vector3(0.2f, 2.1f, 0.2f), _darkTimber);
-                        CreateLantern(bridge, new Vector3(x, deckY + 1.95f, railZ), 11f, 0.95f);
+                        float x = _riverCentreX + end * span * 0.5f;
+                        Detail(bridge, $"Newel_{r}_{end}",
+                            new Vector3(x, deckY + 1.2f, railZ),
+                            new Vector3(0.28f, 2.4f, 0.28f), _vermilion);
+                        Detail(bridge, $"NewelCap_{r}_{end}",
+                            new Vector3(x, deckY + 2.46f, railZ),
+                            new Vector3(0.42f, 0.14f, 0.42f), _darkTimber);
+                        CreateLantern(bridge, new Vector3(x, deckY + 2.0f, railZ), 11f, 0.95f);
                     }
                 }
             }
         }
 
-        // ---------------------------------------------------------------- pagoda
+        /// <summary>Rise of the bridge arch at a fraction along its span, in metres.</summary>
+        private float ArchHeight(float t)
+        {
+            return Mathf.Sin(Mathf.Clamp01(t) * Mathf.PI) * BridgeArchRise;
+        }
+
+        /// <summary>
+        /// The deck of a drum bridge, as stepped segments following a sine arc.
+        ///
+        /// Every riser is kept under the character controller's 0.45 m step offset, so the bridge
+        /// is walked over rather than climbed or blocked - the same constraint the tiered roofs
+        /// are built to.
+        /// </summary>
+        private Transform BuildArchedDeck(Transform bridge, float z, float span, float width, float baseY)
+        {
+            const int segments = 14;
+            float length = span / segments;
+            Transform first = null;
+
+            for (int i = 0; i < segments; i++)
+            {
+                float t = (i + 0.5f) / segments;
+                float x = Mathf.Lerp(_riverCentreX - span * 0.5f, _riverCentreX + span * 0.5f, t);
+                float y = baseY + ArchHeight(t);
+
+                // Each plank is thick enough to reach down to the one before it, so the underside
+                // of the arch is solid and there is no gap to see - or fall - through.
+                float sag = ArchHeight(t) - ArchHeight((i + (i < segments / 2 ? 1.5f : -0.5f)) / segments);
+                float thickness = 0.5f + Mathf.Abs(sag);
+
+                Transform plank = Box(bridge, $"Deck_{i}",
+                    new Vector3(x, y - thickness * 0.5f + 0.25f, z),
+                    new Vector3(length + 0.06f, thickness, width),
+                    UnseenLayers.Default, _woodFloor);
+
+                Acoustics(plank, 0.55f, 1.4f, 1.5f);
+                if (first == null) first = plank;
+            }
+
+            return first;
+        }
+
+        // ---------------------------------------------------------------- pagoda        // ---------------------------------------------------------------- pagoda
 
         /// <summary>
         /// A pagoda: storeys of shrinking footprint, each with a walkable balcony under a hip roof,
@@ -1660,6 +2085,7 @@ namespace Unseen.Environment
                 _water = set.Water != null ? set.Water : set.Stone;
                 _foliage = set.Foliage != null ? set.Foliage : set.Timber;
                 _shojiPaper = set.ShojiPaper != null ? set.ShojiPaper : set.Paper;
+                _vermilion = set.Vermilion != null ? set.Vermilion : set.Timber;
                 _bamboo = set.Bamboo != null ? set.Bamboo : set.Foliage;
                 _bambooMass = set.BambooMass != null ? set.BambooMass : set.Foliage;
                 _textureMetres = set.TextureMetres;
@@ -1686,6 +2112,7 @@ namespace Unseen.Environment
             _water = MakeMaterial(shader, "GreyboxWater", new Color(0.1f, 0.17f, 0.2f));
             _foliage = MakeMaterial(shader, "GreyboxFoliage", new Color(0.13f, 0.2f, 0.13f));
             _shojiPaper = _paper;
+            _vermilion = MakeMaterial(shader, "GreyboxVermilion", new Color(0.62f, 0.17f, 0.12f));
             _bamboo = MakeMaterial(shader, "GreyboxBamboo", new Color(0.32f, 0.38f, 0.20f));
             _bambooMass = MakeMaterial(shader, "GreyboxBambooMass", new Color(0.12f, 0.17f, 0.10f));
             _textured = false;

@@ -185,7 +185,8 @@ namespace Unseen.EditorTools
                     Debug.Log($"[shot] spirit forest grown to {forest.Depth:0.0} m for the capture");
                 }
 
-                Transform bridge = FindNamed(host.transform, "Deck");
+                // The deck is segmented into an arch now, so the first plank is the landmark.
+                Transform bridge = FindNamed(host.transform, "Deck_7");
                 if (bridge != null)
                 {
                     Vector3 pos = bridge.position;
