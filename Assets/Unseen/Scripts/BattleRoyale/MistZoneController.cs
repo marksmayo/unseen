@@ -49,9 +49,13 @@ namespace Unseen.BattleRoyale
         {
             UnseenConfig.MatchSection cfg = Ctx.Config.Match;
 
-            // The first circle must actually contain the level: a config tuned for a 620 m map has
-            // to shrink to fit a smaller greybox rather than start off the edge of the world.
-            float mapRadius = Ctx.Match != null ? Ctx.Match.MapRadius * 1.15f : cfg.InitialZoneRadius;
+            // The first circle sits ON the map, not around it.
+            //
+            // It used to start at 1.15x the map radius, which on a 375 m town meant a 431 m circle
+            // enclosing the whole world with 56 m to spare. Combined with the old taper, the first
+            // three stages were all larger than the map and the mist did nothing at all for the
+            // opening nine minutes of a twenty minute match.
+            float mapRadius = Ctx.Match != null ? Ctx.Match.MapRadius : cfg.InitialZoneRadius;
             float initial = math.min(cfg.InitialZoneRadius, mapRadius);
 
             _center = mapCenter;
@@ -126,9 +130,14 @@ namespace Unseen.BattleRoyale
             if (stage <= 0) return _initialRadius;
             if (stage >= cfg.ZoneStages) return cfg.FinalZoneRadius;
 
-            // Geometric taper: early circles are generous, late circles bite.
+            // Every stage has to take something away.
+            //
+            // The old t-squared taper removed almost nothing early - stage one of seven shrank the
+            // circle by two per cent - so the first several stages passed without pressuring
+            // anyone. An exponent below one front-loads the squeeze instead: on a 375 m map the
+            // stages now run 285, 229, 181, 137, 96, 61, 28, and each one is a decision.
             float t = stage / (float)cfg.ZoneStages;
-            float eased = t * t;
+            float eased = math.pow(t, 0.7f);
             return math.lerp(_initialRadius, cfg.FinalZoneRadius, eased);
         }
 
@@ -142,6 +151,11 @@ namespace Unseen.BattleRoyale
             {
                 AgentEntity agent = registry.BySlot(i);
                 if (!agent.IsAlive) continue;
+
+                // Nobody burns while still under a glider. The drop line crosses the whole map, so
+                // half the lobby is outside the first circle by definition on the way down, and
+                // punishing them for the flight path they were given is not a decision they made.
+                if ((agent.Flags & AgentFlags.Deployed) == 0) continue;
 
                 float2 planar = new float2(agent.Position.x - _center.x, agent.Position.z - _center.z);
                 bool outside = math.length(planar) > _radius;

@@ -207,10 +207,23 @@ namespace Unseen.Core
         {
             public int TargetEntityCount = 64;
             public float InfiltrationDuration = 45f;
-            public float FirstZoneDelay = 120f;
-            public float ZoneHoldDuration = 90f;
-            public float ZoneCloseDuration = 60f;
+            [Tooltip("Grace before the first circle moves. Long enough to loot, short enough that " +
+                     "the match has started happening.")]
+            public float FirstZoneDelay = 75f;
+
+            [Tooltip("How long a circle sits still before the next one closes.")]
+            public float ZoneHoldDuration = 40f;
+
+            [Tooltip("How long a circle takes to close. Total match length is roughly " +
+                     "FirstZoneDelay + ZoneStages * (hold + close): about ten minutes at these " +
+                     "values, against nearly twenty at the originals.")]
+            public float ZoneCloseDuration = 35f;
+
             public int ZoneStages = 7;
+
+            [Tooltip("Upper bound on the first circle. The mist starts at whichever is smaller, " +
+                     "this or the map radius, so a small level is never given a circle it cannot " +
+                     "fill.")]
             public float InitialZoneRadius = 620f;
             public float FinalZoneRadius = 28f;
 
@@ -228,10 +241,10 @@ namespace Unseen.Core
             public float GliderDeployAltitude = 260f;
             public float GliderSpeed = 42f;
 
-            [Tooltip("Skip the glider descent and start everyone on the ground. The drop currently " +
-                     "moves agents by teleport, so it passes through roofs - worth bypassing while " +
-                     "iterating on movement, camera and combat.")]
-            public bool SkipInfiltration = true;
+            [Tooltip("Skip the glider descent and start everyone on the ground. Off by default now " +
+                     "that the descent sweeps its path instead of teleporting along it; the drop " +
+                     "is the opening of a match and a battle royale without one starts nowhere.")]
+            public bool SkipInfiltration;
         }
 
         [Serializable]

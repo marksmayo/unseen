@@ -139,10 +139,12 @@ namespace Unseen.Client
         {
             if (_snapshot == null) return;
 
+            // Below the minimap, which occupies the top-right corner.
+            const float top = 236f;
             string phase = ((BattleRoyale.MatchPhase)_snapshot.MatchPhase).ToString();
-            GUI.Label(new Rect(Screen.width - 230f, 18f, 220f, 22f),
+            GUI.Label(new Rect(Screen.width - 230f, top, 220f, 22f),
                 $"{phase}   alive {_snapshot.AliveCount}", _label);
-            GUI.Label(new Rect(Screen.width - 230f, 40f, 220f, 22f),
+            GUI.Label(new Rect(Screen.width - 230f, top + 22f, 220f, 22f),
                 $"mist stage {_snapshot.ZoneStage}   r {(_snapshot.ZoneRadius):0} m", _small);
         }
 
@@ -227,7 +229,7 @@ namespace Unseen.Client
                 if (Time.time > _eliminations[i].ExpiresAt)
                     _eliminations.RemoveAt(i);
 
-            float y = 80f;
+            float y = 288f;
             for (int i = 0; i < _eliminations.Count; i++)
             {
                 Elimination e = _eliminations[i];

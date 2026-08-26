@@ -189,24 +189,84 @@ namespace Unseen.BattleRoyale
                 float3 velocity = steer * Ctx.Config.Match.GliderSpeed * 0.35f;
                 velocity.y = -DescentSpeed;
 
-                float3 next = position + velocity * dt;
+                // Sweep the path rather than teleporting along it.
+                //
+                // The descent used to jump straight to position + velocity * dt and only look
+                // straight down for ground. Moving at fifteen metres a second horizontally, that
+                // put gliders through walls and in under roofs routinely, and the whole
+                // infiltration phase was disabled with SkipInfiltration because of it. A capsule
+                // cast over the step is the difference between flying to a landing and being
+                // teleported into a building.
+                float3 delta = velocity * dt;
+                float travel = math.length(delta);
+                float3 direction = travel > 1e-4f ? delta / travel : new float3(0f, -1f, 0f);
+                float radius = Ctx.Config.Movement.Radius;
 
-                // Land as soon as there is ground under the feet.
-                if (Physics.Raycast(position + new float3(0f, 0.5f, 0f), Vector3.down, out RaycastHit hit,
-                        math.abs(velocity.y) * dt + 2.5f, UnseenLayers.WorldGeometry, QueryTriggerInteraction.Ignore))
+                float3 next;
+                bool blocked = Physics.SphereCast(position, radius, direction, out RaycastHit sweep,
+                    travel, UnseenLayers.WorldGeometry, QueryTriggerInteraction.Ignore);
+
+                if (blocked)
                 {
-                    next = (float3)hit.point + new float3(0f, 0.05f, 0f);
-                    agent.Motor?.Teleport(next);
-                    Release(agent, ref glide);
-                    _glides[agent.Slot] = glide;
+                    // Stop short of whatever was hit, then look for a floor to stand on. Clipping
+                    // a wall on the way down should drop you at its foot, not through it.
+                    next = position + direction * math.max(0f, sweep.distance - 0.05f);
 
-                    Ctx.Sound.Emit(agent.Id, next, SoundKind.Landing, 1.2f, 20f, frame.Tick);
-                    continue;
+                    if (TryLand(next, radius, out float3 footing))
+                    {
+                        Land(agent, ref glide, footing, frame.Tick);
+                        continue;
+                    }
+
+                    // Nothing underneath yet: shed the horizontal component and slide down the
+                    // face until there is.
+                    next = position + new float3(0f, velocity.y * dt, 0f);
+                }
+                else
+                {
+                    next = position + delta;
+
+                    if (TryLand(next, radius, out float3 footing))
+                    {
+                        Land(agent, ref glide, footing, frame.Tick);
+                        continue;
+                    }
                 }
 
                 agent.Motor?.Teleport(next);
                 _glides[agent.Slot] = glide;
             }
+        }
+
+        /// <summary>
+        /// Looks for standing room beneath a point during the descent.
+        ///
+        /// Requires clearance for the whole body, not just a surface under the feet: the old check
+        /// was a bare downward ray, which happily "landed" a ninja on the underside of an eave or
+        /// inside a rafter.
+        /// </summary>
+        private bool TryLand(float3 point, float radius, out float3 footing)
+        {
+            footing = point;
+
+            if (!Physics.Raycast(point + new float3(0f, 0.5f, 0f), Vector3.down, out RaycastHit hit,
+                    3f, UnseenLayers.WorldGeometry, QueryTriggerInteraction.Ignore))
+                return false;
+
+            float3 candidate = (float3)hit.point + new float3(0f, 0.05f, 0f);
+            if (!ParkourProbe.HasClearance(candidate, radius, Ctx.Config.Movement.StandHeight))
+                return false;
+
+            footing = candidate;
+            return true;
+        }
+
+        private void Land(AgentEntity agent, ref Glide glide, float3 footing, int tick)
+        {
+            agent.Motor?.Teleport(footing);
+            Release(agent, ref glide);
+            _glides[agent.Slot] = glide;
+            Ctx.Sound.Emit(agent.Id, footing, SoundKind.Landing, 1.2f, 20f, tick);
         }
 
         private static void Release(AgentEntity agent, ref Glide glide)

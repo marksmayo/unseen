@@ -101,6 +101,7 @@ namespace Unseen.Environment
         private int _pagodas;
         private int _trees;
         private int _shrubs;
+        private MapSketch _sketch;
         private bool _textured;
         private GreyboxMaterialSet _set;
         private Material _lanternGlow;
@@ -122,6 +123,10 @@ namespace Unseen.Environment
 
             _root = new GameObject("CastleTown").transform;
             _root.SetParent(transform, false);
+
+            _sketch = gameObject.GetComponent<MapSketch>();
+            if (_sketch == null) _sketch = gameObject.AddComponent<MapSketch>();
+            _sketch.Clear();
 
             float pitch = BlockSize + StreetWidth;
             float extent = pitch * GridSize * 0.5f;
@@ -161,6 +166,8 @@ namespace Unseen.Environment
             BudgetLanternLights();
             CombineStatics();
 
+            _sketch.Extent = extent;
+
             MapDescriptor descriptor = gameObject.GetComponent<MapDescriptor>();
             if (descriptor == null) descriptor = gameObject.AddComponent<MapDescriptor>();
             descriptor.Center = Vector3.zero;
@@ -179,7 +186,8 @@ namespace Unseen.Environment
                       $"{_root.GetComponentsInChildren<Renderer>(true).Length} renderers, " +
                       $"{_root.GetComponentsInChildren<Collider>(true).Length} colliders, " +
                       $"{_pagodas} pagodas, {_trees} trees, {_shrubs} shrubs, " +
-                      $"river={(_riverColumn >= 0 ? "yes" : "no")}");
+                      $"river={(_riverColumn >= 0 ? "yes" : "no")}, " +
+                      $"{(_sketch != null ? _sketch.Landmarks.Count : 0)} map landmarks");
 
             return descriptor;
         }
@@ -279,6 +287,9 @@ namespace Unseen.Environment
             var compound = new GameObject($"Compound_{salt}").transform;
             compound.SetParent(_root, false);
             compound.localPosition = origin;
+
+            _sketch?.Add(MapSketch.Feature.Block, origin,
+                new Vector2(BlockSize * 0.5f, BlockSize * 0.5f));
 
             float half = BlockSize * 0.5f;
             bool twoStorey = _random.NextDouble() < TwoStoreyChance;
@@ -446,6 +457,9 @@ namespace Unseen.Environment
             var river = new GameObject("River").transform;
             river.SetParent(_root, false);
 
+            _sketch?.Add(MapSketch.Feature.Water, new Vector3(_riverCentreX, 0f, 0f),
+                new Vector2(RiverWidth * 0.5f, extent + StreetWidth * 0.5f));
+
             float length = extent * 2f + StreetWidth;
             float channelHalf = (BlockSize + StreetWidth) * 0.5f;
             float towpath = channelHalf - RiverWidth * 0.5f;
@@ -538,6 +552,9 @@ namespace Unseen.Environment
                 var bridge = new GameObject($"Bridge_{i}").transform;
                 bridge.SetParent(river, false);
 
+                _sketch?.Add(MapSketch.Feature.Bridge, new Vector3(_riverCentreX, 0f, z),
+                    new Vector2(channelHalf + 1.5f, 4.5f));
+
                 float span = channelHalf * 2f + 3f;
                 const float deckWidth = 9f;
                 const float deckY = 0.55f;
@@ -601,6 +618,9 @@ namespace Unseen.Environment
             pagoda.SetParent(_root, false);
             pagoda.localPosition = origin;
             _pagodas++;
+
+            _sketch?.Add(MapSketch.Feature.Pagoda, origin,
+                new Vector2(BlockSize * 0.3f, BlockSize * 0.3f));
 
             float footprint = BlockSize * 0.52f;
             const float storeyHeight = 4.6f;
@@ -1134,6 +1154,9 @@ namespace Unseen.Environment
             var keep = new GameObject("Keep").transform;
             keep.SetParent(_root, false);
             keep.localPosition = origin;
+
+            _sketch?.Add(MapSketch.Feature.Keep, origin,
+                new Vector2(BlockSize * 0.45f, BlockSize * 0.45f));
 
             int storeys = 3;
             float storeyHeight = 5.2f;

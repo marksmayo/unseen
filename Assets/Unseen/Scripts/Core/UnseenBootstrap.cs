@@ -256,6 +256,10 @@ namespace Unseen.Core
             hud.Input = _input;
             _hud = hud;
 
+            MinimapHud minimap = rig.AddComponent<MinimapHud>();
+            minimap.View = _clientView;
+            minimap.Input = _input;
+
             SettingsMenu menu = rig.AddComponent<SettingsMenu>();
             menu.Input = _input;
 
