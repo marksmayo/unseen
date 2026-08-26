@@ -20,6 +20,9 @@ namespace Unseen.BattleRoyale
 
             /// <summary>Owning entity. Slots are recycled on disconnect, so the id is checked too.</summary>
             public int Owner;
+
+            /// <summary>Set once the descent has clipped something; steering stops after that.</summary>
+            public bool Grazed;
         }
 
         private Glide[] _glides = new Glide[128];
@@ -74,6 +77,15 @@ namespace Unseen.BattleRoyale
                 agent.Flags &= ~AgentFlags.Deployed;
                 agent.Motor?.Teleport(start);
                 agent.Locomotion = LocomotionState.Airborne;
+
+                // The controller is switched off for the whole descent, not per step.
+                //
+                // The glide owns the transform while it is open, and a live CharacterController
+                // depenetrates against whatever it finds on its own schedule - so writing a
+                // position each tick and letting the controller argue with it produced exactly the
+                // judder that shows up when a glider passes close to a roof. The sweep in Tick is
+                // already doing the collision work the controller would have done.
+                if (agent.Controller != null) agent.Controller.enabled = false;
 
                 _glides[agent.Slot] = new Glide
                 {
@@ -192,7 +204,9 @@ namespace Unseen.BattleRoyale
                     steer = math.normalizesafe(forward * agent.Intent.Move.y + right * agent.Intent.Move.x);
                 }
 
-                float3 velocity = steer * Ctx.Config.Match.GliderSpeed * 0.35f;
+                float3 velocity = glide.Grazed
+                    ? float3.zero
+                    : steer * Ctx.Config.Match.GliderSpeed * 0.35f;
                 velocity.y = -DescentSpeed;
 
                 // Sweep the path rather than teleporting along it.
@@ -214,6 +228,11 @@ namespace Unseen.BattleRoyale
 
                 if (blocked)
                 {
+                    // Once something has been clipped, the horizontal steering is given up for the
+                    // rest of the descent. Re-testing it every tick made the glider alternate
+                    // between blocked and clear against a roof edge and shudder down the seam.
+                    glide.Grazed = true;
+
                     // Stop short of whatever was hit, then look for a floor to stand on. Clipping
                     // a wall on the way down should drop you at its foot, not through it.
                     next = position + direction * math.max(0f, sweep.distance - 0.05f);
@@ -280,6 +299,9 @@ namespace Unseen.BattleRoyale
             glide.Active = false;
             agent.Flags |= AgentFlags.Deployed;
             agent.Locomotion = LocomotionState.Grounded;
+
+            // Handing the body back to the motor.
+            if (agent.Controller != null) agent.Controller.enabled = true;
         }
 
         /// <summary>True while this agent is still descending under a glider.</summary>

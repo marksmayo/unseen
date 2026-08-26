@@ -191,6 +191,12 @@ namespace Unseen.Entities
             Vitals.ResetVitals();
             Melee.ResetCombat();
             Inventory.Clear();
+
+            // The controller is switched off by the glider descent and by the death scene, and
+            // both hand it back when they finish normally. Dying halfway down a glide finishes
+            // neither, so a match start restores it unconditionally rather than trusting that
+            // every path out of those two states was taken.
+            if (Controller != null) Controller.enabled = true;
         }
 
         public override string ToString() => $"{DisplayName}({Id})";
