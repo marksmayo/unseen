@@ -49,10 +49,10 @@ namespace Unseen.Entities
         [Tooltip("How far the body sinks when crouched. The crouch pose folds the knees, which " +
                  "lifts the feet; this puts them back on the floor. Measured with " +
                  "Unseen > Art > Capture Animation Poses rather than guessed.")]
-        public float CrouchBodyDrop = 0.412f;
+        public float CrouchBodyDrop = 0.348f;
 
         [Tooltip("How far the body sinks when prone. Same measurement, a much deeper fold.")]
-        public float ProneBodyDrop = 0.517f;
+        public float ProneBodyDrop = 0.339f;
 
         [Tooltip("How quickly the body settles into and out of a crouch.")]
         public float CrouchBlendSpeed = 7f;
@@ -74,11 +74,11 @@ namespace Unseen.Entities
         private float _parkourWeight;
         private int _parkour = -1;
         private float _authoredLocalY;
+        private bool _capturedLocalY;
 
         private void Awake()
         {
             _authoredScale = transform.localScale;
-            _authoredLocalY = transform.localPosition.y;
             if (Rig == null) Rig = GetComponentInChildren<Animator>();
             if (Body == null) Body = GetComponentInChildren<SkinnedMeshRenderer>();
             FixCullingBounds();
@@ -200,6 +200,15 @@ namespace Unseen.Entities
             if (Rig.layerCount > StanceLayer) Rig.SetLayerWeight(StanceLayer, _stanceWeight);
 
             if (_authoredScale.sqrMagnitude <= 0f) return;
+
+            // Captured here rather than in Awake: AgentVisualSet.Attach sets the vertical offset
+            // immediately AFTER Instantiate, which is after Awake has already run, so reading it
+            // there records the prefab's value and quietly discards the offset.
+            if (!_capturedLocalY)
+            {
+                _authoredLocalY = transform.localPosition.y;
+                _capturedLocalY = true;
+            }
 
             Vector3 local = transform.localPosition;
             local.y = _authoredLocalY - _bodyDrop;

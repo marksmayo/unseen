@@ -61,6 +61,9 @@ namespace Unseen.Audio
         [Tooltip("Rush of air while falling. Looped, faded in by fall speed.")]
         public AudioClip FallWind;
 
+        [Tooltip("Running water, looped along the river channel.")]
+        public AudioClip RiverFlow;
+
         private Dictionary<SoundKind, Entry> _index;
 
         public bool IsUsable => Entries != null && Entries.Length > 0;

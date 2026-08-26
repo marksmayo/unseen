@@ -84,6 +84,19 @@ namespace Unseen.Movement
 
         public float WarpProgress => _lockDuration <= 0f ? 1f : math.saturate(_lockElapsed / _lockDuration);
 
+        /// <summary>
+        /// Moves the body without disturbing the controller or clearing velocity.
+        ///
+        /// Teleport switches the CharacterController off and on again, which is right for a real
+        /// jump across the map and wrong sixty times a second: PhysX re-registers the controller on
+        /// every toggle, and a glider driven that way visibly stutters all the way down. A
+        /// CharacterController tracks transform.position perfectly well for small steps.
+        /// </summary>
+        public void MoveDirect(float3 position)
+        {
+            transform.position = position;
+        }
+
         public void Teleport(float3 position)
         {
             _cc.enabled = false;

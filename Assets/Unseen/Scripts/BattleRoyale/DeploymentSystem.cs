@@ -30,7 +30,13 @@ namespace Unseen.BattleRoyale
         public float DescentSpeed = 14f;
 
         public override int Order => SimOrder.Motion - 1;
-        public override SimRate Rate => SimRate.Base;
+        // Combat rate, not base.
+        //
+        // At 20 Hz the descent jumped roughly three quarters of a metre every third rendered
+        // frame, which reads as violent flicker for the whole opening of the match. The glide is a
+        // handful of vector operations per agent; running it at the full tick costs almost nothing
+        // and is the difference between falling and strobing.
+        public override SimRate Rate => SimRate.Combat;
 
         protected override void OnInitialize()
         {
@@ -143,7 +149,7 @@ namespace Unseen.BattleRoyale
             if (Ctx.Match == null) return;
 
             bool infiltrating = Ctx.Match.Phase == MatchPhase.Infiltration;
-            float dt = Ctx.Config.BaseTickInterval;
+            float dt = frame.Dt;
             int count = Ctx.Entities.Count;
 
             for (int i = 0; i < count; i++)
@@ -233,7 +239,7 @@ namespace Unseen.BattleRoyale
                     }
                 }
 
-                agent.Motor?.Teleport(next);
+                agent.Motor?.MoveDirect(next);
                 _glides[agent.Slot] = glide;
             }
         }

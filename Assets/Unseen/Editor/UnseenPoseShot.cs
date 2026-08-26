@@ -86,12 +86,28 @@ namespace Unseen.EditorTools
                 var idleForProbe = AssetDatabase.LoadAssetAtPath<AnimationClip>($"{ClipDir}/idle.anim");
                 if (idleForProbe != null) idleForProbe.SampleAnimation(sampleTarget, 0f);
 
+                // The bone is not what touches the floor. A boot has thickness, and the sole sits
+                // below the ankle joint, so a drop measured from the foot bone leaves the ninja
+                // hovering by whatever that gap happens to be. The bottom of the skinned bounds is
+                // the thing the eye judges against the ground.
+                SkinnedMeshRenderer body = subject.GetComponentInChildren<SkinnedMeshRenderer>();
+
                 float footAtIdle = foot != null ? foot.position.y : 0f;
                 float headAtIdle = head != null ? head.position.y : 0f;
-                Debug.Log($"[pose] idle reference: foot y {footAtIdle:0.000}, head y {headAtIdle:0.000}");
+                float soleAtIdle = LowestVertex(body);
+                Debug.Log($"[pose] idle reference: foot y {footAtIdle:0.000}, head y {headAtIdle:0.000}, " +
+                          $"lowest point y {soleAtIdle:0.000}");
 
                 Debug.Log($"[pose] sampling onto '{sampleTarget.name}', animator disabled, " +
                           $"probe bone {(probe != null ? "RightArm" : "MISSING")}");
+
+                // A floor at y=0, and the stance clips are offset by the drop AgentVisual applies
+                // at runtime. Without both, this tool renders a pose floating in a void and cannot
+                // answer the only question that matters about a crouch: do the feet touch.
+                var floor = GameObject.CreatePrimitive(PrimitiveType.Plane);
+                floor.transform.SetParent(rigHost.transform, false);
+                floor.transform.localScale = Vector3.one * 2f;
+                Object.DestroyImmediate(floor.GetComponent<Collider>());
 
                 // A plain key light: this shot is about silhouette, not mood.
                 lightHost = new GameObject("PoseLight");
@@ -131,6 +147,13 @@ namespace Unseen.EditorTools
 
                     var idle = AssetDatabase.LoadAssetAtPath<AnimationClip>($"{ClipDir}/idle.anim");
 
+                    // Whatever AgentVisual will sink the body by for this pose.
+                    float drop = name == "ninja_crouch" ? StanceDrop.Crouch
+                        : name == "ninja_prone" ? StanceDrop.Prone
+                        : 0f;
+                    subject.transform.localPosition = new Vector3(0f, -drop, 0f);
+                    _pendingDrop = drop;
+
                     for (int i = 0; i < Columns; i++)
                     {
                         float t = clip.length * i / (Columns - 1f);
@@ -148,8 +171,22 @@ namespace Unseen.EditorTools
                                       $"{Quaternion.Angle(probeRest, probe.rotation):0.0} deg" +
                                       (foot != null && head != null
                                           ? $" | foot {(foot.position.y - footAtIdle):+0.000} " +
-                                            $"head {(head.position.y - headAtIdle):+0.000}"
+                                            $"head {(head.position.y - headAtIdle):+0.000}" +
+                                            (body != null
+                                                ? $" | SOLE {(LowestVertex(body) - soleAtIdle):+0.000}"
+                                                : string.Empty)
                                           : string.Empty));
+
+                        // The verdict on a stance: with the runtime drop applied, the lowest
+                        // vertex should sit on the floor at zero. Positive is hovering, negative
+                        // is sunk, and neither is something the eye can judge from a screenshot.
+                        if (_pendingDrop > 0f && i == 0 && body != null)
+                        {
+                            float sole = LowestVertex(body);
+                            Debug.Log($"[pose] {name}: drop {_pendingDrop:0.000} m -> lowest vertex " +
+                                      $"{sole:+0.000} m above the floor " +
+                                      $"({(Mathf.Abs(sole) < 0.02f ? "PLANTED" : sole > 0f ? "HOVERING" : "SUNK")})");
+                        }
 
                         Texture2D frame = Render(camera);
                         sheet.SetPixels(i * Cell, 0, Cell, Cell, frame.GetPixels());
@@ -172,6 +209,42 @@ namespace Unseen.EditorTools
                 if (lightHost != null) Object.DestroyImmediate(lightHost);
                 Object.DestroyImmediate(rigHost);
             }
+        }
+
+        /// <summary>
+        /// World Y of the lowest vertex in the current pose.
+        ///
+        /// Baked rather than read from bounds: SkinnedMeshRenderer.bounds is whatever the renderer
+        /// was last told, and AgentVisual deliberately pins it to a fixed box so Unity stops
+        /// culling the ninja against a bind pose a centimetre across. Baking the posed mesh is the
+        /// only reading that reflects where the geometry actually is.
+        /// </summary>
+        private static float LowestVertex(SkinnedMeshRenderer body)
+        {
+            if (body == null) return 0f;
+
+            var baked = new Mesh();
+            body.BakeMesh(baked, true);
+
+            Vector3[] vertices = baked.vertices;
+            float lowest = float.MaxValue;
+            for (int i = 0; i < vertices.Length; i++)
+            {
+                float y = body.transform.TransformPoint(vertices[i]).y;
+                if (y < lowest) lowest = y;
+            }
+
+            Object.DestroyImmediate(baked);
+            return vertices.Length > 0 ? lowest : 0f;
+        }
+
+        /// <summary>Mirrors the drops AgentVisual applies, so the preview matches the game.</summary>
+        private static float _pendingDrop;
+
+        private static class StanceDrop
+        {
+            public const float Crouch = 0.348f;
+            public const float Prone = 0.339f;
         }
 
         private static Texture2D Render(Camera camera)

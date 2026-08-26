@@ -37,8 +37,10 @@ namespace Unseen.Environment
         [Tooltip("Runs a river down one column of the grid, with a bridge at every street.")]
         public bool BuildRiver = true;
 
-        [Tooltip("Depth of the channel below street level. Deep enough to stand under a bridge.")]
-        public float RiverDepth = 4.2f;
+        [Tooltip("Depth of the channel below street level. Deep enough to stand under a bridge " +
+                 "with room over your head, and deep enough that the banks hide you from the " +
+                 "streets either side.")]
+        public float RiverDepth = 5.6f;
 
         [Tooltip("Width of the water itself. The towpaths sit either side of it.")]
         public float RiverWidth = 16f;
@@ -544,10 +546,16 @@ namespace Unseen.Environment
                 new Vector3(RiverWidth, 0.6f, length), UnseenLayers.Default, _stone);
             Acoustics(bed, 0.9f, 1.3f, 1.4f);
 
-            // Shallow water: walkable, loud, and the worst place to cross unseen.
-            Transform water = Box(river, "Water", new Vector3(_riverCentreX, bedY + 0.12f, 0f),
-                new Vector3(RiverWidth, 0.24f, length), UnseenLayers.Default, _water);
+            // A real body of water rather than a puddle: walkable across the top, loud to cross,
+            // and the worst place in the town to be seen standing.
+            Transform water = Box(river, "Water", new Vector3(_riverCentreX, bedY + 0.45f, 0f),
+                new Vector3(RiverWidth, 0.9f, length), UnseenLayers.Default, _water);
             Acoustics(water, 0.2f, 2.2f, 2.4f);
+
+            // Sound and surface motion. Both are driven from one component so the emitters and the
+            // scroll cannot disagree about where the river is.
+            var ambience = river.gameObject.AddComponent<RiverAmbience>();
+            ambience.Configure(_riverCentreX, length * 0.5f, _water);
 
             for (int side = -1; side <= 1; side += 2)
             {

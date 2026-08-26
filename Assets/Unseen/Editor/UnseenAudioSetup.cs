@@ -45,6 +45,7 @@ namespace Unseen.EditorTools
             bank.WindBed = Clip("wind_bed");
             bank.WindGusts = Series("wind_gust_", 3);
             bank.FallWind = Clip("fall_wind");
+            bank.RiverFlow = Clip("river_flow");
 
             var entries = new List<AudioBank.Entry>
             {
@@ -79,7 +80,7 @@ namespace Unseen.EditorTools
                       $"footsteps soft/hard/wood/water = {bank.FootstepSoft.Length}/" +
                       $"{bank.FootstepHard.Length}/{bank.FootstepWood.Length}/{bank.FootstepWater.Length}, " +
                       $"wind bed={(bank.WindBed != null)} gusts={bank.WindGusts.Length} " +
-                      $"fall={(bank.FallWind != null)}");
+                      $"fall={(bank.FallWind != null)} river={(bank.RiverFlow != null)}");
         }
 
         private static AudioBank.Entry Entry(SoundKind kind, float volume, float jitter,
@@ -143,7 +144,8 @@ namespace Unseen.EditorTools
                 var importer = AssetImporter.GetAtPath(asset) as AudioImporter;
                 if (importer == null) continue;
 
-                bool isBed = asset.Contains("wind_bed") || asset.Contains("fall_wind");
+                bool isBed = asset.Contains("wind_bed") || asset.Contains("fall_wind") ||
+                             asset.Contains("river_flow");
 
                 AudioImporterSampleSettings settings = importer.defaultSampleSettings;
                 settings.loadType = isBed ? AudioClipLoadType.Streaming : AudioClipLoadType.DecompressOnLoad;

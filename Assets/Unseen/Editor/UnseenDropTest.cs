@@ -89,7 +89,19 @@ namespace Unseen.EditorTools
 
                     if (!ParkourProbe.HasClearance(feet, radius, height)) inGeometry++;
 
-                    // Anything with no floor within a couple of metres never actually landed.
+                    // Anything with no floor beneath it never actually landed - unless it is in
+                    // the air on purpose. The check runs a minute after the drop, by which point
+                    // bots are jumping, grappling and dropping off roofs of their own accord, and
+                    // counting those as failed landings tests nothing.
+                    bool deliberatelyAirborne =
+                        agent.Locomotion == LocomotionState.Airborne ||
+                        agent.Locomotion == LocomotionState.Grapple ||
+                        agent.Locomotion == LocomotionState.WallClimb ||
+                        agent.Locomotion == LocomotionState.WallRun ||
+                        agent.Locomotion == LocomotionState.RafterCrawl;
+
+                    if (deliberatelyAirborne) continue;
+
                     if (!Physics.Raycast((Vector3)feet + Vector3.up * 0.4f, Vector3.down, 2.5f,
                             UnseenLayers.WorldGeometry, QueryTriggerInteraction.Ignore))
                         floating++;

@@ -51,6 +51,7 @@ namespace Unseen.Client
         private static readonly Color BridgeColour = new Color(0.45f, 0.36f, 0.24f, 1f);
         private static readonly Color PlazaColour = new Color(0.19f, 0.20f, 0.23f, 0.9f);
         private static readonly Color MistColour = new Color(0.62f, 0.40f, 0.85f, 0.9f);
+        private static readonly Color WallColour = new Color(0.55f, 0.50f, 0.42f, 0.9f);
         private static readonly Color SelfColour = new Color(0.95f, 0.93f, 0.80f, 1f);
 
         private void Awake()
@@ -102,7 +103,7 @@ namespace Unseen.Client
                 ? new Vector2(_map != null ? _map.Center.x : 0f, _map != null ? _map.Center.z : 0f)
                 : new Vector2(_snapshot.SelfPosition.x, _snapshot.SelfPosition.z);
 
-            Fill(panel, Backdrop);
+            DrawDial(panel);
 
             GUI.BeginClip(panel);
             Vector2 local = centre - new Vector2(panel.x, panel.y);
@@ -113,8 +114,8 @@ namespace Unseen.Client
             DrawSelf(local, focus, pixelsPerMetre);
             GUI.EndClip();
 
-            // Border last, over the clipped contents.
-            Outline(panel, new Color(0f, 0f, 0f, 0.85f));
+            // Rim last, over the clipped contents.
+            DrawRim(panel);
 
             GUI.Label(new Rect(panel.x + 6f, panel.yMax + 2f, Size, 18f),
                 ShowWholeMap ? $"town   {ExpandKey} to zoom in" : $"{span:0} m   {ExpandKey} for the town",
@@ -123,9 +124,16 @@ namespace Unseen.Client
 
         private void DrawLandmarks(Vector2 origin, Vector2 focus, float scale)
         {
+            // Nothing beyond the rampart is drawn. Outside the wall there is nothing to navigate
+            // by and nowhere a player may stand, so a map that renders it is spending its most
+            // valuable space on ground that does not exist.
+            float playable = _map != null ? _map.Radius : float.MaxValue;
+            var mapCentre = _map != null ? new Vector2(_map.Center.x, _map.Center.z) : Vector2.zero;
+
             for (int i = 0; i < _sketch.Landmarks.Count; i++)
             {
                 MapSketch.Landmark mark = _sketch.Landmarks[i];
+                if ((mark.Center - mapCentre).magnitude > playable) continue;
 
                 // North is up, so world +Z maps to screen -Y.
                 Vector2 offset = (mark.Center - focus) * scale;
@@ -139,9 +147,57 @@ namespace Unseen.Client
                     size.x, size.y);
 
                 if (rect.xMax < 0f || rect.yMax < 0f || rect.x > Size || rect.y > Size) continue;
+                if (!InsideDial(origin, rect.center)) continue;
 
                 Fill(rect, ColourOf(mark.Kind));
             }
+
+            DrawWall(origin, focus, scale, mapCentre, playable);
+        }
+
+        /// <summary>
+        /// The rampart itself, so the edge of the world is a line on the map rather than the point
+        /// at which buildings stop appearing.
+        /// </summary>
+        private void DrawWall(Vector2 origin, Vector2 focus, float scale, Vector2 mapCentre, float radius)
+        {
+            if (_map == null) return;
+
+            // The rampart is a square ring, so the map draws it as one rather than as a circle it
+            // is not.
+            float half = radius * scale;
+            Vector2 c = new Vector2(origin.x + (mapCentre.x - focus.x) * scale,
+                origin.y - (mapCentre.y - focus.y) * scale);
+
+            const int steps = 64;
+            for (int i = 0; i < steps; i++)
+            {
+                float t = i / (float)steps * 4f;
+                int edge = Mathf.FloorToInt(t);
+                float f = t - edge;
+
+                Vector2 point = edge switch
+                {
+                    0 => new Vector2(c.x - half + half * 2f * f, c.y - half),
+                    1 => new Vector2(c.x + half, c.y - half + half * 2f * f),
+                    2 => new Vector2(c.x + half - half * 2f * f, c.y + half),
+                    _ => new Vector2(c.x - half, c.y + half - half * 2f * f)
+                };
+
+                if (!InsideDial(origin, point)) continue;
+                Fill(new Rect(point.x - 1f, point.y - 1f, 2f, 2f), WallColour);
+            }
+        }
+
+        /// <summary>
+        /// Whether a point is inside the round face of the map.
+        ///
+        /// IMGUI cannot clip to a circle, so everything drawn tests itself. A round dial wastes
+        /// less of a corner than a square one and reads as an instrument rather than a window.
+        /// </summary>
+        private bool InsideDial(Vector2 origin, Vector2 point)
+        {
+            return (point - origin).sqrMagnitude <= (Size * 0.5f - 2f) * (Size * 0.5f - 2f);
         }
 
         private static Color ColourOf(MapSketch.Feature kind)
@@ -174,7 +230,7 @@ namespace Unseen.Client
                     origin.x + offset.x + Mathf.Sin(angle) * radius,
                     origin.y - offset.y - Mathf.Cos(angle) * radius);
 
-                if (point.x < 0f || point.y < 0f || point.x > Size || point.y > Size) continue;
+                if (!InsideDial(origin, point)) continue;
                 Fill(new Rect(point.x - 1.5f, point.y - 1.5f, 3f, 3f), MistColour);
             }
         }
@@ -195,7 +251,7 @@ namespace Unseen.Client
                 var rect = new Rect(origin.x + offset.x - size * 0.5f,
                     origin.y - offset.y - size * 0.5f, size, size);
 
-                if (rect.x < 0f || rect.y < 0f || rect.xMax > Size || rect.yMax > Size) continue;
+                if (!InsideDial(origin, rect.center)) continue;
                 Fill(rect, new Color(1f, 0.92f, 0.7f, 0.35f + 0.5f * sound.Intensity));
             }
         }
@@ -222,6 +278,33 @@ namespace Unseen.Client
         {
             if (_tiny != null) return;
             _tiny = new GUIStyle(GUI.skin.label) { fontSize = 10 };
+        }
+
+        /// <summary>Fills the round face, one horizontal band per row.</summary>
+        private void DrawDial(Rect panel)
+        {
+            float radius = Size * 0.5f;
+            Vector2 centre = new Vector2(panel.x + radius, panel.y + radius);
+
+            for (float y = -radius; y <= radius; y += 1f)
+            {
+                float halfWidth = Mathf.Sqrt(Mathf.Max(0f, radius * radius - y * y));
+                Fill(new Rect(centre.x - halfWidth, centre.y + y, halfWidth * 2f, 1f), Backdrop);
+            }
+        }
+
+        private void DrawRim(Rect panel)
+        {
+            float radius = Size * 0.5f - 1f;
+            Vector2 centre = new Vector2(panel.x + Size * 0.5f, panel.y + Size * 0.5f);
+
+            const int steps = 120;
+            for (int i = 0; i < steps; i++)
+            {
+                float angle = i / (float)steps * Mathf.PI * 2f;
+                Fill(new Rect(centre.x + Mathf.Sin(angle) * radius - 1f,
+                    centre.y + Mathf.Cos(angle) * radius - 1f, 2f, 2f), new Color(0f, 0f, 0f, 0.9f));
+            }
         }
 
         private void Outline(Rect rect, Color colour)
