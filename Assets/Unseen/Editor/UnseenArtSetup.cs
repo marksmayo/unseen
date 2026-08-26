@@ -96,6 +96,11 @@ namespace Unseen.EditorTools
             set.Foliage = BuildTint(lit, Pick(built, "Tatami"), "Foliage",
                 new Color(0.13f, 0.20f, 0.13f), 0.2f, bumpScale: 0.7f);
 
+            set.Bamboo = BuildTint(lit, Pick(built, "Tatami"), "Bamboo",
+                new Color(0.42f, 0.48f, 0.24f), 0.3f, bumpScale: 0.6f);
+            set.BambooMass = BuildTint(lit, Pick(built, "Tatami"), "BambooMass",
+                new Color(0.11f, 0.16f, 0.09f), 0.15f, bumpScale: 0.4f);
+
             set.LanternGlow = BuildLanternGlow(lit, Pick(built, "Paper"));
             set.ShojiPaper = BuildShojiPaper(Pick(built, "Paper"));
             set.Mist = BuildMistMaterial();

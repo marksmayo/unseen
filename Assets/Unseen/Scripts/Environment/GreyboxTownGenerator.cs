@@ -138,6 +138,12 @@ namespace Unseen.Environment
         private Material _water;
         private Material _foliage;
         private Material _shojiPaper;
+        private Material _bamboo;
+        private Material _bambooMass;
+        private BambooForest _forest;
+
+        /// <summary>The spirit forest, for the growth system to drive.</summary>
+        public BambooForest Forest => _forest;
         private LootTable _runtimeTable;
 
         /// <summary>
@@ -226,6 +232,7 @@ namespace Unseen.Environment
             BuildStreetLanterns(extent, pitch);
             BuildFoliage(extent, pitch);
             BuildRampart(extent);
+            BuildSpiritForest();
             BudgetLanternLights();
             CombineStatics();
 
@@ -933,7 +940,47 @@ namespace Unseen.Environment
             Acoustics(host.transform, 0.25f, 0.7f, 0.8f);
         }
 
-        // ---------------------------------------------------------------- cost control
+        /// <summary>
+        /// Plants the spirit forest against the inside of the rampart, dormant until the match
+        /// tells it to grow.
+        ///
+        /// Built here rather than by the growth system so the geometry exists before anyone
+        /// connects: a wall of bamboo appearing as a few hundred new GameObjects three minutes into
+        /// a match is a hitch nobody needs, and the whole thing costs nothing while it is switched
+        /// off.
+        /// </summary>
+        private void BuildSpiritForest()
+        {
+            if (_rampartRing <= 0f) return;
+
+            var host = new GameObject("SpiritForest").transform;
+            host.SetParent(_root, false);
+
+            var forest = host.gameObject.AddComponent<BambooForest>();
+            _forest = forest;
+
+            // Inside the wall-walk, so the bamboo grows in front of the rampart rather than
+            // through it.
+            const float bankHeight = 5.4f;
+            const float parapetHeight = 1.6f;
+            const float walkWidth = 4f;
+
+            float wallHeight = bankHeight + parapetHeight;
+            float inner = _rampartRing - walkWidth * 0.5f;
+
+            forest.Build(inner, wallHeight,
+                wallHeight * Mathf.Max(1f, MaterialSetBambooHeight()),
+                inner * 0.85f, _bamboo, _bambooMass);
+        }
+
+        /// <summary>Height multiple, read from config so the forest and the rules agree.</summary>
+        private static float MaterialSetBambooHeight()
+        {
+            UnseenConfig config = UnseenConfig.Default;
+            return config != null ? config.Bamboo.HeightMultiple : 2f;
+        }
+
+        // ---------------------------------------------------------------- cost control        // ---------------------------------------------------------------- cost control
 
         /// <summary>
         /// Caps how many lantern lights are live at once.
@@ -1613,6 +1660,8 @@ namespace Unseen.Environment
                 _water = set.Water != null ? set.Water : set.Stone;
                 _foliage = set.Foliage != null ? set.Foliage : set.Timber;
                 _shojiPaper = set.ShojiPaper != null ? set.ShojiPaper : set.Paper;
+                _bamboo = set.Bamboo != null ? set.Bamboo : set.Foliage;
+                _bambooMass = set.BambooMass != null ? set.BambooMass : set.Foliage;
                 _textureMetres = set.TextureMetres;
                 _textured = true;
                 return;
@@ -1637,6 +1686,8 @@ namespace Unseen.Environment
             _water = MakeMaterial(shader, "GreyboxWater", new Color(0.1f, 0.17f, 0.2f));
             _foliage = MakeMaterial(shader, "GreyboxFoliage", new Color(0.13f, 0.2f, 0.13f));
             _shojiPaper = _paper;
+            _bamboo = MakeMaterial(shader, "GreyboxBamboo", new Color(0.32f, 0.38f, 0.20f));
+            _bambooMass = MakeMaterial(shader, "GreyboxBambooMass", new Color(0.12f, 0.17f, 0.10f));
             _textured = false;
         }
 

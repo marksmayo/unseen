@@ -212,6 +212,7 @@ namespace Unseen.Core
             _sim.Add(new AgentEffectsSystem());
             _match = _sim.Add(new MatchDirector());
             _sim.Add(new MistZoneController());
+            _bamboo = _sim.Add(new BambooGrowthSystem());
             _replication = _sim.Add(new ReplicationSystem());
 
             combat.SmokePrefab = SmokePrefab;
@@ -222,6 +223,15 @@ namespace Unseen.Core
             float radius = map != null ? map.Radius : 200f;
 
             bounds.Configure(map);
+
+            // The spirit forest belongs to the level, so the system is handed the one the
+            // generator planted rather than building its own.
+            var forest = map != null ? map.GetComponentInChildren<BambooForest>() : null;
+            if (forest == null) forest = FindAnyObjectByType<BambooForest>();
+            if (forest != null) _bamboo.Configure(forest, center, radius);
+            else Debug.LogWarning("[Unseen] no BambooForest in the level; the spirit forest will not grow");
+
+            _match.MatchStarted += _ => _bamboo.Begin(_sim.Time);
             _match.AgentDied += OnAgentDied;
             _match.MatchStarted += _ => _hud?.NoteMatchStarted();
             _match.Configure(_spawner, center, radius, Seed);
@@ -332,6 +342,7 @@ namespace Unseen.Core
         private StealthHud _hud;
         private AgentEntity _localSoundAgent;
         private AgentEntity _spectating;
+        private BambooGrowthSystem _bamboo;
 
         /// <summary>
         /// Plays the death scene, and reports the elimination to the HUD.

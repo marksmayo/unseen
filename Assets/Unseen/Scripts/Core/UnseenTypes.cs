@@ -95,7 +95,11 @@ namespace Unseen.Core
         Noisemaker = 9,
         SmokeBomb = 10,
         Death = 11,
-        LootContainer = 12
+        LootContainer = 12,
+
+        /// <summary>Bamboo disturbed by a body pushing against it. Appended, never renumbered:
+        /// SoundKind travels on the wire as a byte.</summary>
+        BambooRustle = 13
     }
 
     public enum DamageKind : byte

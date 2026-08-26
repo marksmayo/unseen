@@ -247,6 +247,48 @@ namespace Unseen.Core
             public bool SkipInfiltration;
         }
 
+        /// <summary>
+        /// The spirit forest: bamboo that grows in from the rampart and squeezes the map.
+        ///
+        /// A second, physical closing mechanic alongside the mist. The mist punishes you for being
+        /// outside a line you can walk back across; the bamboo simply takes the ground away and
+        /// will not let you back. It is deliberately silent about damage - it does not need to
+        /// hurt, because it cannot be passed.
+        /// </summary>
+        [Serializable]
+        public sealed class BambooSection
+        {
+            [Tooltip("Grow the spirit forest at all.")]
+            public bool Enabled = true;
+
+            [Tooltip("Seconds into the match before the first shoots appear.")]
+            public float FirstGrowth = 180f;
+
+            [Tooltip("Seconds the first band takes to reach full height.")]
+            public float FirstBandDuration = 60f;
+
+            [Tooltip("Seconds each later band takes. Fast, once the forest has taken hold.")]
+            public float BandDuration = 15f;
+
+            [Tooltip("How far inward one band reaches, in metres.")]
+            public float BandDepth = 1f;
+
+            [Tooltip("Height as a multiple of the rampart's. Tall enough that it cannot be " +
+                     "jumped over, and tall enough that landing on top is not a route.")]
+            public float HeightMultiple = 2f;
+
+            [Tooltip("How firmly a body caught in the bamboo is pushed back inside, in m/s.")]
+            public float PushSpeed = 4f;
+
+            [Tooltip("Loudness of bamboo being pushed through. It is cover you cannot use quietly.")]
+            public float RustleLoudness = 1.5f;
+
+            public float RustleRadius = 26f;
+
+            [Tooltip("Seconds between rustles from one agent, so contact is a sound not a siren.")]
+            public float RustleInterval = 0.45f;
+        }
+
         [Serializable]
         public sealed class BotSection
         {
@@ -290,6 +332,7 @@ namespace Unseen.Core
         public MovementSection Movement = new MovementSection();
         public CombatSection Combat = new CombatSection();
         public MatchSection Match = new MatchSection();
+        public BambooSection Bamboo = new BambooSection();
         public BotSection Bots = new BotSection();
 
         private static UnseenConfig _default;

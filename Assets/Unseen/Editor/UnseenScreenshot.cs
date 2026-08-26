@@ -165,6 +165,26 @@ namespace Unseen.EditorTools
 
                 // Close-up on a lantern, to check the paper body and its texture rather than
                 // judging it from a glowing dot at the end of an alley.
+                // Grow the spirit forest so it can be photographed: it is dormant for the first
+                // three minutes of a match, which no screenshot run will ever reach.
+                var forest = host.GetComponentInChildren<Unseen.Environment.BambooForest>();
+                if (forest != null)
+                {
+                    forest.SetDepth(4f, 1f);
+
+                    var wallShot = new Shot
+                    {
+                        Name = "15-bamboo",
+                        Position = new Vector3(0f, 6f, -336f),
+                        LookAt = new Vector3(0f, 10f, -372f),
+                        Fov = 62f
+                    };
+
+                    var list = new System.Collections.Generic.List<Shot>(shots) { wallShot };
+                    shots = list.ToArray();
+                    Debug.Log($"[shot] spirit forest grown to {forest.Depth:0.0} m for the capture");
+                }
+
                 Transform bridge = FindNamed(host.transform, "Deck");
                 if (bridge != null)
                 {

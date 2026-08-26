@@ -47,6 +47,13 @@ namespace Unseen.Environment
         [Tooltip("Tree canopies and shrubs. Falls back to Timber.")]
         public Material Foliage;
 
+        [Tooltip("Bamboo culms on the growing face of the spirit forest. Falls back to Foliage.")]
+        public Material Bamboo;
+
+        [Tooltip("The dense mass behind the growing face. Darker, so a grown forest reads as " +
+                 "impenetrable rather than as a hedge. Falls back to Foliage.")]
+        public Material BambooMass;
+
         [Tooltip("Shoji panels and lantern shells.")]
         public Material Paper;
 
