@@ -25,13 +25,20 @@ namespace Unseen.Environment
             public Vector3 Inward;
             public bool AlongX;
             public Transform[] Culms;
+            public Transform[] Leaves;
         }
 
         [Tooltip("Metres between culms along the growing face.")]
-        public float CulmSpacing = 3.2f;
+        public float CulmSpacing = 2.3f;
 
-        [Tooltip("Culms per side. Caps the cost on a very large map.")]
-        public int MaxCulmsPerSide = 220;
+        [Tooltip("Culms per side. Caps the cost on a very large map. Two hundred over a " +
+                 "seven-hundred-metre side is one cane every three and a half metres, which " +
+                 "reads as a picket fence rather than a grove.")]
+        public int MaxCulmsPerSide = 320;
+
+        [Tooltip("Sprays of leaf per culm. Two staggered sprays read as a feathered tip; one " +
+                 "reads as a paddle on a stick.")]
+        public int FrondsPerCulm = 2;
 
         private readonly List<Side> _sides = new List<Side>(4);
         private float _ring;
@@ -51,7 +58,7 @@ namespace Unseen.Environment
         /// <see cref="SetDepth"/> is called with something above zero.
         /// </summary>
         public void Build(float ringRadius, float wallHeight, float height, float maxDepth,
-            Material culm, Material mass)
+            Material culm, Material mass, Material foliage)
         {
             _ring = ringRadius;
             _height = height;
@@ -82,7 +89,9 @@ namespace Unseen.Environment
                 host.layer = UnseenLayers.Occluder;
                 host.SetActive(false);
 
+                int fronds = Mathf.Max(1, FrondsPerCulm);
                 var culms = new Transform[culmCount];
+                var leaves = new Transform[culmCount * fronds];
                 for (int i = 0; i < culmCount; i++)
                 {
                     var stalk = new GameObject($"Culm_{side}_{i}");
@@ -98,6 +107,26 @@ namespace Unseen.Environment
 
                     stalk.SetActive(false);
                     culms[i] = stalk.transform;
+
+                    // Leaves. Bamboo is bare for most of its height and then all foliage at the
+                    // top, and without that the culms read as fence posts.
+                    //
+                    // Sprays rather than one slab: a single wide box at the tip is a paddle from
+                    // every angle, and a paddle on a pole is what the first pass looked like. Two
+                    // narrow sprays at different heights, splayed apart, read as a feathered tip.
+                    for (int f = 0; f < fronds; f++)
+                    {
+                        var spray = new GameObject($"Leaves_{side}_{i}_{f}");
+                        spray.transform.SetParent(transform, false);
+                        spray.AddComponent<MeshFilter>().sharedMesh =
+                            BoxMeshFactory.Get(new Vector3(0.7f, 2.8f, 0.7f), 2.5f);
+
+                        var sprayRenderer = spray.AddComponent<MeshRenderer>();
+                        if (foliage != null) sprayRenderer.sharedMaterial = foliage;
+
+                        spray.SetActive(false);
+                        leaves[i * fronds + f] = spray.transform;
+                    }
                 }
 
                 _sides.Add(new Side
@@ -106,7 +135,8 @@ namespace Unseen.Environment
                     Collider = box,
                     Inward = inward,
                     AlongX = alongX,
-                    Culms = culms
+                    Culms = culms,
+                    Leaves = leaves
                 });
             }
 
@@ -132,8 +162,17 @@ namespace Unseen.Environment
                 if (!visible)
                 {
                     for (int c = 0; c < side.Culms.Length; c++)
+                    {
                         if (side.Culms[c].gameObject.activeSelf)
                             side.Culms[c].gameObject.SetActive(false);
+                    }
+
+                    for (int c = 0; c < side.Leaves.Length; c++)
+                    {
+                        if (side.Leaves[c].gameObject.activeSelf)
+                            side.Leaves[c].gameObject.SetActive(false);
+                    }
+
                     continue;
                 }
 
@@ -195,6 +234,25 @@ namespace Unseen.Environment
 
                 culm.localScale = new Vector3(1f, height * scale, 1f);
                 culm.localRotation = Quaternion.Euler(lean * 0.4f, i * 37f, lean);
+
+                int fronds = side.Leaves.Length / Mathf.Max(1, side.Culms.Length);
+                for (int f = 0; f < fronds; f++)
+                {
+                    Transform head = side.Leaves[i * fronds + f];
+                    if (!head.gameObject.activeSelf) head.gameObject.SetActive(true);
+
+                    // Sprays staggered down from the tip and splayed to alternate sides, so the
+                    // top of a culm has a silhouette instead of an outline.
+                    float drop = f * 0.16f;
+                    float splay = (f % 2 == 0 ? 1f : -1f) * (18f + f * 7f);
+
+                    head.localPosition = culm.localPosition +
+                        new Vector3(0f, height * scale * (0.42f - drop), 0f);
+                    head.localScale = Vector3.one *
+                        (0.7f + Mathf.Abs(Mathf.Sin((i + f) * 2.11f)) * 0.45f);
+                    head.localRotation = Quaternion.Euler(
+                        splay * 0.5f, i * 53f + f * 61f, lean * 0.5f + splay);
+                }
             }
         }
     }

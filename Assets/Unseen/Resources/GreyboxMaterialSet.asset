@@ -21,6 +21,10 @@ MonoBehaviour:
   Tatami: {fileID: 2100000, guid: 5f8aa41878b84254197f86702c131876, type: 2}
   Ground: {fileID: 2100000, guid: 5deeb786d156dcf45a6416d1d4148886, type: 2}
   Water: {fileID: 2100000, guid: b4f28a64fae634646be8524721184755, type: 2}
+  Grass: {fileID: 2100000, guid: c801dcaee00e1e441bd32ed5687aebd8, type: 2}
+  Dirt: {fileID: 2100000, guid: 0215cb6651568f34082e61d2b7bc7949, type: 2}
+  Reed: {fileID: 2100000, guid: 8ad623d2636d0714f831ab7109cae416, type: 2}
+  RiverStone: {fileID: 2100000, guid: bbece67108108c6489d3f339eb73d90f, type: 2}
   Foliage: {fileID: 2100000, guid: ef358505901b7884d95b67b0f6afe054, type: 2}
   Vermilion: {fileID: 2100000, guid: 066f5dd7181d38c4e978427003e5a625, type: 2}
   Bamboo: {fileID: 2100000, guid: a8cde544de743364c92accc3cdd0c8ac, type: 2}

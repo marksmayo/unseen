@@ -172,11 +172,15 @@ namespace Unseen.EditorTools
                 {
                     forest.SetDepth(4f, 1f);
 
+                    // Above the rooftops rather than at head height: a fixed ground-level camera
+                    // ends up inside whatever building the generator happens to put there, and
+                    // the layout shifts every time anything upstream draws from the same random
+                    // stream. Looking down the last block at the wall always works.
                     var wallShot = new Shot
                     {
                         Name = "15-bamboo",
-                        Position = new Vector3(0f, 6f, -336f),
-                        LookAt = new Vector3(0f, 10f, -372f),
+                        Position = new Vector3(0f, 26f, -300f),
+                        LookAt = new Vector3(0f, 12f, -372f),
                         Fov = 62f
                     };
 
@@ -185,8 +189,9 @@ namespace Unseen.EditorTools
                     Debug.Log($"[shot] spirit forest grown to {forest.Depth:0.0} m for the capture");
                 }
 
-                // The deck is segmented into an arch now, so the first plank is the landmark.
-                Transform bridge = FindNamed(host.transform, "Deck_7");
+                // The deck is segmented into an arch, and the middle segment is the crown - which
+                // is where you want the camera for both the on-bridge and the under-bridge shot.
+                Transform bridge = FindNamed(host.transform, "Deck_12");
                 if (bridge != null)
                 {
                     Vector3 pos = bridge.position;

@@ -42,8 +42,9 @@ namespace Unseen.Environment
                  "streets either side.")]
         public float RiverDepth = 5.6f;
 
-        [Tooltip("How high the middle of a bridge stands above its ends.")]
-        public float BridgeArchRise = 1.8f;
+        [Tooltip("How high the middle of a bridge stands above its ends. A drum bridge is meant " +
+                 "to be climbed, not strolled across.")]
+        public float BridgeArchRise = 2.9f;
 
         [Tooltip("Width of the water itself. The towpaths sit either side of it.")]
         public float RiverWidth = 16f;
@@ -168,6 +169,10 @@ namespace Unseen.Environment
         private Material _shojiPaper;
         private Material _vermilion;
         private Material _bamboo;
+        private Material _grass;
+        private Material _dirt;
+        private Material _reed;
+        private Material _riverStone;
         private Material _bambooMass;
         private BambooForest _forest;
 
@@ -272,6 +277,8 @@ namespace Unseen.Environment
             if (_riverColumn >= 0) BuildRiverChannel(extent, pitch);
             if (BuildSewers) BuildSewerNetwork(extent, pitch);
             BuildStreetLanterns(extent, pitch);
+            BuildStreetFurniture(extent, pitch);
+            BuildVerges(extent, pitch);
             BuildFoliage(extent, pitch);
             BuildRampart(extent);
             BuildSpiritForest();
@@ -501,6 +508,7 @@ namespace Unseen.Environment
                 Acoustics(midFloor, 0.65f, 0.7f, 0.8f);
             }
 
+            BuildEngawa(compound, half, doorSide);
             PlaceLanterns(compound, half, height);
             PlaceContainers(compound, half);
         }
@@ -938,11 +946,111 @@ namespace Unseen.Environment
                 Acoustics(wall, 0.95f, 1f, 1f);
             }
 
+            BuildRiverDressing(river, length, channelHalf, bedY, waterTop, pathTop);
             BuildRiverStairs(river, extent, pitch, channelHalf, bedY);
             BuildBridges(river, extent, pitch, channelHalf, bedY);
         }
 
-        /// <summary>Steps down to the towpath, so the river is a route rather than a trap.</summary>
+        /// <summary>
+        /// Rocks, reeds and mooring posts along the channel.
+        ///
+        /// The river was a blue slab between two grey slabs. These are what make it read as a
+        /// watercourse: something breaking the surface, something growing at the margin, and
+        /// something built by people at the edge.
+        /// </summary>
+        private void BuildRiverDressing(Transform river, float length, float channelHalf,
+            float bedY, float waterTop, float pathTop)
+        {
+            int rocks = Mathf.RoundToInt(length / 22f);
+
+            for (int i = 0; i < rocks; i++)
+            {
+                float z = Mathf.Lerp(-length * 0.45f, length * 0.45f, i / (float)Mathf.Max(1, rocks - 1));
+                z += (float)(_random.NextDouble() - 0.5) * 12f;
+
+                float x = _riverCentreX + (float)(_random.NextDouble() * 2f - 1f) * RiverWidth * 0.38f;
+                float size = 0.8f + (float)_random.NextDouble() * 1.5f;
+
+                // Mostly under. A boulder standing a metre clear of the water reads as a crate
+                // somebody dropped in the river; one with just its crown showing reads as a rock
+                // the water has been running over for a century.
+                Transform rock = Box(river, $"Rock_{i}",
+                    new Vector3(x, waterTop - size * 0.62f, z),
+                    new Vector3(size, size, size * 0.8f), UnseenLayers.Occluder, _riverStone);
+                rock.localRotation = Quaternion.Euler(
+                    (float)_random.NextDouble() * 22f,
+                    (float)_random.NextDouble() * 360f,
+                    (float)_random.NextDouble() * 22f);
+                Acoustics(rock, 0.9f, 1f, 1f);
+
+                // Two smaller ones alongside, so a rock is an outcrop rather than a single object.
+                for (int c = 0; c < 2; c++)
+                {
+                    float small = size * (0.35f + (float)_random.NextDouble() * 0.3f);
+                    Transform chip = Detail(river, $"Rock_{i}_{c}",
+                        new Vector3(x + (float)(_random.NextDouble() * 2f - 1f) * size,
+                            waterTop - small * 0.55f,
+                            z + (float)(_random.NextDouble() * 2f - 1f) * size),
+                        new Vector3(small, small, small * 0.8f), _riverStone);
+                    chip.localRotation = Quaternion.Euler(0f, (float)_random.NextDouble() * 360f, 0f);
+                }
+            }
+
+            for (int side = -1; side <= 1; side += 2)
+            {
+                float margin = _riverCentreX + side * (RiverWidth * 0.5f - 0.4f);
+                float postLine = _riverCentreX + side * (RiverWidth * 0.5f + 0.9f);
+
+                int clumps = Mathf.RoundToInt(length / 9f);
+                for (int i = 0; i < clumps; i++)
+                {
+                    float z = Mathf.Lerp(-length * 0.48f, length * 0.48f, i / (float)Mathf.Max(1, clumps - 1));
+                    if (_random.NextDouble() < 0.3) continue;
+
+                    // Reeds at the waterline. A single box of foliage reads as a green crate
+                    // floating in the river; what reads as reeds is several thin blades of
+                    // different heights leaning away from each other.
+                    var root = new Vector3(margin + (float)(_random.NextDouble() - 0.5) * 1.2f,
+                        0f, z);
+
+                    int blades = 4 + _random.Next(4);
+                    for (int b = 0; b < blades; b++)
+                    {
+                        float tall = 1.0f + (float)_random.NextDouble() * 1.3f;
+                        var at = root + new Vector3(
+                            (float)(_random.NextDouble() * 2f - 1f) * 0.45f,
+                            waterTop + tall * 0.42f,
+                            (float)(_random.NextDouble() * 2f - 1f) * 0.45f);
+
+                        Transform blade = Detail(river, $"Reed_{side}_{i}_{b}", at,
+                            new Vector3(0.09f, tall, 0.09f), _reed);
+                        blade.localRotation = Quaternion.Euler(
+                            (float)(_random.NextDouble() * 2f - 1f) * 16f,
+                            (float)_random.NextDouble() * 90f,
+                            (float)(_random.NextDouble() * 2f - 1f) * 16f);
+                    }
+                }
+
+                int posts = Mathf.RoundToInt(length / 26f);
+                for (int i = 0; i < posts; i++)
+                {
+                    float z = Mathf.Lerp(-length * 0.42f, length * 0.42f, i / (float)Mathf.Max(1, posts - 1));
+
+                    // Mooring posts, standing on the ledge and leaning over the water.
+                    Transform post = Box(river, $"Mooring_{side}_{i}",
+                        new Vector3(postLine, pathTop + 0.7f, z),
+                        new Vector3(0.28f, 1.4f, 0.28f), UnseenLayers.Occluder, _darkTimber);
+                    post.localRotation = Quaternion.Euler(0f, 0f, side * 5f);
+                    Acoustics(post, 0.5f, 1f, 1f);
+
+                    Detail(river, $"MooringCap_{side}_{i}",
+                        new Vector3(postLine, pathTop + 1.44f, z),
+                        new Vector3(0.38f, 0.12f, 0.38f), _stone);
+                }
+            }
+        }
+
+        /// <summary>Steps down to the towpath, so the river is a route rather than a trap.</summary>        /// <summary>Steps down to the towpath, so the river is a route rather than a trap.</summary>
         private void BuildRiverStairs(Transform river, float extent, float pitch,
             float channelHalf, float bedY)
         {
@@ -1058,18 +1166,59 @@ namespace Unseen.Environment
                             new Vector3(0.13f, 1.04f, 0.13f), _vermilion);
                     }
 
-                    // Newel posts at each end, with a lantern on top, where a bridge keeper would
-                    // actually hang one.
-                    for (int end = -1; end <= 1; end += 2)
+                    // Newel posts at each end and at the crown, each capped with a giboshi - the
+                    // onion-shaped bronze finial that says at a glance this is a bridge somebody
+                    // paid for rather than a plank across a ditch.
+                    for (int n = -1; n <= 1; n++)
                     {
-                        float x = _riverCentreX + end * span * 0.5f;
-                        Detail(bridge, $"Newel_{r}_{end}",
-                            new Vector3(x, deckY + 1.2f, railZ),
-                            new Vector3(0.28f, 2.4f, 0.28f), _vermilion);
-                        Detail(bridge, $"NewelCap_{r}_{end}",
-                            new Vector3(x, deckY + 2.46f, railZ),
-                            new Vector3(0.42f, 0.14f, 0.42f), _darkTimber);
-                        CreateLantern(bridge, new Vector3(x, deckY + 2.0f, railZ), 11f, 0.95f);
+                        float t = 0.5f + n * 0.5f;
+                        float x = Mathf.Lerp(_riverCentreX - span * 0.5f, _riverCentreX + span * 0.5f, t);
+                        float baseY = deckY + ArchHeight(t);
+
+                        Detail(bridge, $"Newel_{r}_{n}",
+                            new Vector3(x, baseY + 1.25f, railZ),
+                            new Vector3(0.34f, 2.5f, 0.34f), _vermilion);
+
+                        // Giboshi: a stack of three shrinking blocks reads as the onion shape at
+                        // any distance a player will ever see it from.
+                        Detail(bridge, $"Giboshi_{r}_{n}_0",
+                            new Vector3(x, baseY + 2.54f, railZ),
+                            new Vector3(0.46f, 0.16f, 0.46f), _darkTimber);
+                        Detail(bridge, $"Giboshi_{r}_{n}_1",
+                            new Vector3(x, baseY + 2.74f, railZ),
+                            new Vector3(0.38f, 0.28f, 0.38f), _darkTimber);
+                        Detail(bridge, $"Giboshi_{r}_{n}_2",
+                            new Vector3(x, baseY + 2.94f, railZ),
+                            new Vector3(0.2f, 0.22f, 0.2f), _darkTimber);
+
+                        if (n != 0)
+                            CreateLantern(bridge, new Vector3(x, baseY + 2.05f, railZ), 12f, 1f);
+                    }
+                }
+
+                // Cross-bracing under the arch, and the beams the deck sits on. From the towpath
+                // this is most of what you see of a bridge, and it was previously nothing at all.
+                for (int beam = -1; beam <= 1; beam += 2)
+                {
+                    for (int c = 0; c < 10; c++)
+                    {
+                        float t0 = c / 10f;
+                        float t1 = (c + 1) / 10f;
+                        float x0 = Mathf.Lerp(_riverCentreX - span * 0.5f, _riverCentreX + span * 0.5f, t0);
+                        float x1 = Mathf.Lerp(_riverCentreX - span * 0.5f, _riverCentreX + span * 0.5f, t1);
+                        float y0 = deckY + ArchHeight(t0) - 0.55f;
+                        float y1 = deckY + ArchHeight(t1) - 0.55f;
+
+                        float run = x1 - x0;
+                        float rise = y1 - y0;
+                        float len = Mathf.Sqrt(run * run + rise * rise);
+
+                        Transform stringer = Detail(bridge, $"Stringer_{beam}_{c}",
+                            new Vector3((x0 + x1) * 0.5f, (y0 + y1) * 0.5f,
+                                z + beam * (deckWidth * 0.5f - 1.1f)),
+                            new Vector3(len + 0.05f, 0.34f, 0.3f), _darkTimber);
+                        stringer.localRotation =
+                            Quaternion.Euler(0f, 0f, Mathf.Atan2(rise, run) * Mathf.Rad2Deg);
                     }
                 }
             }
@@ -1086,11 +1235,12 @@ namespace Unseen.Environment
         ///
         /// Every riser is kept under the character controller's 0.45 m step offset, so the bridge
         /// is walked over rather than climbed or blocked - the same constraint the tiered roofs
-        /// are built to.
+        /// are built to. The segment count is tied to the arch rise: the steepest riser is at the
+        /// abutment, and a taller arch over the same count would put it over the limit.
         /// </summary>
         private Transform BuildArchedDeck(Transform bridge, float z, float span, float width, float baseY)
         {
-            const int segments = 14;
+            const int segments = 24;
             float length = span / segments;
             Transform first = null;
 
@@ -1117,7 +1267,7 @@ namespace Unseen.Environment
             return first;
         }
 
-        // ---------------------------------------------------------------- pagoda        // ---------------------------------------------------------------- pagoda
+        // ---------------------------------------------------------------- pagoda
 
         /// <summary>
         /// A pagoda: storeys of shrinking footprint, each with a walkable balcony under a hip roof,
@@ -1257,7 +1407,230 @@ namespace Unseen.Environment
             }
         }
 
-        // ---------------------------------------------------------------- foliage
+        // ---------------------------------------------------------------- verges
+
+        /// <summary>
+        /// Patches of worn grass and bare earth across the streets.
+        ///
+        /// A town where every square metre of ground is the same gravel reads as a floor with
+        /// buildings placed on it. Real streets wear unevenly: grass survives where nobody walks,
+        /// and the paving gives up entirely where everybody does. These are flat, thin and
+        /// collider-free - they change what the ground looks like and nothing else.
+        /// </summary>
+        private void BuildVerges(float extent, float pitch)
+        {
+            var verges = new GameObject("Verges").transform;
+            verges.SetParent(_root, false);
+
+            int patches = 0;
+
+            for (int gx = 0; gx <= GridSize; gx++)
+            for (int gz = 0; gz <= GridSize; gz++)
+            {
+                float baseX = (gx - GridSize * 0.5f) * pitch;
+                float baseZ = (gz - GridSize * 0.5f) * pitch;
+
+                for (int i = 0; i < 3; i++)
+                {
+                    if (_random.NextDouble() > 0.45) continue;
+
+                    var at = new Vector3(
+                        baseX + (float)(_random.NextDouble() * 2f - 1f) * pitch * 0.42f,
+                        0.03f,
+                        baseZ + (float)(_random.NextDouble() * 2f - 1f) * pitch * 0.42f);
+
+                    if (Mathf.Abs(at.x) > extent || Mathf.Abs(at.z) > extent) continue;
+                    if (_riverColumn >= 0 && Mathf.Abs(at.x - _riverCentreX) < RiverWidth * 0.8f) continue;
+
+                    bool grass = _random.NextDouble() < 0.55;
+                    float w = 2.5f + (float)_random.NextDouble() * 5f;
+                    float d = 2.5f + (float)_random.NextDouble() * 5f;
+
+                    Transform patch = Detail(verges, $"{(grass ? "Grass" : "Dirt")}_{gx}_{gz}_{i}",
+                        at, new Vector3(w, 0.06f, d), grass ? _grass : _dirt);
+                    patch.localRotation = Quaternion.Euler(0f, (float)_random.NextDouble() * 90f, 0f);
+                    patches++;
+
+                    // A few blades standing up out of the patch, so it is not a flat decal. Thin
+                    // and leaning, for the same reason the reeds are: a cube of foliage on the
+                    // ground looks like litter, not like grass.
+                    if (!grass) continue;
+                    int tufts = 3 + _random.Next(4);
+                    for (int t = 0; t < tufts; t++)
+                    {
+                        float tall = 0.3f + (float)_random.NextDouble() * 0.35f;
+                        var tuftAt = at + new Vector3(
+                            (float)(_random.NextDouble() * 2f - 1f) * w * 0.38f, tall * 0.45f,
+                            (float)(_random.NextDouble() * 2f - 1f) * d * 0.38f);
+
+                        Transform blade = Detail(verges, $"Tuft_{gx}_{gz}_{i}_{t}", tuftAt,
+                            new Vector3(0.1f, tall, 0.1f), _reed);
+                        blade.localRotation = Quaternion.Euler(
+                            (float)(_random.NextDouble() * 2f - 1f) * 24f,
+                            (float)_random.NextDouble() * 90f,
+                            (float)(_random.NextDouble() * 2f - 1f) * 24f);
+                    }
+                }
+            }
+
+            Debug.Log($"[Unseen] verges: {patches} patches of grass and bare earth");
+        }
+
+        // ---------------------------------------------------------------- streets        // ---------------------------------------------------------------- streets
+
+        /// <summary>
+        /// What a street has on it besides buildings: a drainage channel down each side, wells at
+        /// some crossings, notice boards, and the barrels and crates that pile up outside a shop.
+        ///
+        /// The ground was one flat slab from wall to wall, which is what made the town read as
+        /// buildings standing on a floor rather than a place with streets in it. None of this is
+        /// tall enough to fight the camera or to hide behind - it is there to give the eye
+        /// something at ankle height and to break the run of open gravel.
+        /// </summary>
+        private void BuildStreetFurniture(float extent, float pitch)
+        {
+            var street = new GameObject("StreetFurniture").transform;
+            street.SetParent(_root, false);
+
+            int wells = 0;
+            int boards = 0;
+            int stacks = 0;
+
+            for (int gx = 0; gx <= GridSize; gx++)
+            for (int gz = 0; gz <= GridSize; gz++)
+            {
+                float x = (gx - GridSize * 0.5f) * pitch;
+                float z = (gz - GridSize * 0.5f) * pitch;
+
+                if (Mathf.Abs(x) > extent || Mathf.Abs(z) > extent) continue;
+                if (_riverColumn >= 0 && Mathf.Abs(x - _riverCentreX) < RiverWidth) continue;
+
+                // A gutter running along each street line. Shallow, stone-lined, and the single
+                // cheapest thing that makes a street look like a street.
+                if (gz < GridSize)
+                {
+                    Detail(street, $"Gutter_X_{gx}_{gz}",
+                        new Vector3(x - 4.6f, 0.04f, z + pitch * 0.5f),
+                        new Vector3(0.7f, 0.1f, pitch * 0.86f), _stone);
+                    Detail(street, $"Gutter_X2_{gx}_{gz}",
+                        new Vector3(x + 4.6f, 0.04f, z + pitch * 0.5f),
+                        new Vector3(0.7f, 0.1f, pitch * 0.86f), _stone);
+                }
+
+                if (_random.NextDouble() < 0.14)
+                {
+                    BuildWell(street, new Vector3(x + 3.5f, 0f, z + 3.5f), wells++);
+                    continue;
+                }
+
+                if (_random.NextDouble() < 0.12)
+                {
+                    BuildNoticeBoard(street, new Vector3(x - 3.2f, 0f, z + 2.4f), boards++);
+                    continue;
+                }
+
+                if (_random.NextDouble() < 0.3)
+                {
+                    BuildGoodsStack(street, new Vector3(x + 2.6f, 0f, z - 3.4f), stacks++);
+                }
+            }
+
+            Debug.Log($"[Unseen] street furniture: {wells} wells, {boards} notice boards, " +
+                      $"{stacks} stacks of goods");
+        }
+
+        /// <summary>A stone well head with a timber frame and a bucket beam over it.</summary>
+        private void BuildWell(Transform street, Vector3 at, int index)
+        {
+            var well = new GameObject($"Well_{index}").transform;
+            well.SetParent(street, false);
+            well.localPosition = at;
+
+            Transform kerb = Box(well, "Kerb", new Vector3(0f, 0.35f, 0f),
+                new Vector3(2.1f, 0.7f, 2.1f), UnseenLayers.Occluder, _stone);
+            Acoustics(kerb, 0.9f, 1f, 1f);
+
+            // The shaft, dark and inset, so the well is a hole rather than a plinth.
+            Detail(well, "Shaft", new Vector3(0f, 0.66f, 0f),
+                new Vector3(1.5f, 0.1f, 1.5f), _darkTimber);
+
+            for (int i = -1; i <= 1; i += 2)
+                Detail(well, $"Post_{i}", new Vector3(i * 0.85f, 1.6f, 0f),
+                    new Vector3(0.18f, 2.6f, 0.18f), _darkTimber);
+
+            Detail(well, "Beam", new Vector3(0f, 2.85f, 0f),
+                new Vector3(2.2f, 0.2f, 0.2f), _darkTimber);
+
+            Detail(well, "Bucket", new Vector3(0f, 2.35f, 0f),
+                new Vector3(0.42f, 0.4f, 0.42f), _woodFloor);
+
+            Detail(well, "Rope", new Vector3(0f, 2.62f, 0f),
+                new Vector3(0.05f, 0.42f, 0.05f), _rafter);
+        }
+
+        /// <summary>A kosatsu: the roofed board a domain posted its edicts on.</summary>
+        private void BuildNoticeBoard(Transform street, Vector3 at, int index)
+        {
+            var board = new GameObject($"Notice_{index}").transform;
+            board.SetParent(street, false);
+            board.localPosition = at;
+            board.localRotation = Quaternion.Euler(0f, (index * 47f) % 360f, 0f);
+
+            for (int i = -1; i <= 1; i += 2)
+            {
+                Transform post = Box(board, $"Post_{i}", new Vector3(i * 0.8f, 1.15f, 0f),
+                    new Vector3(0.16f, 2.3f, 0.16f), UnseenLayers.Occluder, _darkTimber);
+                Acoustics(post, 0.5f, 1f, 1f);
+            }
+
+            Detail(board, "Panel", new Vector3(0f, 1.7f, 0f),
+                new Vector3(1.75f, 1.15f, 0.09f), _paper);
+
+            Detail(board, "Frame", new Vector3(0f, 1.08f, 0f),
+                new Vector3(1.9f, 0.12f, 0.16f), _darkTimber);
+
+            // A little roof over it, because paper in the rain does not last.
+            Detail(board, "Roof", new Vector3(0f, 2.42f, 0f),
+                new Vector3(2.2f, 0.14f, 0.8f), _tile);
+            Detail(board, "RoofRidge", new Vector3(0f, 2.54f, 0f),
+                new Vector3(2.3f, 0.12f, 0.24f), _darkTimber);
+        }
+
+        /// <summary>Barrels and crates stacked outside a shop front.</summary>
+        private void BuildGoodsStack(Transform street, Vector3 at, int index)
+        {
+            var stack = new GameObject($"Goods_{index}").transform;
+            stack.SetParent(street, false);
+            stack.localPosition = at;
+
+            int items = 2 + _random.Next(4);
+            for (int i = 0; i < items; i++)
+            {
+                bool barrel = _random.NextDouble() < 0.5;
+                var offset = new Vector3(
+                    (float)(_random.NextDouble() * 2f - 1f) * 1.3f, 0f,
+                    (float)(_random.NextDouble() * 2f - 1f) * 1.3f);
+
+                float size = barrel ? 0.7f : 0.85f;
+                float height = barrel ? 0.95f : 0.7f;
+
+                Transform item = Box(stack, $"{(barrel ? "Barrel" : "Crate")}_{i}",
+                    offset + new Vector3(0f, height * 0.5f, 0f),
+                    new Vector3(size, height, size), UnseenLayers.Occluder,
+                    barrel ? _rafter : _woodFloor);
+                item.localRotation = Quaternion.Euler(0f, (float)_random.NextDouble() * 90f, 0f);
+                Acoustics(item, 0.6f, 1f, 1f);
+
+                // Hoops on a barrel, so it is not just a short box.
+                if (!barrel) continue;
+                for (int h = 0; h < 2; h++)
+                    Detail(stack, $"Hoop_{i}_{h}",
+                        offset + new Vector3(0f, height * (0.25f + h * 0.5f), 0f),
+                        new Vector3(size + 0.06f, 0.09f, size + 0.06f), _darkTimber);
+            }
+        }
+
+        // ---------------------------------------------------------------- foliage        // ---------------------------------------------------------------- foliage
 
         /// <summary>
         /// Trees and shrubs along the streets and the riverbank.
@@ -1315,30 +1688,129 @@ namespace Unseen.Environment
             _shrubs = shrubs;
         }
 
-        /// <summary>A pine: a trunk that blocks sight, and a stepped canopy that does not.</summary>
+        /// <summary>
+        /// A tree. Three species, because a street lined with one shape is a street lined with one
+        /// asset.
+        ///
+        /// The trunk is an occluder, so a tree genuinely breaks a sightline down a long street.
+        /// Everything above it is decoration with no collider: a canopy that blocked sight would
+        /// hide rooftop ninjas from the ground for free, and one you could stand on would turn
+        /// every avenue into a walkway.
+        /// </summary>
         private void BuildTree(Transform grove, Vector3 position)
         {
             var tree = new GameObject("Tree").transform;
             tree.SetParent(grove, false);
             tree.localPosition = position;
+            tree.localRotation = Quaternion.Euler(0f, (float)_random.NextDouble() * 360f, 0f);
 
+            int species = _random.Next(3);
             float height = 4.5f + (float)_random.NextDouble() * 3.5f;
             float spread = 2.2f + (float)_random.NextDouble() * 1.6f;
+            float lean = (float)(_random.NextDouble() * 2f - 1f) * 4f;
 
             Transform trunk = Box(tree, "Trunk", new Vector3(0f, height * 0.5f, 0f),
                 new Vector3(0.42f, height, 0.42f), UnseenLayers.Occluder, _darkTimber);
+            trunk.localRotation = Quaternion.Euler(lean, 0f, lean * 0.6f);
             Acoustics(trunk, 0.6f, 1f, 1f);
 
-            // Canopy in three shrinking tiers, which reads as a pine at a distance and costs
-            // three boxes. No colliders: you cannot stand on a tree, and it must not block sight.
-            for (int tier = 0; tier < 3; tier++)
+            // Roots flaring at the base, so the trunk meets the ground instead of being planted
+            // in it like a post.
+            for (int r = 0; r < 4; r++)
             {
-                float t = tier / 2f;
-                float y = Mathf.Lerp(height * 0.55f, height + 0.6f, t);
-                float size = Mathf.Lerp(spread, spread * 0.35f, t);
+                float angle = r * 90f + 25f;
+                var dir = new Vector3(Mathf.Sin(angle * Mathf.Deg2Rad), 0f, Mathf.Cos(angle * Mathf.Deg2Rad));
+                Detail(tree, $"Root_{r}", dir * 0.36f + new Vector3(0f, 0.16f, 0f),
+                    new Vector3(0.5f, 0.32f, 0.5f), _darkTimber);
+            }
 
-                Detail(tree, $"Canopy_{tier}", new Vector3(0f, y, 0f),
-                    new Vector3(size, 1.1f, size), _foliage);
+            switch (species)
+            {
+                case 0:
+                    BuildPine(tree, height, spread);
+                    break;
+                case 1:
+                    BuildBroadleaf(tree, height, spread);
+                    break;
+                default:
+                    BuildBambooClump(tree, height, spread);
+                    break;
+            }
+        }
+
+        /// <summary>A pine: bare trunk, branches near the top, tiered plates of needles.</summary>
+        private void BuildPine(Transform tree, float height, float spread)
+        {
+            for (int b = 0; b < 3; b++)
+            {
+                float angle = b * 120f + 20f;
+                float y = height * (0.55f + b * 0.13f);
+                var dir = new Vector3(Mathf.Sin(angle * Mathf.Deg2Rad), 0f, Mathf.Cos(angle * Mathf.Deg2Rad));
+
+                Transform branch = Detail(tree, $"Branch_{b}",
+                    dir * spread * 0.32f + new Vector3(0f, y, 0f),
+                    new Vector3(spread * 0.7f, 0.18f, 0.18f), _darkTimber);
+                branch.localRotation = Quaternion.Euler(0f, -angle, 8f);
+            }
+
+            for (int tier = 0; tier < 4; tier++)
+            {
+                float t = tier / 3f;
+                float y = Mathf.Lerp(height * 0.55f, height + 0.8f, t);
+                float size = Mathf.Lerp(spread, spread * 0.28f, t);
+
+                Transform plate = Detail(tree, $"Canopy_{tier}", new Vector3(0f, y, 0f),
+                    new Vector3(size, 0.75f, size), _foliage);
+                plate.localRotation = Quaternion.Euler(0f, tier * 24f, 0f);
+            }
+        }
+
+        /// <summary>A broadleaf: a rounded crown built from overlapping clumps.</summary>
+        private void BuildBroadleaf(Transform tree, float height, float spread)
+        {
+            for (int b = 0; b < 3; b++)
+            {
+                float angle = b * 120f;
+                var dir = new Vector3(Mathf.Sin(angle * Mathf.Deg2Rad), 0f, Mathf.Cos(angle * Mathf.Deg2Rad));
+
+                Transform limb = Detail(tree, $"Limb_{b}",
+                    dir * spread * 0.28f + new Vector3(0f, height * 0.7f, 0f),
+                    new Vector3(0.24f, height * 0.5f, 0.24f), _darkTimber);
+                limb.localRotation = Quaternion.Euler(dir.z * 22f, 0f, -dir.x * 22f);
+            }
+
+            for (int c = 0; c < 5; c++)
+            {
+                float angle = c * 72f + 15f;
+                var dir = new Vector3(Mathf.Sin(angle * Mathf.Deg2Rad), 0f, Mathf.Cos(angle * Mathf.Deg2Rad));
+                float y = height * (0.86f + (c % 2) * 0.14f);
+                float size = spread * (0.7f + (c % 3) * 0.14f);
+
+                Transform clump = Detail(tree, $"Crown_{c}", dir * spread * 0.34f + new Vector3(0f, y, 0f),
+                    new Vector3(size, size * 0.72f, size), _foliage);
+                clump.localRotation = Quaternion.Euler(0f, angle, 0f);
+            }
+        }
+
+        /// <summary>A clump of garden bamboo: several thin canes with leaf heads.</summary>
+        private void BuildBambooClump(Transform tree, float height, float spread)
+        {
+            int canes = 5 + _random.Next(4);
+
+            for (int c = 0; c < canes; c++)
+            {
+                float angle = c * (360f / canes) + (float)_random.NextDouble() * 20f;
+                var dir = new Vector3(Mathf.Sin(angle * Mathf.Deg2Rad), 0f, Mathf.Cos(angle * Mathf.Deg2Rad));
+                float caneHeight = height * (0.85f + (float)_random.NextDouble() * 0.5f);
+                Vector3 at = dir * spread * 0.3f * (float)_random.NextDouble();
+
+                Transform cane = Detail(tree, $"Cane_{c}",
+                    at + new Vector3(0f, caneHeight * 0.5f, 0f),
+                    new Vector3(0.14f, caneHeight, 0.14f), _bamboo);
+                cane.localRotation = Quaternion.Euler(dir.z * 7f, 0f, -dir.x * 7f);
+
+                Detail(tree, $"CaneLeaves_{c}", at + new Vector3(0f, caneHeight * 0.92f, 0f),
+                    new Vector3(1.1f, 0.9f, 1.1f), _foliage);
             }
         }
 
@@ -1395,7 +1867,7 @@ namespace Unseen.Environment
 
             forest.Build(inner, wallHeight,
                 wallHeight * Mathf.Max(1f, MaterialSetBambooHeight()),
-                inner * 0.85f, _bamboo, _bambooMass);
+                inner * 0.85f, _bamboo, _bambooMass, _foliage);
         }
 
         /// <summary>Height multiple, read from config so the forest and the rules agree.</summary>
@@ -1502,6 +1974,15 @@ namespace Unseen.Environment
             Detail(compound, $"Nuki_{side}", Along(0f, height * 0.56f), Size(length, 0.2f, 0.16f),
                 _darkTimber);
 
+            // Namako-kabe: the boarded wainscot that protects the foot of a plaster wall from rain
+            // splash and cart wheels. Every machiya has one, and it is the detail that stops a
+            // white wall meeting the ground in a single flat line.
+            Detail(compound, $"Wainscot_{side}", Along(0f, 1.35f), Size(length, 1.3f, 0.2f),
+                _darkTimber);
+
+            Detail(compound, $"WainscotCap_{side}", Along(0f, 2.02f), Size(length, 0.12f, 0.26f),
+                _tile);
+
             // Uprights. The doorway sits in the middle of its wall, so that bay is skipped rather
             // than posting a beam across the opening.
             for (int i = 0; i <= bays; i++)
@@ -1512,6 +1993,32 @@ namespace Unseen.Environment
 
                 Detail(compound, $"Post_{side}_{i}", Along(distance, (height + 0.7f) * 0.5f),
                     Size(0.32f, height - 0.7f, 0.18f), _darkTimber);
+            }
+
+            // Mushiko-mado: the barred insect-cage window of an upper storey. Slatted rather than
+            // glazed, so it reads as a row of dark bars in a pale wall.
+            for (int bay = 0; bay < bays; bay++)
+            {
+                if (hasDoorway && bay == bays / 2) continue;
+                if ((bay + side) % 2 != 0) continue;
+
+                float centre = Mathf.Lerp(-length * 0.5f, length * 0.5f, (bay + 0.5f) / bays);
+                float sill = height * 0.72f;
+
+                Detail(compound, $"Window_{side}_{bay}", Along(centre, sill),
+                    Size(2.1f, 1.15f, 0.14f), _darkTimber);
+
+                // The bars themselves, so the opening has depth at close range.
+                for (int bar = 0; bar < 5; bar++)
+                {
+                    float t = (bar + 0.5f) / 5f;
+                    Detail(compound, $"WindowBar_{side}_{bay}_{bar}",
+                        Along(centre + Mathf.Lerp(-0.9f, 0.9f, t), sill),
+                        Size(0.09f, 1.0f, 0.2f), _rafter);
+                }
+
+                Detail(compound, $"WindowSill_{side}_{bay}", Along(centre, sill - 0.62f),
+                    Size(2.4f, 0.14f, 0.3f), _darkTimber);
             }
 
             // Fascia board along the eave, which is what gives the roofline its dark edge.
@@ -1664,6 +2171,24 @@ namespace Unseen.Environment
             Detail(compound, "RidgeCap", new Vector3(0f, top + 0.16f, 0f),
                 new Vector3(crown * 0.55f, 0.32f, 0.8f), _darkTimber);
 
+            // Hip ridges running from the crown down to each corner. On a real roof these are the
+            // heaviest line in the whole silhouette - the tiled spine capping the join between two
+            // pitches - and without them a hipped roof reads as a stack of trays.
+            float run = (eaveSpan - crown * 0.55f) * 0.5f;
+            float diagonal = Mathf.Sqrt(run * run * 2f) * 0.72f;
+
+            for (int sx = -1; sx <= 1; sx += 2)
+            for (int sz = -1; sz <= 1; sz += 2)
+            {
+                float mid = (crown * 0.55f * 0.5f + eaveSpan * 0.5f) * 0.5f;
+
+                Transform hip = Detail(compound, $"HipRidge_{sx}_{sz}",
+                    new Vector3(sx * mid * 0.72f, top - riser * 1.6f, sz * mid * 0.72f),
+                    new Vector3(diagonal, 0.34f, 0.62f), _darkTimber);
+
+                hip.localRotation = Quaternion.Euler(0f, sx * sz > 0 ? 45f : -45f, 0f);
+            }
+
             for (int sx = -1; sx <= 1; sx += 2)
                 Detail(compound, $"Onigawara_{sx}",
                     new Vector3(sx * crown * 0.28f, top + 0.34f, 0f),
@@ -1672,7 +2197,52 @@ namespace Unseen.Environment
             return top;
         }
 
-        /// <summary>A run of shoji panels along one axis, each an independent destructible.</summary>
+        /// <summary>
+        /// An engawa: the raised timber verandah that runs along the outside of a room, between
+        /// the shoji and the garden.
+        ///
+        /// Gameplay-wise it is a narrow raised walkway with a lip you can crouch behind, hard
+        /// against the paper walls - which is the best place in a compound to listen from and the
+        /// worst place to be caught standing.
+        /// </summary>
+        private void BuildEngawa(Transform compound, float half, int doorSide)
+        {
+            // Along the side opposite the door, so it faces the quiet part of the plot.
+            int side = (doorSide + 2) % 4;
+            bool horizontal = side % 2 == 0;
+            float sign = side < 2 ? 1f : -1f;
+            float inset = half - 2.6f;
+
+            Transform deck = Box(compound, "Engawa",
+                horizontal ? new Vector3(0f, 0.55f, inset * sign) : new Vector3(inset * sign, 0.55f, 0f),
+                horizontal
+                    ? new Vector3(half * 1.5f, 0.3f, 2.2f)
+                    : new Vector3(2.2f, 0.3f, half * 1.5f),
+                UnseenLayers.Default, _woodFloor);
+            Acoustics(deck, 0.55f, 0.8f, 0.9f);
+
+            // Boarded skirt, so the deck has an underside rather than floating.
+            Detail(compound, "EngawaSkirt",
+                horizontal
+                    ? new Vector3(0f, 0.2f, (inset + 1.05f) * sign)
+                    : new Vector3((inset + 1.05f) * sign, 0.2f, 0f),
+                horizontal
+                    ? new Vector3(half * 1.5f, 0.4f, 0.14f)
+                    : new Vector3(0.14f, 0.4f, half * 1.5f),
+                _darkTimber);
+
+            // Posts carrying the eave above it.
+            for (int i = -1; i <= 1; i += 2)
+            {
+                Detail(compound, $"EngawaPost_{i}",
+                    horizontal
+                        ? new Vector3(half * 0.62f * i, 1.9f, (inset + 0.9f) * sign)
+                        : new Vector3((inset + 0.9f) * sign, 1.9f, half * 0.62f * i),
+                    new Vector3(0.2f, 2.4f, 0.2f), _darkTimber);
+            }
+        }
+
+        /// <summary>A run of shoji panels along one axis, each an independent destructible.</summary>        /// <summary>A run of shoji panels along one axis, each an independent destructible.</summary>
         private void BuildShojiRun(Transform parent, Vector3 centre, float length, bool alongX, float height)
         {
             const float panelWidth = 2.6f;
@@ -2087,6 +2657,10 @@ namespace Unseen.Environment
                 _shojiPaper = set.ShojiPaper != null ? set.ShojiPaper : set.Paper;
                 _vermilion = set.Vermilion != null ? set.Vermilion : set.Timber;
                 _bamboo = set.Bamboo != null ? set.Bamboo : set.Foliage;
+                _grass = set.Grass != null ? set.Grass : set.Foliage;
+                _dirt = set.Dirt != null ? set.Dirt : set.Ground;
+                _reed = set.Reed != null ? set.Reed : set.Foliage;
+                _riverStone = set.RiverStone != null ? set.RiverStone : set.Stone;
                 _bambooMass = set.BambooMass != null ? set.BambooMass : set.Foliage;
                 _textureMetres = set.TextureMetres;
                 _textured = true;
@@ -2114,6 +2688,10 @@ namespace Unseen.Environment
             _shojiPaper = _paper;
             _vermilion = MakeMaterial(shader, "GreyboxVermilion", new Color(0.62f, 0.17f, 0.12f));
             _bamboo = MakeMaterial(shader, "GreyboxBamboo", new Color(0.32f, 0.38f, 0.20f));
+            _grass = MakeMaterial(shader, "GreyboxGrass", new Color(0.2f, 0.28f, 0.14f));
+            _dirt = MakeMaterial(shader, "GreyboxDirt", new Color(0.32f, 0.25f, 0.18f));
+            _reed = MakeMaterial(shader, "GreyboxReed", new Color(0.3f, 0.36f, 0.18f));
+            _riverStone = MakeMaterial(shader, "GreyboxRiverStone", new Color(0.24f, 0.25f, 0.24f));
             _bambooMass = MakeMaterial(shader, "GreyboxBambooMass", new Color(0.12f, 0.17f, 0.10f));
             _textured = false;
         }

@@ -32,13 +32,9 @@ namespace Unseen.Environment
         [Tooltip("Seconds between re-sorts.")]
         public float Interval = 0.5f;
 
-        [Tooltip("Metres per second the water surface appears to move.")]
-        public float FlowSpeed = 0.09f;
-
         private readonly List<AudioSource> _sources = new List<AudioSource>(16);
         private Material _water;
         private float _next;
-        private float _scroll;
         private Camera _camera;
 
         /// <summary>Places emitters down the channel. Called by the generator once the river exists.</summary>
@@ -82,15 +78,9 @@ namespace Unseen.Environment
 
         private void Update()
         {
-            // The surface slides even when nobody is near enough to hear it: a still river reads
-            // as a painted floor the moment you look at it.
-            if (_water != null)
-            {
-                _scroll += FlowSpeed * Time.deltaTime;
-                _water.SetTextureOffset("_BaseMap", new Vector2(0f, _scroll));
-                if (_water.HasProperty("_BumpMap"))
-                    _water.SetTextureOffset("_BumpMap", new Vector2(0f, _scroll * 1.3f));
-            }
+            // Flow used to be a texture offset nudged from here. The water shader now scrolls two
+            // layers against each other from _Time, which no longer needs driving and no longer
+            // stops when the game is paused mid-frame.
 
             if (_sources.Count == 0 || Time.time < _next) return;
             _next = Time.time + Interval;

@@ -91,8 +91,17 @@ namespace Unseen.EditorTools
             set.DarkTimber = BuildTint(lit, Pick(built, "Timber"), "DarkTimber",
                 new Color(0.30f, 0.22f, 0.16f), 0.28f);
 
-            set.Water = BuildTint(lit, Pick(built, "Ground"), "Water",
-                new Color(0.10f, 0.17f, 0.20f), 0.85f, bumpScale: 0.5f);
+            set.Water = BuildWater(Pick(built, "Ground"));
+            set.Grass = BuildTint(lit, Pick(built, "Tatami"), "Grass",
+                new Color(0.20f, 0.28f, 0.14f), 0.18f, bumpScale: 0.8f);
+            set.Dirt = BuildTint(lit, Pick(built, "Ground"), "Dirt",
+                new Color(0.32f, 0.25f, 0.18f), 0.12f, bumpScale: 0.9f);
+
+            set.Reed = BuildTint(lit, Pick(built, "Tatami"), "Reed",
+                new Color(0.34f, 0.40f, 0.19f), 0.30f, bumpScale: 0.4f);
+            set.RiverStone = BuildTint(lit, Pick(built, "Stone"), "RiverStone",
+                new Color(0.22f, 0.24f, 0.23f), 0.45f, bumpScale: 1.1f);
+
             set.Foliage = BuildTint(lit, Pick(built, "Tatami"), "Foliage",
                 new Color(0.13f, 0.20f, 0.13f), 0.2f, bumpScale: 0.7f);
 
@@ -291,6 +300,50 @@ namespace Unseen.EditorTools
             EditorUtility.SetDirty(material);
 
             Debug.Log("[Unseen] shoji paper material built on Unseen/ShojiSilhouette");
+            return material;
+        }
+
+        /// <summary>
+        /// River water on its own shader.
+        ///
+        /// A tinted Lit material could be made to look wet but never to look like it was moving,
+        /// and a scrolling texture offset on a lit surface only slides the reflection about. The
+        /// dedicated shader carries two scrolled layers, a wave field, foam on the crests and a
+        /// moon glint, which is what a river needs to read as one.
+        /// </summary>
+        private static Material BuildWater(Material ground)
+        {
+            Shader shader = Shader.Find("Unseen/RiverWater");
+            if (shader == null)
+            {
+                Debug.LogError("[Unseen] Unseen/RiverWater not found; the river will not flow");
+                return ground;
+            }
+
+            const string path = MaterialRoot + "/Water.mat";
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (material == null)
+            {
+                material = new Material(shader);
+                AssetDatabase.CreateAsset(material, path);
+            }
+
+            material.shader = shader;
+
+            if (ground != null && ground.HasProperty("_BaseMap"))
+                material.SetTexture("_BaseMap", ground.GetTexture("_BaseMap"));
+
+            material.SetColor("_ShallowColor", new Color(0.14f, 0.26f, 0.29f, 1f));
+            material.SetColor("_DeepColor", new Color(0.03f, 0.07f, 0.11f, 1f));
+            material.SetColor("_FoamColor", new Color(0.70f, 0.79f, 0.82f, 1f));
+            material.SetFloat("_FlowSpeed", 0.16f);
+            material.SetFloat("_FlowScale", 0.55f);
+            material.SetFloat("_Choppiness", 0.9f);
+            material.SetFloat("_Sparkle", 3.2f);
+            material.SetFloat("_FoamAmount", 0.75f);
+            EditorUtility.SetDirty(material);
+
+            Debug.Log("[Unseen] river water material built on Unseen/RiverWater");
             return material;
         }
 

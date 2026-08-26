@@ -41,8 +41,22 @@ namespace Unseen.Environment
         [Tooltip("Streets, courtyards and the ground plane.")]
         public Material Ground;
 
-        [Tooltip("River water. Falls back to Stone.")]
+        [Tooltip("River water, on Unseen/RiverWater. Referenced here so the shader survives a " +
+                 "player build. Falls back to Stone.")]
         public Material Water;
+
+        [Tooltip("Worn grass on the verges. Falls back to Foliage.")]
+        public Material Grass;
+
+        [Tooltip("Bare earth where the paving has given up. Falls back to Ground.")]
+        public Material Dirt;
+
+        [Tooltip("Reeds and grass blades: brighter and yellower than canopy foliage, because a " +
+                 "blade catching moonlight is not the same colour as the inside of a tree.")]
+        public Material Reed;
+
+        [Tooltip("Wet river stone, darker than the dry masonry of the banks.")]
+        public Material RiverStone;
 
         [Tooltip("Tree canopies and shrubs. Falls back to Timber.")]
         public Material Foliage;
