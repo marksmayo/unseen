@@ -56,6 +56,17 @@ namespace Unseen.Environment
         /// <summary>Offset into the idle cycle, so a crowd of critters is not synchronised.</summary>
         private float _idlePhase;
 
+        private Transform _head, _tail, _leftEar, _rightEar;
+        private Quaternion _headRest, _tailRest, _leftEarRest, _rightEarRest;
+        private Vector3 _headHome;
+
+        /// <summary>When the next glance to one side happens, on the idle clock.</summary>
+        private float _nextGlance;
+
+        /// <summary>Which way it is currently looking, and how far it has turned so far.</summary>
+        private float _glanceTarget;
+        private float _glance;
+
         [Tooltip("Seconds before it comes back to its perch.")]
         public float ResettleDelay = 22f;
 
@@ -106,11 +117,22 @@ namespace Unseen.Environment
         /// <summary>True while it is going about its business and can still be startled.</summary>
         public bool IsSettled => _state == State.Settled || _state == State.Strolling;
 
+        /// <summary>
+        /// Standing still rather than walking somewhere.
+        ///
+        /// Distinct from IsSettled, which deliberately includes strolling so the startle system
+        /// can flush a critter that is already on the move. Anything asking "is it holding
+        /// position" - a test watching the idle, for instance - wants this one.
+        /// </summary>
+        public bool IsResting => _state == State.Settled;
+
         /// <summary>Where it sits when undisturbed.</summary>
         public Vector3 Perch => _perch;
 
         /// <summary>Remembers the authored pose and registers for startling.</summary>
-        public void Configure(Species kind, Transform leftWing, Transform rightWing)
+        public void Configure(Species kind, Transform leftWing, Transform rightWing,
+            Transform head = null, Transform tail = null, Transform leftEar = null,
+            Transform rightEar = null)
         {
             Kind = kind;
             _perch = transform.localPosition;
@@ -125,6 +147,23 @@ namespace Unseen.Environment
             _rightWing = rightWing;
             if (_leftWing != null) _leftRest = _leftWing.localRotation;
             if (_rightWing != null) _rightRest = _rightWing.localRotation;
+
+            // The parts that make a resting animal look alive. All optional: a critter built
+            // without them still bobs and turns, it just does less of it.
+            _head = head;
+            _tail = tail;
+            _leftEar = leftEar;
+            _rightEar = rightEar;
+
+            if (_head != null)
+            {
+                _headRest = _head.localRotation;
+                _headHome = _head.localPosition;
+            }
+
+            if (_tail != null) _tailRest = _tail.localRotation;
+            if (_leftEar != null) _leftEarRest = _leftEar.localRotation;
+            if (_rightEar != null) _rightEarRest = _rightEar.localRotation;
 
             // Registered here rather than in OnEnable. The town is generated in edit mode for every
             // screenshot and headless test in this project, and Unity does not run lifecycle
@@ -258,26 +297,96 @@ namespace Unseen.Environment
         private void Idle()
         {
             float t = _clock + _idlePhase;
-
             bool bird = Kind == Species.Bird;
 
-            // Weight shifting. Small, and at a different rate per critter so a hedge full of birds
-            // does not pulse in time.
-            float bob = Mathf.Sin(t * (bird ? 2.6f : 1.5f)) * (bird ? 0.022f : 0.014f);
+            // ---------------------------------------------------------- the body
+            //
+            // Weight shifting, at a different rate per critter so a hedge full of birds does not
+            // pulse in time.
+            float bob = Mathf.Sin(t * (bird ? 2.6f : 1.5f)) * (bird ? 0.022f : 0.016f);
 
-            // A peck or a sniff: a short dip, a few seconds apart, rather than a constant nodding.
+            // A peck or a sniff: a short dip a few seconds apart, rather than constant nodding.
             float cycle = bird ? 3.1f : 5.3f;
             float phase = Mathf.Repeat(t, cycle) / cycle;
             float dip = phase < 0.16f ? Mathf.Sin(phase / 0.16f * Mathf.PI) : 0f;
 
             transform.localPosition = _perch + new Vector3(0f, bob - dip * 0.03f, 0f);
 
-            // Looking about. A slow drift with an occasional flick, which is most of what makes a
-            // small animal look like it is paying attention to something.
-            float look = Mathf.Sin(t * 0.45f) * 22f + Mathf.Sin(t * 1.9f) * 5f;
+            // ---------------------------------------------------------- glancing about
+            //
+            // Held still, then turned, then held still again - rather than swept back and forth
+            // continuously. An animal that pans smoothly from side to side reads as a security
+            // camera; one that snaps to a new heading and then watches it reads as alert.
+            if (_clock >= _nextGlance)
+            {
+                _glanceTarget = Random.Range(-55f, 55f);
+                _nextGlance = _clock + Random.Range(bird ? 0.9f : 1.6f, bird ? 2.6f : 4.5f);
+            }
 
-            transform.localRotation = _perchRotation *
-                                      Quaternion.Euler(dip * (bird ? 34f : 18f), look, 0f);
+            // Birds turn their heads faster than anything else alive.
+            _glance = Mathf.MoveTowards(_glance, _glanceTarget,
+                (bird ? 320f : 130f) * Mathf.Max(0f, _clock - _lastIdleAt));
+
+            _lastIdleAt = _clock;
+
+            // The body follows the glance a little, well behind the head, so the whole animal is
+            // involved without appearing to pivot on the spot.
+            transform.localRotation = _perchRotation * Quaternion.Euler(0f, _glance * 0.28f, 0f);
+
+            // ---------------------------------------------------------- the head
+            if (_head != null)
+            {
+                // The rest of the turn happens here, plus the dip. This is the part that actually
+                // sells it: a body that shifts its weight while its head stays welded forward is
+                // still an ornament.
+                _head.localRotation = _headRest *
+                                      Quaternion.Euler(dip * (bird ? 46f : 26f), _glance * 0.72f,
+                                          Mathf.Sin(t * 1.7f) * (bird ? 7f : 3f));
+
+                // Birds bob their whole head as well as tilting it.
+                if (bird)
+                    _head.localPosition = _headHome +
+                                          new Vector3(0f, Mathf.Sin(t * 3.4f) * 0.012f,
+                                              Mathf.Sin(t * 3.4f) * 0.016f);
+            }
+
+            // ---------------------------------------------------------- the tail
+            //
+            // Always moving, and the only part that is. A tail is the giveaway that something is
+            // alive at a distance where nothing else about it is legible.
+            if (_tail != null)
+                _tail.localRotation = _tailRest *
+                                      Quaternion.Euler(
+                                          Mathf.Sin(t * (bird ? 2.1f : 2.9f)) * (bird ? 6f : 11f),
+                                          Mathf.Sin(t * (bird ? 1.3f : 2.2f)) * (bird ? 9f : 17f),
+                                          0f);
+
+            // ---------------------------------------------------------- ears
+            //
+            // Flicked rather than waved: independently, briefly, and mostly not at all.
+            if (_leftEar != null) _leftEar.localRotation = _leftEarRest * EarFlick(t);
+            if (_rightEar != null) _rightEar.localRotation = _rightEarRest * EarFlick(t + 2.7f);
+
+            // ---------------------------------------------------------- a shuffle of the wings
+            if (!bird || _leftWing == null || _rightWing == null) return;
+
+            float shuffle = Mathf.Repeat(t, 7.3f) / 7.3f;
+            float open = shuffle < 0.09f ? Mathf.Sin(shuffle / 0.09f * Mathf.PI) : 0f;
+
+            _leftWing.localRotation = _leftRest * Quaternion.Euler(0f, 0f, -open * 34f);
+            _rightWing.localRotation = _rightRest * Quaternion.Euler(0f, 0f, open * 34f);
+        }
+
+        /// <summary>Idle clock at the last frame, so the glance turns at a rate rather than a step.</summary>
+        private float _lastIdleAt;
+
+        /// <summary>A short, sharp ear flick that happens rarely.</summary>
+        private static Quaternion EarFlick(float t)
+        {
+            float phase = Mathf.Repeat(t, 4.6f) / 4.6f;
+            if (phase > 0.07f) return Quaternion.identity;
+
+            return Quaternion.Euler(0f, 0f, Mathf.Sin(phase / 0.07f * Mathf.PI) * 22f);
         }
 
         /// <summary>

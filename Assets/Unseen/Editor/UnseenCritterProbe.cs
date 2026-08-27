@@ -116,6 +116,93 @@ namespace Unseen.EditorTools
                 Debug.Log($"[wildlife] you hear the bird you flushed: " +
                           $"{(ownEars ? "PASS" : "FAIL")}");
 
+                // ---------------------------------------------------------- never quite still
+                //
+                // A critter spends most of its life settled, and a settled critter that does not
+                // move is an ornament. Measured as how far the head and the tail actually turn over
+                // six seconds of resting, because "it has an idle animation" is a statement about
+                // the code and this is a statement about the thing on screen.
+                //
+                // Also measured: that all this motion does not carry the body off its perch. An
+                // idle that walks is a bug that would take a long time to notice.
+                Critter resting = null;
+                foreach (Critter candidate in Critter.All)
+                {
+                    if (candidate == null || candidate.Kind != Critter.Species.Animal) continue;
+                    if (!candidate.IsSettled) continue;
+                    resting = candidate;
+                    break;
+                }
+
+                bool fidgets = false;
+
+                if (resting == null)
+                {
+                    Debug.LogError("[wildlife] found no settled animal to watch");
+                }
+                else
+                {
+                    Transform head = FindPart(resting.transform, "Head");
+                    Transform tail = FindPart(resting.transform, "Tail");
+
+                    Quaternion headWas = head != null ? head.localRotation : Quaternion.identity;
+                    Quaternion tailWas = tail != null ? tail.localRotation : Quaternion.identity;
+
+                    float headSwing = 0f;
+                    float tailSwing = 0f;
+                    float drift = 0f;
+
+                    // Drift is measured only across a single RESTING spell, re-anchored whenever
+                    // one begins.
+                    //
+                    // Rests are two and a half to nine seconds now, so a six second window contains
+                    // an outing - and the first version of this measured the stroll and reported
+                    // 2.19 m of drift, which is the critter walking somewhere on purpose rather
+                    // than an idle that cannot hold still.
+                    Vector3 anchor = resting.transform.position;
+                    bool wasResting = resting.IsResting;
+
+                    for (int i = 0; i < 60 * 6; i++)
+                    {
+                        resting.Advance(1f / 60f);
+
+                        // The head and tail should move whatever it is doing, so those accumulate
+                        // across the whole window.
+                        if (head != null)
+                            headSwing = Mathf.Max(headSwing,
+                                Quaternion.Angle(headWas, head.localRotation));
+
+                        if (tail != null)
+                            tailSwing = Mathf.Max(tailSwing,
+                                Quaternion.Angle(tailWas, tail.localRotation));
+
+                        if (!resting.IsResting) { wasResting = false; continue; }
+
+                        if (!wasResting)
+                        {
+                            anchor = resting.transform.position;
+                            wasResting = true;
+                        }
+
+                        drift = Mathf.Max(drift, Vector3.Distance(anchor, resting.transform.position));
+                    }
+
+                    // The head has to genuinely look about; the tail never stops. Both thresholds
+                    // are well under what the idle actually produces, so this fails on the idle
+                    // being absent rather than on it being retuned.
+                    bool looks = head == null || headSwing > 12f;
+                    bool wags = tail == null || tailSwing > 6f;
+                    bool stays = drift < 0.25f;
+
+                    fidgets = looks && wags && stays;
+
+                    Debug.Log($"[wildlife] resting animal over six seconds: head turned " +
+                              $"{headSwing:0} deg, tail moved {tailSwing:0} deg, body drifted " +
+                              $"{drift:0.00} m");
+                    Debug.Log($"[wildlife] a settled critter is never quite still: " +
+                              $"{(fidgets ? "PASS" : "FAIL")}");
+                }
+
                 // ---------------------------------------------------------- nothing vanishes
                 //
                 // A bird can leave - it goes up and out of sight, and switching it off once it is a
@@ -143,10 +230,13 @@ namespace Unseen.EditorTools
                     Vector3 stood = animal.transform.position;
                     animal.Flush(stood + Vector3.forward * 2f);
 
-                    // Well past the end of the bolt, and nowhere near the resettle delay - so if it
-                    // is visible at the end of this, it is visible because it stopped rather than
-                    // because it has already been put back.
-                    for (int i = 0; i < 60 * 6; i++) animal.Advance(1f / 60f);
+                    // Advanced only until the run ENDS, rather than for a fixed six seconds.
+                    //
+                    // A bolt is under two seconds and a rest is as little as one and a quarter after
+                    // it, so a fixed window let the animal set off on an ordinary stroll before the
+                    // assertions ran - and then reported it mid-stride, off the ground, as a
+                    // failure to land. What is under test is where the bolt leaves it.
+                    for (int i = 0; i < 60 * 8 && !animal.IsResting; i++) animal.Advance(1f / 60f);
 
                     Vector3 now = animal.transform.position;
                     float bolted = Vector3.Distance(stood, now);
@@ -240,7 +330,7 @@ namespace Unseen.EditorTools
                 Debug.Log($"[wildlife] every critter resettles on a new match: " +
                           $"{(resettles ? "PASS" : "FAIL")}");
 
-                if (populated && sprintFlushed && heard && ownEars && bolts && crouchQuiet &&
+                if (populated && sprintFlushed && heard && ownEars && bolts && fidgets && crouchQuiet &&
                     wanders && stayedLocal &&
                     resettles)
                     Debug.Log("[wildlife] PASSED");
@@ -321,6 +411,15 @@ namespace Unseen.EditorTools
 
         /// <summary>Flush sounds delivered to the ear of the agent who caused them.</summary>
         private static int DeliveredToStartler;
+
+        /// <summary>A named child anywhere under a critter.</summary>
+        private static Transform FindPart(Transform root, string name)
+        {
+            foreach (Transform t in root.GetComponentsInChildren<Transform>(true))
+                if (t.name == name) return t;
+
+            return null;
+        }
 
         private static void Step(UnseenBootstrap boot, int ticks)
         {

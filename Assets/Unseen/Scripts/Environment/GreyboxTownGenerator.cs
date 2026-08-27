@@ -2316,9 +2316,9 @@ namespace Unseen.Environment
 
             Detail(bird, "Body", new Vector3(0f, 0f, 0f),
                 new Vector3(0.17f, 0.15f, 0.28f), _darkTimber);
-            Detail(bird, "Head", new Vector3(0f, 0.09f, 0.15f),
+            Transform birdHead = Detail(bird, "Head", new Vector3(0f, 0.09f, 0.15f),
                 new Vector3(0.12f, 0.11f, 0.12f), _darkTimber);
-            Detail(bird, "Tail", new Vector3(0f, 0.02f, -0.22f),
+            Transform birdTail = Detail(bird, "Tail", new Vector3(0f, 0.02f, -0.22f),
                 new Vector3(0.1f, 0.04f, 0.18f), _darkTimber);
 
             Transform left = Detail(bird, "WingL", new Vector3(-0.11f, 0.03f, 0f),
@@ -2328,7 +2328,7 @@ namespace Unseen.Environment
 
             var critter = bird.gameObject.AddComponent<Critter>();
             critter.StartleRadius = 9f;
-            critter.Configure(Critter.Species.Bird, left, right);
+            critter.Configure(Critter.Species.Bird, left, right, birdHead, birdTail);
         }
 
         /// <summary>A cat or a fox: low body, four short legs, a tail that gives it away.</summary>
@@ -2346,18 +2346,24 @@ namespace Unseen.Environment
                 new Vector3(0.2f, 0.18f, 0.46f), _darkTimber);
             Detail(animal, "Rump", new Vector3(0f, 0.24f, -0.19f),
                 new Vector3(0.22f, 0.2f, 0.16f), _darkTimber);
-            Detail(animal, "Head", new Vector3(0f, 0.3f, 0.29f),
+            Transform animalHead = Detail(animal, "Head", new Vector3(0f, 0.3f, 0.29f),
                 new Vector3(0.16f, 0.15f, 0.16f), _darkTimber);
 
             // A snout and two ears. Three small boxes, and the difference between a cat and a loaf.
             Detail(animal, "Snout", new Vector3(0f, 0.27f, 0.39f),
                 new Vector3(0.09f, 0.08f, 0.09f), _darkTimber);
 
+            Transform leftEar = null;
+            Transform rightEar = null;
+
             for (int e = -1; e <= 1; e += 2)
             {
                 Transform ear = Detail(animal, $"Ear_{e}", new Vector3(e * 0.055f, 0.39f, 0.27f),
                     new Vector3(0.05f, 0.09f, 0.03f), _darkTimber);
                 ear.localRotation = Quaternion.Euler(-12f, 0f, e * 16f);
+
+                if (e < 0) leftEar = ear;
+                else rightEar = ear;
             }
 
             // The tail in two segments, tapering and lifted, rather than one straight peg.
@@ -2381,7 +2387,11 @@ namespace Unseen.Environment
             // decides, and it is much quieter when it goes.
             var critter = animal.gameObject.AddComponent<Critter>();
             critter.StartleRadius = 6f;
-            critter.Configure(Critter.Species.Animal, null, null);
+            // The head, the tail and both ears are handed over so a resting animal has something
+            // to move. Without them it can only shift its weight, which at any distance is
+            // indistinguishable from standing perfectly still.
+            critter.Configure(Critter.Species.Animal, null, null,
+                animalHead, tailBase, leftEar, rightEar);
         }
 
         private static bool CrittersEnabled()
