@@ -89,35 +89,109 @@ namespace Unseen.EditorTools
                           $"({reachable}/{bearings.Length})");
 
                 // ---------------------------------------------------- is the wall drawn where it is
-                forest.SetRing(new Vector3(30f, 0f, -20f), forest.MaxRadius * 0.55f, 1f);
+                //
+                // This used to compare each renderer's BOUNDS CENTRE to its transform position and
+                // call the difference drift. That is not drift, it is where the mesh sits in its own
+                // space: a culm is a tube standing ON its origin, deliberately, so that it grows out
+                // of the ground rather than being half buried - which puts the centre of a fifteen
+                // metre cane seven and a half metres above its base by construction. The probe
+                // reported 900 of 2,772 renderers "adrift" by up to 9.4 m and had been failing for
+                // it, and every one of them was exactly where it should be.
+                //
+                // What the player actually cares about, and what this section claims to check, is
+                // that the bamboo they can SEE marks the circle that damages them. So that is what
+                // is measured: the solid wall against its own colliders, and the canes against the
+                // damage radius.
+                var centre = new Vector3(30f, 0f, -20f);
+                float ring = forest.MaxRadius * 0.55f;
+
+                forest.SetRing(centre, ring, 1f);
                 Physics.SyncTransforms();
 
-                var renderers = forest.GetComponentsInChildren<Renderer>(true);
-                int active = 0;
-                int adrift = 0;
-                float worstDrift = 0f;
-                string worstName = "none";
+                float edge = forest.InnerEdge;
 
-                foreach (Renderer r in renderers)
+                // ---------------------------------------------------- the solid wall
+                //
+                // Each wall segment carries a box mesh and a box collider on the same transform, so
+                // the thing you see and the thing you hit must occupy the same space. A mismatch
+                // here is a wall you can walk through or one that stops you early.
+                int segments = 0;
+                float worstMismatch = 0f;
+                string worstSegment = "none";
+
+                foreach (BoxCollider box in forest.GetComponentsInChildren<BoxCollider>(true))
                 {
-                    if (!r.gameObject.activeInHierarchy) continue;
-                    active++;
+                    if (!box.gameObject.activeInHierarchy) continue;
 
-                    float drift = Vector3.Distance(r.bounds.center, r.transform.position);
-                    if (drift > 2f) adrift++;
-                    if (drift <= worstDrift) continue;
+                    var renderer = box.GetComponent<Renderer>();
+                    if (renderer == null) continue;
 
-                    worstDrift = drift;
-                    worstName = r.name;
+                    segments++;
+
+                    float mismatch = Vector3.Distance(renderer.bounds.center, box.bounds.center);
+                    if (mismatch <= worstMismatch) continue;
+
+                    worstMismatch = mismatch;
+                    worstSegment = box.name;
                 }
 
-                Debug.Log($"[bounds] forest moved to r={forest.InnerEdge:0} m about " +
-                          $"{forest.Centre}: {active} active renderers, {adrift} adrift " +
-                          $"(worst {worstDrift:0.0} m on '{worstName}')");
+                bool solidMatchesVisible = segments > 0 && worstMismatch < 0.25f;
 
-                bool drawnWhereItStands = active > 0 && adrift == 0;
-                Debug.Log($"[bounds] the wall is drawn where its colliders stand: " +
-                          $"{(drawnWhereItStands ? "PASS" : "FAIL")}");
+                Debug.Log($"[bounds] {segments} wall segments; worst gap between what is drawn and " +
+                          $"what collides {worstMismatch:0.00} m on '{worstSegment}'");
+                Debug.Log($"[bounds] the solid wall is drawn where it collides: " +
+                          $"{(solidMatchesVisible ? "PASS" : "FAIL")}");
+
+                // ---------------------------------------------------- the canes mark the circle
+                //
+                // Measured at each cane's BASE - where it meets the ground - horizontally from the
+                // forest centre, because that is the line a player walks up to. The canes are
+                // planted just inside the edge on purpose, so the acceptable band is a couple of
+                // metres inside it and nothing outside.
+                int canes = 0;
+                int misplaced = 0;
+                float nearest = float.MaxValue;
+                float furthest = 0f;
+
+                foreach (Transform culm in forest.transform)
+                {
+                    if (!culm.gameObject.activeInHierarchy) continue;
+                    if (!culm.name.StartsWith("Culm_")) continue;
+
+                    canes++;
+
+                    Vector3 offset = culm.position - centre;
+                    offset.y = 0f;
+                    float radius = offset.magnitude;
+
+                    nearest = Mathf.Min(nearest, radius);
+                    furthest = Mathf.Max(furthest, radius);
+
+                    // Inside the damage edge, and not more than three metres in.
+                    if (radius > edge + 0.5f || radius < edge - 3f) misplaced++;
+                }
+
+                bool canesOnTheCircle = canes > 0 && misplaced == 0;
+
+                Debug.Log($"[bounds] {canes} canes standing between {nearest:0.0} m and " +
+                          $"{furthest:0.0} m from the centre, against a damage edge at {edge:0.0} m");
+                Debug.Log($"[bounds] {misplaced} canes are off the circle");
+                Debug.Log($"[bounds] the canes mark the circle that hurts you: " +
+                          $"{(canesOnTheCircle ? "PASS" : "FAIL")}");
+
+                // ---------------------------------------------------- and the circle is the ring
+                //
+                // No margin between what the forest draws and what the zone asked for. There was a
+                // ten metre one once, and it meant a player could stand in open ground taking
+                // damage from a wall they could see was still ten metres away.
+                float asked = Mathf.Clamp(ring, 2f, forest.MaxRadius);
+                bool noMargin = Mathf.Abs(edge - asked) < 0.5f;
+
+                Debug.Log($"[bounds] asked for r={asked:0.0} m, forest edge is {edge:0.0} m");
+                Debug.Log($"[bounds] the wall sits on the circle it was given, with no margin: " +
+                          $"{(noMargin ? "PASS" : "FAIL")}");
+
+                bool drawnWhereItStands = solidMatchesVisible && canesOnTheCircle && noMargin;
 
                 if (square && reachable == bearings.Length && drawnWhereItStands)
                     Debug.Log("[bounds] PASSED");

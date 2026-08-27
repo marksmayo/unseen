@@ -165,16 +165,86 @@ Two numbers deserve suspicion rather than celebration:
 Also unproven by this harness: anything that needs a play session (animation, audio rendering,
 client-side rendering and HUD), and anything needing a real transport.
 
+## Session of 2026-08-27
+
+**Both suspicious numbers from the 08-24 smoke run are settled, and the NavMesh is baked.**
+
+*Occlusion is correct.* `paths traced 3542 == sounds delivered 3542` was, as that entry allowed,
+simply geometry: agents in that run were fighting in open streets. `Unseen ▸ Probe Sound Occlusion`
+stands two agents twelve metres apart on open ground and puts walls between them, holding distance
+constant so the only variable is what is in the way. Open ground delivers intensity 0.473 at zero
+occlusion; one Occluder wall delivers 0.142, which is 0.30 of it against a configured attenuation of
+0.7; one shoji screen delivers 0.416, which is 0.88 against a configured 0.12; three stone walls
+saturate occlusion at 1.0 and the sound is dropped below the audibility floor entirely. The model
+does what it says to two decimal places.
+
+The first run of that probe reported zero occlusion through three stone walls and looked exactly like
+a broken acoustic model. The walls were not in the physics scene: Unity does not auto-sync transforms
+in edit mode, so a collider created and then positioned is still at the origin as far as any raycast
+is concerned. A plain `Physics.Raycast` on the same mask, added as a control, found zero blockers and
+named the culprit immediately.
+
+*The bamboo was never drifting.* `UnseenBoundsProbe` had been failing on "900 of 2,772 renderers
+adrift, worst 9.4 m", and it was measuring the wrong thing: each renderer's BOUNDS CENTRE against its
+transform position. A culm is a tube standing deliberately ON its origin so it grows out of the
+ground instead of being half buried, which puts the centre of a fifteen metre cane seven and a half
+metres above its base by construction. Every one of the 900 was exactly where it belonged. The
+section now measures what it claimed to: the solid wall against its own colliders (worst gap 0.00 m),
+the canes against the damage radius (900 canes between 203.1 m and 204.3 m against an edge at
+204.6 m), and that the forest sits on the circle it was given with no margin.
+
+*A NavMesh exists.* `BotNavigator` had been written to path on one since its first commit and every
+call had failed silently, because the town is generated at startup and differs by seed - there was
+never a level to bake. `NavMeshBaker` builds it in-process after generation in 0.60 s, covering 1312
+of 1314 dry ground samples. Bots following a real path went from zero to about fifty of sixty-three.
+Physics colliders rather than render meshes, and a coarser voxel than the default third-of-a-radius,
+which is the difference between seconds and minutes across seven hundred and fifty metres.
+
+Deep water is carved unwalkable from the registered `WaterVolume`s. The river keeps its shallow
+shelves so it can still be forded at the edges; its middle and the whole castle lake are out, and a
+bank-to-bank route comes back complete at 246 m against 128 m straight. An off-mesh bot now walks
+back onto the mesh before pursuing anything, because marking water unwalkable stops a bot routing
+through a lake and does nothing about one already in it.
+
+**What could not be shown.** The claim that this stops bots drowning is unproven. Counting drownings
+gave one against one; counting time spent in drownable water gave 992/1044, 1117/1229, 1447/1011 and
+955/1243 across four runs - the ordering flips, so the number is dominated by a few bots parked in
+one spot rather than by how often anybody walks in. Roughly one bot-second in seven is still spent in
+deep water with the bake. It is left in the probe as a labelled diagnostic and deliberately not as a
+gate. **Open problem.**
+
+Also corrected: "bots drown in the lake", asserted earlier that session, came from one uninvestigated
+agent death in a test warm-up. Measured properly it is nought to one per match, and deaths are
+overwhelmingly melee.
+
+**A general bug in the scheduler.** `frame.Dt` was always the combat step, even for systems that run
+on one tick in three, so anything integrating it advanced its clock at a third of real time. Critters
+lived in slow motion - 289 of them managed 271 outings in four minutes against the fifteen hundred
+their configured rest interval implies, and it is 1092 now. The mist collapse and the spirit forest's
+damage were already correct because both reach past `frame.Dt` for `BaseTickInterval` by hand, and
+three separate workarounds for the same thing is the tell that `Dt` was the bug rather than them.
+
+**Three tests were measuring the wrong thing** and had to be fixed before they could fail honestly.
+The shuriken test's target was a bot that walked off the mark it was teleported to, so the blade flew
+its whole life hitting nothing and the test blamed the blade. The drowning test grabbed whichever
+body of water came first and got the new lake, measuring minus half a metre of depth. The critter
+probe counted bodies away from their start, which is a number about the sampling instant - every
+stroll target is picked relative to home, so twenty outings look like one - and it read 149 one day
+and 68 the next with nothing changed.
+
 ## Immediate next steps, in order
 
-1. **Confirm the two suspicious numbers above** — the occlusion check and the takedown check. Both
-   are small, targeted experiments, and both concern mechanics the design depends on.
-2. **Wire a real transport.** Install Fish-Net, define `UNSEEN_FISHNET`, add a `NetworkManager`, and
-   test a second client joining and taking over a bot slot.
-3. **Profile a full lobby.** Watch the status line: `sim` milliseconds per tick, `hot` count, `rays`,
+1. **Wire a real transport.** Install Fish-Net, define `UNSEEN_FISHNET`, add a `NetworkManager`, and
+   test a second client joining and taking over a bot slot. This is now the largest structural gap:
+   the shipped playtest build is single-player only.
+2. **Fix `UnseenZoneCollapseTest`.** It has never observed the final collapse: the match ends at
+   t=20 s, before the final phase produces a single sample, so it reports zero live samples and
+   fails. It is currently testing nothing.
+3. **Find out why bots are in deep water at all.** One bot-second in seven, unchanged by making the
+   water unwalkable. The recovery steering fires and does not clear it.
+4. **Profile a full lobby.** Watch the status line: `sim` milliseconds per tick, `hot` count, `rays`,
    `dropped`. If `dropped` is non-zero, raise `Interest.LosRaycastBudget` or lower the replication
    radius, and re-measure. This is the number that decides how many entities a core can carry.
-4. **Bake a NavMesh** over the generated town and compare bot pathing before and after.
 5. **Then** animation and audio middleware — both are additive layers over stable contracts, and both
    are much easier to judge once the fight itself feels right at 60 Hz.
 
@@ -186,7 +256,9 @@ client-side rendering and HUD), and anything needing a real transport.
 - The visibility linger window (0.35 s) trades a sliver of stale information for stable proxies. It is
   a deliberate, configurable compromise, not an oversight — see [NETWORKING.md](NETWORKING.md).
 - Melee has no lag compensation by design; only the parry window is latency-adjusted.
-- Corpses stay as capsules; there is no death cam or spectate flow.
+- ~~Corpses stay as capsules; there is no death cam or spectate flow.~~ Done 2026-08-25:
+  there is a collapse that finds the ground, an elimination feed, and spectating that
+  cycles through the living.
 - `ItemDefinition` assets are generated in code by the greybox generator. Authoring them as real
   assets is a straight lift once the loot table is being tuned by a designer.
 - No matchmaking service. `BotDirector` handles in-match backfill; queueing players across servers is
