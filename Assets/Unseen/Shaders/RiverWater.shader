@@ -181,7 +181,13 @@ Shader "Unseen/RiverWater"
                 // Crests catch the light and go to foam. This is what gives a river its glitter
                 // rather than looking like poured resin.
                 float crest = saturate(wave * 0.5 + 0.5);
-                float foam = saturate((crest - 0.72) * 4.0) * _FoamAmount;
+                // Only the sharpest crests, and sharply.
+                //
+                // At 0.72 with a gentle ramp, whole wave humps went to foam colour - and a wave
+                // hump is five to ten metres across, so the water read as pale slabs scattered over
+                // it. From a rooftop the lake looked like it had ice floes in it. Glitter is a few
+                // per cent of the surface, not a third of it.
+                float foam = saturate((crest - 0.88) * 9.0) * _FoamAmount;
 
                 // And a band of foam along each bank, drifting downstream. Water meeting stone is
                 // never clean, and the shoreline is where the eye looks to judge whether a body of

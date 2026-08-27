@@ -121,7 +121,16 @@ namespace Unseen.Perception
                 UnseenConfig.CritterSection cfg = Ctx.Config.Critters;
                 bool bird = critter.Kind == Critter.Species.Bird;
 
-                Ctx.Sound.Emit(agent.Id, critter.transform.position,
+                // Attributed to NOBODY, not to the agent who caused it.
+                //
+                // The acoustic model refuses to deliver a sound to the agent it names as the
+                // source, which is right for footsteps - you do not need telling that you are
+                // walking - and exactly wrong here. Credited to the player, the one person in the
+                // match who could not hear the bird go up was the player who flushed it, and the
+                // whole mechanic is that YOU hear it and know you have just announced yourself.
+                //
+                // The bird made the noise. It is the bird's sound.
+                Ctx.Sound.Emit(AgentId.None, critter.transform.position,
                     bird ? SoundKind.BirdFlush : SoundKind.AnimalScatter,
                     bird ? cfg.BirdLoudness : cfg.AnimalLoudness,
                     bird ? cfg.BirdRadius : cfg.AnimalRadius,

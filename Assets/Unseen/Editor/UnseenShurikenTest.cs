@@ -186,6 +186,15 @@ namespace Unseen.EditorTools
 
                 if (ground.normal.y < 0.95f) continue;
 
+                // And DRY. The castle lake is a hundred and twenty metres across at the middle of
+                // the map, and its bed is flat stone that satisfies every other test here - so this
+                // search happily picked a spot chest deep in it, stood both agents in the water
+                // among ninety rocks, and reported that a thrown blade does not hurt anybody.
+                if (Unseen.Environment.WaterVolume.DepthAt(
+                        new Unity.Mathematics.float3(ground.point.x, ground.point.y, ground.point.z))
+                    > 0.01f)
+                    continue;
+
                 var chest = ground.point + Vector3.up * 1.2f;
                 if (Physics.Raycast(chest, Vector3.forward, 12f, UnseenLayers.WorldGeometry,
                         QueryTriggerInteraction.Ignore))
@@ -206,6 +215,15 @@ namespace Unseen.EditorTools
             float3 from, float3 to, int ticks, bool throwing)
         {
             int whistles = 0;
+
+            // The target's brain off for the duration.
+            //
+            // It is a bot, and a bot rewrites its own intent every think - so teleporting it onto
+            // the mark each tick and then advancing the simulation let it walk straight back off
+            // again. Over ninety ticks it wandered clear of the line of flight, the blade lived out
+            // its full two seconds hitting nothing, and the test reported that a thrown blade does
+            // not hurt anybody. What is under test here is the blade, not the bot.
+            if (target.Brain != null) target.Brain.enabled = false;
 
             for (int i = 0; i < ticks; i++)
             {

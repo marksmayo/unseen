@@ -230,7 +230,21 @@ namespace Unseen.Core
             _ctx.Time = Time;
 
             bool isBaseTick = Tick % _baseDivisor == 0;
-            var frame = new SimFrame(Tick, _step, Time, isBaseTick);
+
+            // Two frames, because Dt has to mean "time since THIS system last ran".
+            //
+            // Every system used to be handed the combat step. A base-rate system runs on one tick
+            // in three, so anything integrating frame.Dt advanced its clock at a third of real
+            // time - critters lived in slow motion, and a rest interval configured as eighteen to
+            // fifty-five seconds was really fifty-four to a hundred and sixty-five. It showed up as
+            // a town of 289 animals managing 271 outings between them in four minutes when the
+            // configuration implies nearer fifteen hundred.
+            //
+            // The mist collapse and the spirit forest's damage were already correct, because both
+            // reach past frame.Dt for Ctx.Config.BaseTickInterval by hand - three separate
+            // workarounds for the same thing, which is the tell that Dt was the bug and not them.
+            var combatFrame = new SimFrame(Tick, _step, Time, isBaseTick);
+            var baseFrame = new SimFrame(Tick, _step * _baseDivisor, Time, isBaseTick);
 
             for (int i = 0; i < _systems.Count; i++)
             {
@@ -241,7 +255,8 @@ namespace Unseen.Core
 
                 try
                 {
-                    system.Tick(in frame);
+                    if (system.Rate == SimRate.Base) system.Tick(in baseFrame);
+                    else system.Tick(in combatFrame);
                 }
                 catch (Exception e)
                 {

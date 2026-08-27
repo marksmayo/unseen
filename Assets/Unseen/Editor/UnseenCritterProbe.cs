@@ -4,6 +4,7 @@ using UnityEngine;
 using Unseen.Core;
 using Unseen.Entities;
 using Unseen.Environment;
+using Unseen.Net;
 using Unseen.Perception;
 
 namespace Unseen.EditorTools
@@ -82,6 +83,7 @@ namespace Unseen.EditorTools
                 // ---------------------------------------------------------- sprinting is heard
                 Critter.ResetAll();
 
+                DeliveredToStartler = 0;
                 int before = startle.Startles;
 
                 // Run at the perch from twelve metres out, yaw facing it.
@@ -107,6 +109,63 @@ namespace Unseen.EditorTools
                 bool heard = sprintSounds > 0;
                 Debug.Log($"[wildlife] {sprintSounds} critter sound(s) on the bus during the run");
                 Debug.Log($"[wildlife] the flush reaches the sound bus: {(heard ? "PASS" : "FAIL")}");
+
+                bool ownEars = DeliveredToStartler > 0;
+                Debug.Log($"[wildlife] {DeliveredToStartler} of them delivered to the ear of the " +
+                          $"player who caused them");
+                Debug.Log($"[wildlife] you hear the bird you flushed: " +
+                          $"{(ownEars ? "PASS" : "FAIL")}");
+
+                // ---------------------------------------------------------- nothing vanishes
+                //
+                // A bird can leave - it goes up and out of sight, and switching it off once it is a
+                // dot against the sky costs nothing. Something on four legs cannot leave. It bolts
+                // and stops somewhere else on the ground, and it used to switch itself off two
+                // seconds into the run: a rabbit you disturbed blinked out of existence in front of
+                // you and reappeared on its old spot twenty seconds later.
+                Critter animal = null;
+                foreach (Critter candidate in Critter.All)
+                {
+                    if (candidate == null || candidate.Kind == Critter.Species.Bird) continue;
+                    if (!candidate.IsSettled) continue;
+                    animal = candidate;
+                    break;
+                }
+
+                bool bolts = false;
+
+                if (animal == null)
+                {
+                    Debug.LogError("[wildlife] found no settled animal to startle");
+                }
+                else
+                {
+                    Vector3 stood = animal.transform.position;
+                    animal.Flush(stood + Vector3.forward * 2f);
+
+                    // Well past the end of the bolt, and nowhere near the resettle delay - so if it
+                    // is visible at the end of this, it is visible because it stopped rather than
+                    // because it has already been put back.
+                    for (int i = 0; i < 60 * 6; i++) animal.Advance(1f / 60f);
+
+                    Vector3 now = animal.transform.position;
+                    float bolted = Vector3.Distance(stood, now);
+
+                    bool present = animal.gameObject.activeSelf;
+                    bool relocated = bolted > 0.6f;
+
+                    // On the floor, not hanging where the bolt happened to end.
+                    bool grounded = Physics.Raycast(now + Vector3.up * 1.5f, Vector3.down,
+                        out RaycastHit under, 4f, UnseenLayers.WorldGeometry,
+                        QueryTriggerInteraction.Ignore) && Mathf.Abs(now.y - under.point.y) < 0.4f;
+
+                    bolts = present && relocated && grounded;
+
+                    Debug.Log($"[wildlife] startled animal: still in the world {present}, " +
+                              $"moved {bolted:0.0} m, feet on the ground {grounded}");
+                    Debug.Log($"[wildlife] an animal runs somewhere instead of vanishing: " +
+                              $"{(bolts ? "PASS" : "FAIL")}");
+                }
 
                 // ---------------------------------------------------------- crouching is not
                 Critter.ResetAll();
@@ -134,7 +193,10 @@ namespace Unseen.EditorTools
                 foreach (Critter critter in Critter.All)
                     if (critter != null) homes[critter] = critter.transform.position;
 
+                Critter.StrollsStarted = 0;
                 Step(boot, 60 * 240);
+
+                int strolls = Critter.StrollsStarted;
 
                 int moved = 0;
                 float furthest = 0f;
@@ -148,10 +210,23 @@ namespace Unseen.EditorTools
                     if (drift > furthest) furthest = drift;
                 }
 
-                bool wanders = moved > homes.Count / 4;
+                // Counted as STROLLS BEGUN, not as bodies away from their start.
+                //
+                // Displacement at one moment is a bad measure of wandering: every target is picked
+                // relative to the critter's home, so a critter that has pottered about twenty times
+                // is no further from home than one that went once, and one caught mid-stroll on the
+                // way back looks like it never moved. Judged on displacement, this read 149 of 289
+                // one day and 68 the next with no change to any critter - which says the number was
+                // measuring the sampling instant, not the behaviour.
+                //
+                // Over four minutes, with eighteen to fifty-five seconds between outings, a town
+                // of this size should manage several outings apiece - four minutes is between four
+                // and thirteen rest periods. Three per critter is a floor, not a target.
+                bool wanders = strolls > homes.Count * 3;
                 bool stayedLocal = furthest < 40f;
 
-                Debug.Log($"[wildlife] {moved}/{homes.Count} critters moved from where they started " +
+                Debug.Log($"[wildlife] {strolls} strolls begun by {homes.Count} critters over four " +
+                          $"minutes; {moved} are away from their start right now " +
                           $"(furthest {furthest:0.0} m)");
                 Debug.Log($"[wildlife] they wander: {(wanders ? "PASS" : "FAIL")}");
                 Debug.Log($"[wildlife] they stay in their own patch: {(stayedLocal ? "PASS" : "FAIL")}");
@@ -165,7 +240,8 @@ namespace Unseen.EditorTools
                 Debug.Log($"[wildlife] every critter resettles on a new match: " +
                           $"{(resettles ? "PASS" : "FAIL")}");
 
-                if (populated && sprintFlushed && heard && crouchQuiet && wanders && stayedLocal &&
+                if (populated && sprintFlushed && heard && ownEars && bolts && crouchQuiet &&
+                    wanders && stayedLocal &&
                     resettles)
                     Debug.Log("[wildlife] PASSED");
                 else
@@ -219,10 +295,32 @@ namespace Unseen.EditorTools
                 foreach (SoundEvent e in boot.Context.Sound.LastTick)
                     if (e.Kind == SoundKind.BirdFlush || e.Kind == SoundKind.AnimalScatter)
                         sounds++;
+
+                // And separately, what the PLAYER was actually sent.
+                //
+                // Not the same question as whether the sound was emitted. The acoustic model
+                // refuses to deliver a sound to the agent it names as the source - correct for
+                // footsteps - so a flush credited to the player who caused it reached every ear in
+                // the match except theirs. The player is the one who most needs to hear it: the
+                // whole mechanic is that you know you have just announced yourself.
+                //
+                // Read off the decoded client snapshot rather than the agent's Heard list, because
+                // replication CONSUMES that list on send - it is a one-shot ping, not state - so
+                // by the time a test looks at it after the tick it is always empty.
+                SnapshotData snapshot = boot.ClientView != null ? boot.ClientView.Latest : null;
+                if (snapshot != null)
+                {
+                    foreach (HeardSound h in snapshot.Sounds)
+                        if (h.Kind == SoundKind.BirdFlush || h.Kind == SoundKind.AnimalScatter)
+                            DeliveredToStartler++;
+                }
             }
 
             return sounds;
         }
+
+        /// <summary>Flush sounds delivered to the ear of the agent who caused them.</summary>
+        private static int DeliveredToStartler;
 
         private static void Step(UnseenBootstrap boot, int ticks)
         {

@@ -86,12 +86,41 @@ namespace Unseen.EditorTools
                 Debug.Log($"[garden] {WaterVolume.Registered} bodies of water registered");
 
                 Vector3 centre = lake.position;
+
+                // Read off the volume itself rather than written in as numbers. The lake was three
+                // cells wide before these hardcoded offsets were, and the probe cheerfully
+                // reported "no water in the moat, 1.45 m in the street" - both true of the sample
+                // points, and both nonsense as a description of the lake.
+                var body = lake.GetComponentInChildren<WaterVolume>(true);
+                if (body == null) { Debug.LogError("[garden] the lake has no water volume"); return; }
+
+                float islandHalf = body.InnerHalfSize.x;
+                float lakeHalf = body.HalfSize.x;
+                float band = (islandHalf + lakeHalf) * 0.5f;
+
+                Debug.Log($"[garden] island half {islandHalf:0.0} m, lake half {lakeHalf:0.0} m, " +
+                          $"{lakeHalf - islandHalf:0.0} m of water on every side");
+
                 float onIsland = WaterVolume.DepthAt(centre);
-                float inMoat = WaterVolume.DepthAt(centre + new Vector3(19.5f, 0f, 0f));
-                float outside = WaterVolume.DepthAt(centre + new Vector3(30f, 0f, 0f));
+                float inLake = WaterVolume.DepthAt(centre + new Vector3(band, 0f, 0f));
+                float diagonal = WaterVolume.DepthAt(centre +
+                    new Vector3(band * 0.72f, 0f, band * 0.72f));
+                float outside = WaterVolume.DepthAt(centre + new Vector3(lakeHalf + 6f, 0f, 0f));
 
                 Debug.Log($"[garden] depth at the keep {onIsland:0.00} m, " +
-                          $"in the moat {inMoat:0.00} m, in the street {outside:0.00} m");
+                          $"mid-lake {inLake:0.00} m, on the diagonal {diagonal:0.00} m, " +
+                          $"in the street {outside:0.00} m");
+
+                bool shaped = onIsland <= 0.01f && inLake > 0.8f && diagonal > 0.8f &&
+                              outside <= 0.01f;
+
+                Debug.Log($"[garden] the water is a ring round a dry island: " +
+                          $"{(shaped ? "PASS" : "FAIL")}");
+
+                // Wadeable but over your head prone. The crossing is the decision at the centre of
+                // the map, and it only works if standing keeps your eyes out and prone does not.
+                bool wadeable = inLake > 1.2f && inLake < 1.75f;
+                Debug.Log($"[garden] chest deep, not lethal: {(wadeable ? "PASS" : "FAIL")}");
 
                 // ---------------------------------------------------------- the fish stay wet
                 //
@@ -119,7 +148,7 @@ namespace Unseen.EditorTools
                         float reach = Mathf.Max(
                             Mathf.Abs(at.x - centre.x), Mathf.Abs(at.z - centre.z));
 
-                        nearest = Mathf.Min(nearest, reach - 15.5f);
+                        nearest = Mathf.Min(nearest, reach - islandHalf);
                     }
                 }
 

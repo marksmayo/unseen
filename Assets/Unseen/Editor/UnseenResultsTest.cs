@@ -30,7 +30,13 @@ namespace Unseen.EditorTools
 
             UnseenConfig config = UnseenConfig.Default;
             int roster = config.Match.TargetEntityCount;
-            config.Match.TargetEntityCount = 5;
+            // Eight on the roster to be sure of five alive.
+            //
+            // This asked for exactly five and then required all five to survive seventy seconds of
+            // warm-up. They do not: bots roam, the map now has a lake at the middle of it deep
+            // enough to drown in, and losing one before the test starts is normal behaviour rather
+            // than a fault. A test that needs five bodies should ask for more than five.
+            config.Match.TargetEntityCount = 8;
 
             try
             {
@@ -57,6 +63,12 @@ namespace Unseen.EditorTools
                     Debug.LogError($"[results] need five live agents, have {alive.Count}");
                     return;
                 }
+
+                // Only the first five are used, and the rest are killed off so the match can end.
+                for (int i = 5; i < alive.Count; i++)
+                    Finish(ctx, alive[i], null, DamageKind.Mist);
+
+                alive.RemoveRange(5, alive.Count - 5);
 
                 AgentEntity winner = alive[0];
                 AgentEntity shot = alive[1];
@@ -96,8 +108,9 @@ namespace Unseen.EditorTools
                 // ---------------------------------------------------------- the decoded table
                 SnapshotData end = RoundTrip(boot, winner);
 
-                bool everyone = end.Standings.Count == 5;
-                Debug.Log($"[results] {end.Standings.Count} rows for a roster of 5: " +
+                int roll = ctx.Entities.Count;
+                bool everyone = end.Standings.Count == roll;
+                Debug.Log($"[results] {end.Standings.Count} rows for a roster of {roll}: " +
                           $"{(everyone ? "PASS" : "FAIL")}");
 
                 bool won = Find(end, winner, out Standing top) &&
@@ -145,8 +158,8 @@ namespace Unseen.EditorTools
                 var places = new HashSet<int>();
                 foreach (Standing r in end.Standings) places.Add(r.Placement);
 
-                bool ordered = places.Count == 5;
-                Debug.Log($"[results] {places.Count} distinct placements across 5 rows: " +
+                bool ordered = places.Count == roll;
+                Debug.Log($"[results] {places.Count} distinct placements across {roll} rows: " +
                           $"{(ordered ? "PASS" : "FAIL")}");
 
                 // Names survived the wire. Empty strings would render a table of blank rows that

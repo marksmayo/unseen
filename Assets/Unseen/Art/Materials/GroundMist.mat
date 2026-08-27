@@ -29,8 +29,8 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
-    - _Density: 0.2
-    - _NearFade: 7
+    - _Density: 0.26
+    - _NearFade: 3.5
     - _Scale: 0.055
     - _Speed: 0.02
     m_Colors:

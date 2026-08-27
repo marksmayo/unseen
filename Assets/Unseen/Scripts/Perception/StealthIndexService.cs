@@ -108,7 +108,10 @@ namespace Unseen.Perception
                 }
             }
 
-            float smoothing = 1f - Mathf.Exp(-frame.Dt * Ctx.Config.Network.BaseTickRate / Mathf.Max(0.01f, cfg.SmoothingTime));
+            // frame.Dt is now the base interval, so this is a plain time constant. It used to be
+            // handed the combat step and then multiplied by the base rate to undo it, which came
+            // out at a third of the configured smoothing time.
+            float smoothing = 1f - Mathf.Exp(-frame.Dt / Mathf.Max(0.01f, cfg.SmoothingTime));
             smoothing = Mathf.Clamp01(smoothing);
 
             for (int slot = 0; slot < count; slot++)

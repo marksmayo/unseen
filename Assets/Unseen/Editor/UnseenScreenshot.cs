@@ -263,18 +263,30 @@ namespace Unseen.EditorTools
                     Vector3 pos = lake.position;
                     var list = new System.Collections.Generic.List<Shot>(shots)
                     {
+                        // From the outer coping across the water, at eye height. This is the
+                        // shot that has to answer "is it spectacular" - if the castle does not
+                        // fill the frame from the far bank, the lake is not big enough.
                         new Shot
                         {
                             Name = "11-castle",
-                            Position = pos + new Vector3(0f, 3.2f, -34f),
-                            LookAt = pos + new Vector3(0f, 9f, 0f),
-                            Fov = 58f
+                            Position = pos + new Vector3(0f, 2.6f, -58f),
+                            LookAt = pos + new Vector3(0f, 16f, 0f),
+                            Fov = 62f
+                        },
+                        // And from three blocks away on a rooftop, which is the claim that the
+                        // thing at the middle of the map is visible from the middle distance.
+                        new Shot
+                        {
+                            Name = "17-castle-far",
+                            Position = pos + new Vector3(-150f, 26f, -150f),
+                            LookAt = pos + new Vector3(0f, 14f, 0f),
+                            Fov = 46f
                         },
                         new Shot
                         {
                             Name = "12-moat",
-                            Position = pos + new Vector3(-26f, 2.4f, 26f),
-                            LookAt = pos + new Vector3(-15f, 2.6f, 15f),
+                            Position = pos + new Vector3(-44f, 2.6f, 44f),
+                            LookAt = pos + new Vector3(-24f, 4f, 24f),
                             Fov = 62f
                         }
                     };

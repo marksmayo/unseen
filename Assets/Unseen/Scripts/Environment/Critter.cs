@@ -31,6 +31,16 @@ namespace Unseen.Environment
         /// <summary>Every critter in the level. The startle system walks this.</summary>
         public static readonly List<Critter> All = new List<Critter>(256);
 
+        /// <summary>
+        /// Strolls begun since boot. Diagnostics only.
+        ///
+        /// Exists because "how many critters are not where they started" measures the wrong thing:
+        /// every stroll target is picked relative to the critter's HOME, so one that has wandered
+        /// twenty times is no further from home than one that wandered once, and one caught
+        /// mid-stroll back across its own patch looks like it never moved at all.
+        /// </summary>
+        public static int StrollsStarted;
+
         public Species Kind = Species.Bird;
 
         [Tooltip("How far a body at normal walking loudness has to come before this bolts.")]
@@ -38,6 +48,10 @@ namespace Unseen.Environment
 
         [Tooltip("Seconds spent getting away before it is out of sight.")]
         public float FlightDuration = 2.2f;
+
+        /// <summary>How long THIS flight lasts. Set when it starts, because a bird's is far longer
+        /// than an animal's dash.</summary>
+        private float _flightFor = 2.2f;
 
         [Tooltip("Seconds before it comes back to its perch.")]
         public float ResettleDelay = 22f;
@@ -141,6 +155,11 @@ namespace Unseen.Environment
                 ? (away + Vector3.up * 1.6f).normalized
                 : Quaternion.Euler(0f, Random.Range(-40f, 40f), 0f) * away;
 
+            // A bird climbs for long enough to actually get away. An animal's bolt is short and
+            // sharp, because it is going to stop somewhere you can still see it and the run has to
+            // read as a dash rather than a migration.
+            _flightFor = Kind == Species.Bird ? FlightDuration * 2.2f : FlightDuration * 0.65f;
+
             return true;
         }
 
@@ -172,14 +191,29 @@ namespace Unseen.Environment
 
                 // Slowing as it goes, so it reads as getting away rather than being fired out of a
                 // cannon at constant velocity.
-                float fade = Mathf.Clamp01(1f - _elapsed / Mathf.Max(0.1f, FlightDuration));
+                float fade = Mathf.Clamp01(1f - _elapsed / Mathf.Max(0.1f, _flightFor));
                 transform.position += _flightDirection * (speed * fade * fade * dt);
 
                 if (Kind == Species.Bird) BeatWings();
                 else transform.Rotate(0f, 220f * dt, 0f, Space.Self);
 
-                if (_elapsed < FlightDuration) return;
+                if (_elapsed < _flightFor) return;
 
+                // What happens at the end of the run depends on whether it can leave.
+                //
+                // A four-legged animal cannot. It bolts to somewhere else on the ground and stays
+                // there, and it used to switch itself off instead - so a rabbit you disturbed
+                // blinked out of existence two seconds later and reappeared on its old spot twenty
+                // seconds after that. Vanishing is not a way of leaving a room.
+                if (Kind != Species.Bird)
+                {
+                    Settle();
+                    return;
+                }
+
+                // A bird can leave, but only once it is genuinely out of sight. Switched off at the
+                // end of a two second climb it was still close enough to be a bird-shaped hole in
+                // the air; it now keeps going until it is well up and well away.
                 _state = State.Gone;
                 _elapsed = 0f;
                 gameObject.SetActive(false);
@@ -198,6 +232,39 @@ namespace Unseen.Environment
             gameObject.SetActive(true);
             _state = State.Settled;
             _elapsed = 0f;
+        }
+
+        /// <summary>
+        /// Stops where it is and calls that home.
+        ///
+        /// Used by an animal at the end of a bolt. The point on the ground under it becomes the new
+        /// perch, so the next stroll starts from where it actually stands rather than from a spot
+        /// it left twenty seconds ago - and so it can be startled again from here.
+        /// </summary>
+        private void Settle()
+        {
+            // Put its feet on whatever it has run onto. A bolt does not follow the ground, so a
+            // rabbit that crossed a kerb ends its run a step above or below the floor.
+            Vector3 at = transform.position;
+
+            if (Physics.Raycast(at + Vector3.up * 2f, Vector3.down, out RaycastHit ground, 6f,
+                    UnseenLayers.WorldGeometry, QueryTriggerInteraction.Ignore))
+                at.y = ground.point.y + 0.06f;
+
+            transform.position = at;
+
+            _perch = transform.localPosition;
+            _perchRotation = transform.localRotation;
+
+            if (_leftWing != null) _leftWing.localRotation = _leftRest;
+            if (_rightWing != null) _rightWing.localRotation = _rightRest;
+
+            _state = State.Settled;
+            _elapsed = 0f;
+
+            // Wary for a while after being disturbed. It has just run for its life; it is not going
+            // to start browsing again immediately.
+            _restUntil = _clock + Random.Range(RestSeconds.x, RestSeconds.y) * 0.5f;
         }
 
         /// <summary>Puts every critter back on its perch. Called when a match restarts.</summary>
@@ -235,10 +302,16 @@ namespace Unseen.Environment
         {
             if (_clock < _restUntil) return;
 
-            for (int attempt = 0; attempt < 4; attempt++)
+            for (int attempt = 0; attempt < 8; attempt++)
             {
                 float angle = Random.Range(0f, Mathf.PI * 2f);
-                float reach = WanderRadius * Random.Range(0.2f, 0.45f);
+
+                // Closer in on later attempts. A critter in a cramped spot - a bird on a hedge with
+                // road on three sides, an animal in an alley - can reject every far target and
+                // still have somewhere to go a metre away, and giving up because the first few
+                // throws were long is how they end up standing still.
+                float shrink = 1f - attempt / 10f;
+                float reach = WanderRadius * Random.Range(0.2f, 0.45f) * shrink;
                 Vector3 target = _home + new Vector3(Mathf.Sin(angle) * reach, 0f, Mathf.Cos(angle) * reach);
 
                 // Ground it. A bird keeps roughly to the height it was perched at - it hops along a
@@ -274,6 +347,7 @@ namespace Unseen.Environment
 
                 _strollFrom = transform.localPosition;
                 _strollTo = target;
+                StrollsStarted++;
 
                 float distance = Vector3.Distance(_strollFrom, _strollTo);
                 _strollDuration = Mathf.Max(0.35f, distance / Mathf.Max(0.1f, StrollSpeed));
@@ -282,8 +356,15 @@ namespace Unseen.Environment
                 return;
             }
 
-            // Nowhere to go this time. Try again after another rest rather than every tick.
-            _restUntil = _clock + Random.Range(RestSeconds.x, RestSeconds.y);
+            // Nowhere to go this time. Try again SOON rather than after a full rest.
+            //
+            // A failed search used to cost the critter its whole next rest period - eighteen to
+            // fifty-five seconds - so a critter in an awkward spot spent almost all of its time
+            // waiting to fail again. Measured over four minutes, 289 critters managed 271 outings
+            // between them, against the five or six apiece the rest interval implies: five chances
+            // in six were being thrown away. The rest interval is a pacing decision about how often
+            // a critter WANTS to move, and a search that found nowhere is not that.
+            _restUntil = _clock + Random.Range(1.5f, 4f);
         }
 
         /// <summary>

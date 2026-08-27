@@ -241,7 +241,20 @@ namespace Unseen.Environment
             {
                 if (gx == _riverColumn) continue;
 
-                bool isCentre = gx == GridSize / 2 && gz == GridSize / 2;
+                // The castle precinct is THREE cells across, not one.
+                //
+                // A moat inside a single 46 m cell is a seven metre ditch: correct, and completely
+                // unremarkable from anywhere but standing on its own bridge. The thing at the
+                // middle of the map should be visible from the middle distance and worth crossing
+                // the town for, which means the water has to be wide enough to read as a lake from
+                // a rooftop three blocks away.
+                int centre = GridSize / 2;
+                bool isCentre = gx == centre && gz == centre;
+                bool inPrecinct = Mathf.Abs(gx - centre) <= 1 && Mathf.Abs(gz - centre) <= 1;
+
+                // The eight cells round the keep are given over to the water. Nothing is built in
+                // them at all - not even a plaza, which would put a shrine in the lake.
+                if (inPrecinct && !isCentre) continue;
 
                 // Alternate rows slide along the street, so no cross-street runs the full width of
                 // the town. This is the kagimagari dog-leg a jokamachi was laid out with on
@@ -266,8 +279,8 @@ namespace Unseen.Environment
 
                     // The moat first: it decides how high the keep stands, because the castle is
                     // built on the island rather than dropped in beside it.
-                    float plinth = BuildCastleLake(keepAt);
-                    BuildKeep(keepAt + Vector3.up * plinth);
+                    float plinth = BuildCastleLake(keepAt, pitch);
+                    BuildKeep(keepAt + Vector3.up * plinth, _islandHalf * 1.5f);
                     continue;
                 }
 
@@ -1593,7 +1606,7 @@ namespace Unseen.Environment
                 host.isStatic = true;
                 Acoustics(host.transform, 0.85f, 1.35f, 1.5f);
 
-                if (i == 0) BuildCurvedEave(pagoda, size, y, $"Pagoda_{storey}_{i}");
+                if (i == 0) BuildCurvedEave(pagoda, size, y, 0.3f, $"Pagoda_{storey}_{i}");
 
                 y += riser;
             }
@@ -1628,73 +1641,145 @@ namespace Unseen.Environment
         /// still the flat slab the collider describes and parkour is unchanged - a corner tile you
         /// could stand on would be a two-inch ledge at the exact spot people jump for.
         /// </summary>
-        private void BuildCurvedEave(Transform parent, float span, float y, string tag)
+        private void BuildCurvedEave(Transform parent, float span, float y, float slab,
+            string tag)
         {
             float half = span * 0.5f;
 
-            const int steps = 5;
-            float reach = Mathf.Min(1.9f, span * 0.11f);
-            float lift = reach * 0.85f;
+            // The underside of the slab. Everything here hangs from it or below it: an eave is a
+            // thing the roof overhangs you with, and the moment any of it climbs above the roof
+            // plane it stops reading as an eave at all.
+            float under = y - slab * 0.5f;
+
+            // Modest. Earlier this was span/9 with an 0.85 lift, which on a wide roof threw a
+            // one-and-a-half metre tail a metre and a half into the air above the tiles - a wing,
+            // not a corner.
+            float reach = Mathf.Clamp(span * 0.075f, 0.5f, 1.35f);
+
+            // The rise is bounded by the SLAB, not by the reach.
+            //
+            // A corner is allowed to turn up; it is not allowed to finish above the tiles it is
+            // the edge of. Scaled off the reach alone, a wide roof lifted its tail 0.37 m clear of
+            // its own bottom tier - which is what the probe found on 268 pieces after the first
+            // rewrite had already fixed the staircase. Twenty to thirty centimetres over a metre of
+            // projection is what a real one does anyway.
+            float lift = Mathf.Min(reach * 0.6f, Mathf.Max(0.12f, slab - 0.06f));
+
+            // ------------------------------------------------------------ the eave board
+            //
+            // A continuous board round all four sides, standing slightly proud of the slab. The
+            // corner sweeps start ON this, so there is never a gap between the roof and its own
+            // corner - which there was, because the sweep used to begin a step out from the slab
+            // with nothing bridging back to it.
+            for (int side = 0; side < 4; side++)
+            {
+                bool horizontal = side % 2 == 0;
+                float sign = side < 2 ? 1f : -1f;
+                float edge = half + 0.1f;
+
+                Detail(parent, $"EaveBoard_{tag}_{side}",
+                    horizontal
+                        ? new Vector3(0f, under - 0.11f, edge * sign)
+                        : new Vector3(edge * sign, under - 0.11f, 0f),
+                    horizontal
+                        ? new Vector3(span + 0.2f, 0.22f, 0.34f)
+                        : new Vector3(0.34f, 0.22f, span + 0.2f),
+                    _darkTimber);
+            }
+
+            // ------------------------------------------------------------ the corner sweeps
+            //
+            // Built as segments joining consecutive points on the curve, each one rotated to lie
+            // along its own piece of it, rather than as blocks dropped at sampled positions.
+            //
+            // That is the whole fix for the staircase. Sampling a curve that climbs 1.4 m over five
+            // 0.26 m thick blocks leaves half a metre of air between each pair, and what you get is
+            // a flight of cubes flying off the corner of the building. A segment that starts where
+            // the last one ended cannot come apart however steep the curve gets.
+            const int steps = 7;
 
             for (int sx = -1; sx <= 1; sx += 2)
             for (int sz = -1; sz <= 1; sz += 2)
             {
+                Vector3 previous = SweepPoint(half, under, reach, lift, 0f, sx, sz);
+
                 for (int i = 1; i <= steps; i++)
                 {
                     float t = i / (float)steps;
+                    Vector3 point = SweepPoint(half, under, reach, lift, t, sx, sz);
 
-                    // Out along the diagonal at a steady rate, up at an accelerating one.
-                    float out_ = reach * t;
-                    float up = lift * t * t;
+                    Vector3 run = point - previous;
+                    float length = run.magnitude;
 
-                    // Tapering as it goes, so the tip is a point rather than a stub.
-                    float width = Mathf.Lerp(1.5f, 0.42f, t);
+                    if (length > 0.001f)
+                    {
+                        // Tapering along the sweep, so the tail comes to a point. Overlapped a
+                        // little at both ends as well, which hides the joins.
+                        float width = Mathf.Lerp(0.62f, 0.24f, t);
 
-                    Detail(parent, $"Sweep_{tag}_{sx}_{sz}_{i}",
-                        new Vector3((half + out_ * 0.72f) * sx, y + up, (half + out_ * 0.72f) * sz),
-                        new Vector3(width, 0.26f, width),
-                        _tile);
+                        Transform piece = Detail(parent, $"Sweep_{tag}_{sx}_{sz}_{i}",
+                            (previous + point) * 0.5f,
+                            new Vector3(width, 0.2f, length * 1.35f),
+                            _tile);
+
+                        piece.localRotation = Quaternion.LookRotation(run.normalized, Vector3.up);
+                    }
+
+                    previous = point;
                 }
 
-                // The tip ornament: a small block turned up at the very end of the sweep, which is
-                // where a real roof carries a decorated tile.
-                Detail(parent, $"SweepTip_{tag}_{sx}_{sz}",
-                    new Vector3((half + reach * 0.78f) * sx, y + lift + 0.16f,
-                        (half + reach * 0.78f) * sz),
-                    new Vector3(0.36f, 0.4f, 0.36f),
-                    _darkTimber);
+                // The tip, sat on the end of the tail where a real roof carries a decorated tile.
+                Detail(parent, $"SweepTip_{tag}_{sx}_{sz}", previous + Vector3.up * 0.13f,
+                    new Vector3(0.26f, 0.3f, 0.26f), _darkTimber);
             }
 
-            // Rafter ends along each side, under the eave. Close-packed and small: from the street
-            // they are a band of texture rather than individual pieces, and it is the band that
-            // says "timber roof" instead of "concrete lid".
-            int rafters = Mathf.Clamp(Mathf.RoundToInt(span / 1.1f), 4, 22);
+            // ------------------------------------------------------------ rafter ends
+            //
+            // Hung under the eave board at a FIXED height. These used to be lifted toward the
+            // corners by the same curve as the sweep, which pushed the outer ones up through a
+            // 0.4 m slab and left a row of blocks standing on top of the roof like teeth.
+            int rafters = Mathf.Clamp(Mathf.RoundToInt(span / 1.15f), 4, 20);
 
             for (int side = 0; side < 4; side++)
             {
                 bool horizontal = side % 2 == 0;
                 float sign = side < 2 ? 1f : -1f;
+                float edge = half - 0.04f;
 
                 for (int i = 0; i < rafters; i++)
                 {
                     float t = (i + 0.5f) / rafters;
-                    float along = Mathf.Lerp(-half * 0.88f, half * 0.88f, t);
-
-                    // Following the dip in the eave line: lowest in the middle of a side, rising
-                    // toward the corners where the sweep takes over.
-                    float dip = Mathf.Abs(along) / Mathf.Max(0.01f, half);
-                    float rise = lift * dip * dip * 0.5f;
+                    float along = Mathf.Lerp(-half * 0.86f, half * 0.86f, t);
 
                     Detail(parent, $"Rafter_{tag}_{side}_{i}",
                         horizontal
-                            ? new Vector3(along, y - 0.18f + rise, half * sign * 1.02f)
-                            : new Vector3(half * sign * 1.02f, y - 0.18f + rise, along),
+                            ? new Vector3(along, under - 0.3f, edge * sign)
+                            : new Vector3(edge * sign, under - 0.3f, along),
                         horizontal
-                            ? new Vector3(0.34f, 0.2f, 0.5f)
-                            : new Vector3(0.5f, 0.2f, 0.34f),
+                            ? new Vector3(0.26f, 0.16f, 0.46f)
+                            : new Vector3(0.46f, 0.16f, 0.26f),
                         _darkTimber);
                 }
             }
+        }
+
+        /// <summary>
+        /// One point on a corner sweep: out along the diagonal, and up as it goes.
+        ///
+        /// Out at a steady rate and up at an accelerating one, which is what makes it a sweep - a
+        /// linear rise is a ramp, and a ramp on the corner of a roof looks like damage. It starts
+        /// at the eave board and finishes a little above it, never above the roof.
+        /// </summary>
+        private static Vector3 SweepPoint(float half, float under, float reach, float lift,
+            float t, int sx, int sz)
+        {
+            // Along the diagonal, so 0.7 of the reach on each axis rather than all of it on both.
+            float out_ = reach * t * 0.7f;
+
+            return new Vector3(
+                (half + out_) * sx,
+                under - 0.11f + lift * t * t,
+                (half + out_) * sz);
         }
 
         /// <summary>
@@ -1801,13 +1886,36 @@ namespace Unseen.Environment
                 // into white paint, but the fix for that was the density and the falloff, not the
                 // count - and at a quarter of the crossings the town had haze in the distance and
                 // nothing at street level, which is where atmosphere is actually felt.
-                double chance = nearRiver ? 0.9 : 0.55;
+                double chance = nearRiver ? 1.0 : 0.9;
                 if (_random.NextDouble() > chance) continue;
 
-                int here = nearRiver ? 2 : 1;
+                int here = nearRiver ? 5 : 4;
+
 
                 for (int i = 0; i < here; i++)
                 {
+                    // Half of them stood on their edge.
+                    //
+                    // This is the whole reason the town had no fog in it at eye level. A flat panel
+                    // is invisible from a camera at its own height - you are looking along it, and
+                    // there is nothing to see. Lying them LOWER, which is what the last attempt
+                    // did, made that worse rather than better: at knee height every panel is edge
+                    // on to a standing player and only the birds get any atmosphere.
+                    //
+                    // Upright panels are what you actually walk into. They are two-sided already,
+                    // and the shader's radial falloff turns each one into a soft bank with no
+                    // edges, so a few of them crossing at angles read as fog rather than as
+                    // scenery.
+                    // ONE flat panel per site, the rest stood up.
+                    //
+                    // Flat panels are the ones that stack. Seen from a rooftop you are looking
+                    // straight down through four or five of them at once and the alpha compounds
+                    // into pale slabs lying on the streets and the lake - the spilled-paint failure
+                    // this shader's density was tuned to avoid, arrived at from a different
+                    // direction. Upright panels are nearly invisible from above and are the only
+                    // ones that do anything at eye level, so the mix is one to three.
+                    bool upright = i > 0;
+
                     var at = new Vector3(
                         baseX + (float)(_random.NextDouble() * 2f - 1f) * pitch * 0.5f,
                         0f,
@@ -1815,7 +1923,13 @@ namespace Unseen.Environment
 
                     // Sit it just above whatever is underneath, so mist in a street lies on the
                     // street and mist over the river lies on the water.
-                    float y = 1.1f + (float)_random.NextDouble() * 1.6f;
+                    //
+                    // Spread right across the standing body rather than banded at one height.
+                    // Some end up under the eye and some above it, which is what being inside a
+                    // layer of fog looks like instead of standing on it or under it.
+                    float y = upright
+                        ? 0.9f + (float)_random.NextDouble() * 0.7f
+                        : 0.4f + (float)_random.NextDouble() * 2.2f;
                     bool overChannel = _riverColumn >= 0 &&
                                        Mathf.Abs(at.x - _riverCentreX) < RiverWidth * 0.5f;
 
@@ -1825,7 +1939,8 @@ namespace Unseen.Environment
                         // downward ray goes straight through to the riverbed and the panel ends up
                         // at or below the waterline, half-swallowed by an opaque surface. Over the
                         // channel the height comes from the water itself.
-                        y = (-RiverDepth + WaterDepth) + 0.8f + (float)_random.NextDouble() * 1.4f;
+                        y = (-RiverDepth + WaterDepth) +
+                            (upright ? 0.7f : 0.2f) + (float)_random.NextDouble() * 1.2f;
                     }
                     else if (Physics.Raycast(at + Vector3.up * 60f, Vector3.down, out RaycastHit ground,
                                  140f, UnseenLayers.WorldGeometry, QueryTriggerInteraction.Ignore))
@@ -1835,20 +1950,41 @@ namespace Unseen.Environment
                         y += ground.point.y;
                     }
 
-                    float size = 34f + (float)_random.NextDouble() * 40f;
+                    // A spread of sizes rather than one big one. A few wide sheets give the
+                    // distance its haze; the smaller ones are what drift between your legs, and
+                    // one size cannot do both.
+                    float size = i == 0
+                        ? 34f + (float)_random.NextDouble() * 40f
+                        : 11f + (float)_random.NextDouble() * 18f;
 
                     var panel = new GameObject($"Mist_{gx}_{gz}_{i}");
                     panel.transform.SetParent(host, false);
                     panel.transform.localPosition = new Vector3(at.x, y, at.z);
 
-                    // Laid flat, with a little tilt so the layer is not a single plane the eye can
-                    // find the height of.
-                    panel.transform.localRotation = Quaternion.Euler(
-                        90f + (float)(_random.NextDouble() * 2f - 1f) * 6f,
-                        (float)_random.NextDouble() * 360f,
-                        0f);
+                    if (upright)
+                    {
+                        // Stood up and turned to a random bearing. Not billboarded: a panel that
+                        // always faces you turns with the camera, and a bank of fog that swings
+                        // round as you look at it is worse than none.
+                        panel.transform.localRotation = Quaternion.Euler(
+                            (float)(_random.NextDouble() * 2f - 1f) * 8f,
+                            (float)_random.NextDouble() * 360f,
+                            0f);
 
-                    panel.transform.localScale = new Vector3(size, size, 1f);
+                        // Wider than tall, because fog lies in sheets.
+                        panel.transform.localScale = new Vector3(size, size * 0.42f, 1f);
+                    }
+                    else
+                    {
+                        // Laid flat, with a little tilt so the layer is not a single plane the eye
+                        // can find the height of.
+                        panel.transform.localRotation = Quaternion.Euler(
+                            90f + (float)(_random.NextDouble() * 2f - 1f) * 6f,
+                            (float)_random.NextDouble() * 360f,
+                            0f);
+
+                        panel.transform.localScale = new Vector3(size, size, 1f);
+                    }
 
                     panel.AddComponent<MeshFilter>().sharedMesh = MistQuad();
                     var renderer = panel.AddComponent<MeshRenderer>();
@@ -2006,8 +2142,12 @@ namespace Unseen.Environment
 
             // Spaced at about two thirds of a mass, so each one buries a third of itself in its
             // neighbour and the run has no seams.
-            float mass = height * 1.05f;
-            int count = Mathf.Max(2, Mathf.RoundToInt(length / (mass * 0.62f)));
+            float mass = height * 0.8f;
+
+            // Overlapping by nearly two thirds. At just over half they stayed readable as separate
+            // shapes and a street hedge was a row of onions rather than one clipped mass, which is
+            // the whole thing a hedge is.
+            int count = Mathf.Max(3, Mathf.RoundToInt(length / (mass * 0.36f)));
 
             for (int i = 0; i < count; i++)
             {
@@ -2027,10 +2167,23 @@ namespace Unseen.Environment
                 // resting on it, and clipped just proud of the collider on every axis.
                 offset.y = height * (0.06f + 0.04f * wobble);
 
+                // Rounder and smoother than the first attempt.
+                //
+                // Five rings by nine sides at 0.44 lumpiness is a crystal, and once the normals
+                // were recalculated from the triangles those facets started catching light flat -
+                // so a street hedge read as a row of green shards. Foliage is the one thing in this
+                // town that should have no readable faces at all.
+                //
+                // And no longer one and a half times the box deep: that bulged a 0.9 m hedge to
+                // 1.35 m of green leaning into the street, which is both wrong to look at and a
+                // lie about where the cover is.
+                // Wider than tall, so the poles of the sphere are squashed out of the
+                // silhouette. Left alone they are a point on top of every mass, and a run of them
+                // reads as a row of onion domes.
                 Organic(hedge, $"Mass_{i}",
-                    OrganicMeshFactory.Blob(5, 9, 0.44f, i % 8),
+                    OrganicMeshFactory.Blob(7, 12, 0.2f, i % 8),
                     offset,
-                    new Vector3(mass * 0.86f, height * rise, depth * 1.5f),
+                    new Vector3(mass * 1.15f, height * rise * 0.78f, depth * 1.08f),
                     _foliage);
             }
 
@@ -2975,7 +3128,7 @@ namespace Unseen.Environment
                 }
 
                 // The lowest tier is the one anybody sees from a street, so the sweep goes there.
-                if (i == 0) BuildCurvedEave(compound, span, y, $"Hip_{i}");
+                if (i == 0) BuildCurvedEave(compound, span, y, slabThickness, $"Hip_{i}");
 
                 y += riser;
             }
@@ -3158,7 +3311,7 @@ namespace Unseen.Environment
             }
         }
 
-        private void BuildKeep(Vector3 origin)
+        private void BuildKeep(Vector3 origin, float footprintOverride = 0f)
         {
             var keep = new GameObject("Keep").transform;
             keep.SetParent(_root, false);
@@ -3167,9 +3320,14 @@ namespace Unseen.Environment
             _sketch?.Add(MapSketch.Feature.Keep, origin,
                 new Vector2(BlockSize * 0.45f, BlockSize * 0.45f));
 
-            int storeys = 3;
-            float storeyHeight = 5.2f;
-            float footprint = BlockSize * 0.8f;
+            // Taller when it is standing on an island in a lake. A three storey keep across a
+            // sixty metre expanse of water is a shed with a view; the whole point of putting it
+            // there is that you can see it from the far side of the district.
+            bool grand = footprintOverride > 0f;
+
+            int storeys = grand ? 5 : 3;
+            float storeyHeight = grand ? 5.6f : 5.2f;
+            float footprint = grand ? footprintOverride : BlockSize * 0.8f;
 
             for (int s = 0; s < storeys; s++)
             {
@@ -3181,7 +3339,11 @@ namespace Unseen.Environment
                 // and infiltratable rather than a sealed box.
                 for (int side = 0; side < 4; side++)
                 {
+                    // A gap on an alternating side per storey, so the keep is climbable and
+                    // infiltratable rather than a sealed box. On the grand one the gaps alternate
+                    // the other way as well, so the route up spirals instead of running straight.
                     if (side == (s + 1) % 4) continue;
+                    if (grand && side == (s + 3) % 4) continue;
 
                     bool horizontal = side % 2 == 0;
                     float sign = side < 2 ? 1f : -1f;
@@ -3223,17 +3385,6 @@ namespace Unseen.Environment
 
         // ---------------------------------------------------------------- water gardens
 
-        /// <summary>Half-width of the stone island the keep stands on, in metres.</summary>
-        private const float IslandHalf = 15.5f;
-
-        /// <summary>Half-width of the moat's outer wall.</summary>
-        private const float MoatHalf = 23f;
-
-        /// <summary>How high the island stands above the street.</summary>
-        private const float PlinthHeight = 1.6f;
-
-        private Material _lakeWater;
-        private Material _wetStone;
 
         /// <summary>
         /// Rock that water runs over, and rock standing in it.
@@ -3286,167 +3437,225 @@ namespace Unseen.Environment
         ///
         /// Returns how high the island stands, so the keep can be built on top of it.
         /// </summary>
-        private float BuildCastleLake(Vector3 origin)
+        /// <summary>Half-width of the stone island the keep stands on. Set when the lake is built.</summary>
+        private float _islandHalf = 15.5f;
+
+        /// <summary>Half-width of the lake's outer wall.</summary>
+        private float _lakeHalf = 23f;
+
+        /// <summary>How high the island stands above the street.</summary>
+        private const float PlinthHeight = 3.2f;
+
+        /// <summary>Height of the low wall that holds the water in, above the street.</summary>
+        private const float LakeWallHeight = 1.9f;
+
+        /// <summary>World Y of the lake surface.</summary>
+        private const float LakeSurfaceY = 1.55f;
+
+        private Material _lakeWater;
+        private Material _wetStone;
+
+
+        /// <summary>
+        /// The lake round the castle, and everything living in it.
+        ///
+        /// Built UP rather than dug down. The ground is laid as flat slabs and the only hole ever
+        /// cut in one is the river channel, so excavating a lake would mean cutting the town's
+        /// floor apart for one building. A castle stands on a stone base anyway - the ishigaki -
+        /// so raising the island and walling the water in around it is both easier and more
+        /// correct than sinking it.
+        ///
+        /// Three grid cells across, because the point of it is to be seen from a long way off. That
+        /// puts about twenty-five metres of water on every side of the island, which changes what
+        /// the crossing means: the four bridges are the fast way in and the obvious place to be
+        /// watched from, and wading is a long, slow, loud minute at chest height with your head
+        /// going under the moment you go prone - which is also the only way to arrive unseen.
+        ///
+        /// Returns how high the island stands, so the keep can be built on top of it.
+        /// </summary>
+        private float BuildCastleLake(Vector3 origin, float pitch)
         {
             var lake = new GameObject("CastleLake").transform;
             lake.SetParent(_root, false);
             lake.localPosition = origin;
 
-            float waterY = PlinthHeight - 0.25f;
+            // Three cells, less a street's width so the surrounding blocks still have a road.
+            _lakeHalf = pitch * 1.5f - StreetWidth * 0.75f;
+            _islandHalf = _lakeHalf * 0.46f;
+
+            float waterY = LakeSurfaceY;
+
+            _sketch?.Add(MapSketch.Feature.Water, origin, new Vector2(_lakeHalf, _lakeHalf));
 
             // ------------------------------------------------------------ the island
             Transform island = Box(lake, "Island", new Vector3(0f, PlinthHeight * 0.5f, 0f),
-                new Vector3(IslandHalf * 2f, PlinthHeight, IslandHalf * 2f),
+                new Vector3(_islandHalf * 2f, PlinthHeight, _islandHalf * 2f),
                 UnseenLayers.Default, _stone);
             Acoustics(island, 0.9f, 1.1f, 1.1f);
 
             // Battered stone facing. A vertical wall is a retaining wall; the slope is what makes
             // it a castle base, and it is what everybody recognises the shape from.
-            for (int course = 0; course < 3; course++)
+            for (int course = 0; course < 5; course++)
             {
-                float t = course / 3f;
-                float out_ = 0.55f * (1f - t);
-                float y = PlinthHeight * (0.12f + t * 0.32f);
+                float t = course / 5f;
+                float out_ = 1.5f * (1f - t);
+                float y = PlinthHeight * (0.08f + t * 0.19f);
 
                 for (int side = 0; side < 4; side++)
                 {
                     bool horizontal = side % 2 == 0;
                     float sign = side < 2 ? 1f : -1f;
-                    float reach = IslandHalf + out_;
+                    float reach = _islandHalf + out_;
 
                     Detail(lake, $"Batter_{course}_{side}",
                         horizontal
                             ? new Vector3(0f, y, reach * sign)
                             : new Vector3(reach * sign, y, 0f),
                         horizontal
-                            ? new Vector3(IslandHalf * 2f + out_ * 2f, PlinthHeight * 0.3f, 0.3f)
-                            : new Vector3(0.3f, PlinthHeight * 0.3f, IslandHalf * 2f + out_ * 2f),
+                            ? new Vector3(_islandHalf * 2f + out_ * 2f, PlinthHeight * 0.22f, 0.5f)
+                            : new Vector3(0.5f, PlinthHeight * 0.22f, _islandHalf * 2f + out_ * 2f),
                         _stone);
                 }
             }
 
             // ------------------------------------------------------------ the outer wall
+            //
+            // Deliberately low. It has to hold the water and be climbable back out of, and it must
+            // not hide the lake from the street - a wall you cannot see over turns the whole thing
+            // back into a ditch.
             for (int side = 0; side < 4; side++)
             {
                 bool horizontal = side % 2 == 0;
                 float sign = side < 2 ? 1f : -1f;
 
-                Transform wall = Box(lake, $"MoatWall_{side}",
+                Transform wall = Box(lake, $"LakeWall_{side}",
                     horizontal
-                        ? new Vector3(0f, PlinthHeight * 0.5f, MoatHalf * sign)
-                        : new Vector3(MoatHalf * sign, PlinthHeight * 0.5f, 0f),
+                        ? new Vector3(0f, LakeWallHeight * 0.5f, _lakeHalf * sign)
+                        : new Vector3(_lakeHalf * sign, LakeWallHeight * 0.5f, 0f),
                     horizontal
-                        ? new Vector3(MoatHalf * 2f + 1.2f, PlinthHeight, 1.2f)
-                        : new Vector3(1.2f, PlinthHeight, MoatHalf * 2f + 1.2f),
+                        ? new Vector3(_lakeHalf * 2f + 1.6f, LakeWallHeight, 1.6f)
+                        : new Vector3(1.6f, LakeWallHeight, _lakeHalf * 2f + 1.6f),
                     UnseenLayers.Occluder, _stone);
                 Acoustics(wall, 0.9f, 1.1f, 1.1f);
+
+                Detail(lake, $"LakeCoping_{side}",
+                    horizontal
+                        ? new Vector3(0f, LakeWallHeight + 0.09f, _lakeHalf * sign)
+                        : new Vector3(_lakeHalf * sign, LakeWallHeight + 0.09f, 0f),
+                    horizontal
+                        ? new Vector3(_lakeHalf * 2f + 2.2f, 0.18f, 2.1f)
+                        : new Vector3(2.1f, 0.18f, _lakeHalf * 2f + 2.2f),
+                    _tile);
             }
 
             // ------------------------------------------------------------ the water
             //
-            // One flat surface across the whole moat, island included. The island stands proud of
+            // One flat surface across the whole lake, island included. The island stands proud of
             // it, so the part underneath is never seen and costs one quad to leave there rather
             // than four strips to cut it out.
             Transform surface = Detail(lake, "LakeWater",
                 new Vector3(0f, waterY - 0.08f, 0f),
-                new Vector3(MoatHalf * 2f, 0.16f, MoatHalf * 2f), LakeWater());
+                new Vector3(_lakeHalf * 2f, 0.16f, _lakeHalf * 2f), LakeWater());
 
             surface.gameObject.AddComponent<WaterVolume>().Configure(
                 waterY + origin.y,
-                new Vector2(MoatHalf, MoatHalf),
+                new Vector2(_lakeHalf, _lakeHalf),
                 waterY - 0.1f,
-                new Vector2(IslandHalf, IslandHalf));
+                new Vector2(_islandHalf, _islandHalf));
 
-            // ------------------------------------------------------------ two ways across
+            // ------------------------------------------------------------ four ways across
             //
-            // Two, on opposite sides. One would make the approach a single chokepoint that decides
-            // every fight at the centre of the map before it starts; three would make the moat
-            // decorative. Two is a choice.
-            for (int sign = -1; sign <= 1; sign += 2)
-            {
-                float span = MoatHalf - IslandHalf;
-                float mid = (MoatHalf + IslandHalf) * 0.5f;
-
-                // A shallow arch, in three planks, so it reads as a bridge rather than a plank.
-                for (int i = 0; i < 3; i++)
-                {
-                    float t = (i - 1) / 1f;
-                    float rise = 0.42f * (1f - t * t);
-
-                    Transform deck = Box(lake, $"MoatBridge_{sign}_{i}",
-                        new Vector3(0f, PlinthHeight + rise, (mid + t * span * 0.33f) * sign),
-                        new Vector3(3.4f, 0.3f, span * 0.42f),
-                        UnseenLayers.Default, _darkTimber);
-                    Acoustics(deck, 0.5f, 1.5f, 1.3f);
-                }
-
-                for (int rail = -1; rail <= 1; rail += 2)
-                {
-                    Detail(lake, $"MoatRail_{sign}_{rail}",
-                        new Vector3(1.6f * rail, PlinthHeight + 0.85f, mid * sign),
-                        new Vector3(0.14f, 0.14f, span), _vermilion);
-
-                    for (int post = 0; post < 3; post++)
-                    {
-                        float t = (post - 1) / 1f;
-                        Detail(lake, $"MoatPost_{sign}_{rail}_{post}",
-                            new Vector3(1.6f * rail,
-                                PlinthHeight + 0.45f,
-                                (mid + t * span * 0.34f) * sign),
-                            new Vector3(0.16f, 0.9f, 0.16f), _vermilion);
-                    }
-                }
-
-                PostLantern(lake, new Vector3(2.1f * sign, PlinthHeight, mid * sign), 1.9f, 9f, 1f);
-            }
+            // One per side. Across seven metres two was a choice; across twenty-five, two would
+            // make the far half of the lake dead space and every approach a coin flip between the
+            // same pair of chokepoints. Four is a decision with a map in it.
+            BuildLakeBridges(lake);
 
             // ------------------------------------------------------------ rocks in the water
             //
-            // Some breaking the surface, some not. A pond of uniform depth with nothing in it is a
-            // swimming bath, and it is the ones half under that say how deep the water is.
-            for (int i = 0; i < 22; i++)
+            // Some breaking the surface, some not. A sheet of water this size with nothing in it is
+            // a reservoir, and it is the ones half under that say how deep it is.
+            float ringInner = _islandHalf + 2.4f;
+            float ringOuter = _lakeHalf - 2.4f;
+
+            for (int i = 0; i < 90; i++)
             {
                 float angle = i * 2.399f;
                 float lane = (float)_random.NextDouble();
                 float reach = Mathf.Max(Mathf.Abs(Mathf.Cos(angle)), Mathf.Abs(Mathf.Sin(angle)));
-                float band = Mathf.Lerp(IslandHalf + 1.1f, MoatHalf - 1.1f, lane) /
-                             Mathf.Max(0.35f, reach);
+                float band = Mathf.Lerp(ringInner, ringOuter, lane) / Mathf.Max(0.35f, reach);
 
-                float size = 0.6f + (float)_random.NextDouble() * 1.5f;
-                float sink = (float)_random.NextDouble();
+                // Bigger nearer the island, where a castle's own spoil ends up.
+                float size = Mathf.Lerp(3.4f, 1.1f, lane) *
+                             (0.65f + (float)_random.NextDouble() * 0.7f);
 
-                Organic(lake, $"MoatRock_{i}",
+                // Sat ON THE BED, not hung off the surface. Whether a rock breaks the surface
+                // follows from how big it is, which is also where the variety comes from for free.
+                Organic(lake, $"LakeRock_{i}",
                     OrganicMeshFactory.Blob(7, 12, 0.3f, i % 8),
-                    new Vector3(Mathf.Cos(angle) * band,
-                        waterY - size * (0.15f + sink * 0.55f),
-                        Mathf.Sin(angle) * band),
+                    new Vector3(Mathf.Cos(angle) * band, size * 0.46f, Mathf.Sin(angle) * band),
                     new Vector3(size * 1.3f, size, size * 1.15f),
                     WetStone());
             }
 
-            // Reeds against the island, where silt collects.
-            for (int i = 0; i < 30; i++)
+            // Islets: a handful of proper stone outcrops standing well clear of the water, the way
+            // a formal lake has. These are also the only cover out in the middle of it.
+            for (int i = 0; i < 6; i++)
             {
-                float angle = i * 1.257f;
+                float angle = 0.7f + i * 1.047f;
                 float reach = Mathf.Max(Mathf.Abs(Mathf.Cos(angle)), Mathf.Abs(Mathf.Sin(angle)));
-                float band = (IslandHalf + 0.55f) / Mathf.Max(0.35f, reach);
-                float tall = 0.7f + (float)_random.NextDouble() * 0.8f;
+                float band = Mathf.Lerp(ringInner + 3f, ringOuter - 3f, (i % 3) / 2f) /
+                             Mathf.Max(0.35f, reach);
 
-                Organic(lake, $"MoatReed_{i}",
+                var at = new Vector3(Mathf.Cos(angle) * band, 0f, Mathf.Sin(angle) * band);
+                float size = 4.2f + (float)_random.NextDouble() * 2.6f;
+
+                Transform islet = Box(lake, $"Islet_{i}",
+                    at + Vector3.up * (waterY * 0.5f + 0.35f),
+                    new Vector3(size * 0.72f, waterY + 0.7f, size * 0.68f),
+                    UnseenLayers.Occluder, _riverStone);
+                Acoustics(islet, 0.9f, 1.1f, 1f);
+
+                var isletRenderer = islet.GetComponent<MeshRenderer>();
+                if (isletRenderer != null) UnseenObject.Destroy(isletRenderer);
+
+                Organic(islet, "Mass", OrganicMeshFactory.Blob(7, 12, 0.3f, (i + 2) % 8),
+                    Vector3.zero, new Vector3(size, waterY + 1.1f, size * 0.9f), WetStone());
+
+                // A pine on the bigger ones, which is the whole picture of a lake like this.
+                if (i % 2 != 0) continue;
+
+                var stem = new GameObject($"IsletPine_{i}").transform;
+                stem.SetParent(lake, false);
+                stem.localPosition = at + Vector3.up * (waterY + 0.5f);
+                BuildPine(stem, 3.2f + (float)_random.NextDouble() * 2f, 1.4f);
+            }
+
+            // Reeds against the island and along the outer wall, where silt collects.
+            for (int i = 0; i < 90; i++)
+            {
+                float angle = i * 0.419f;
+                float reach = Mathf.Max(Mathf.Abs(Mathf.Cos(angle)), Mathf.Abs(Mathf.Sin(angle)));
+                bool inner = (i & 1) == 0;
+                float band = ((inner ? _islandHalf + 0.8f : _lakeHalf - 1.4f)) /
+                             Mathf.Max(0.35f, reach);
+
+                float tall = 0.9f + (float)_random.NextDouble() * 1.1f;
+
+                Organic(lake, $"LakeReed_{i}",
                     OrganicMeshFactory.Blade(4, 0.5f),
-                    new Vector3(Mathf.Cos(angle) * band, waterY - 0.15f, Mathf.Sin(angle) * band),
-                    new Vector3(0.5f, tall, 0.5f), _reed)
+                    new Vector3(Mathf.Cos(angle) * band, waterY - 0.25f, Mathf.Sin(angle) * band),
+                    new Vector3(0.6f, tall, 0.6f), _reed)
                     .localRotation = Quaternion.Euler(0f, angle * Mathf.Rad2Deg, 0f);
             }
 
             // ------------------------------------------------------------ the fish
-            for (int i = 0; i < 9; i++)
+            for (int i = 0; i < 22; i++)
             {
                 Transform fish = BuildKoiBody(lake, i);
 
                 fish.gameObject.AddComponent<Koi>().Configure(
-                    origin + new Vector3(0f, 0f, 0f),
-                    new Vector2(IslandHalf + 1.6f, MoatHalf - 1.6f),
+                    origin,
+                    new Vector2(_islandHalf + 3f, _lakeHalf - 3f),
                     origin.y + waterY,
                     i,
                     square: true);
@@ -3457,16 +3666,126 @@ namespace Unseen.Environment
             // ------------------------------------------------------------ the water comes from
             //                                                              somewhere
             //
-            // A moat with no inlet is a tank. The fall is on one corner, outside the wall, and it
-            // is the loudest thing at the centre of the map - which makes the whole approach to
-            // the keep quieter to cross than it looks.
-            // In the corner of the moat itself, against the outer wall, so it pours into the
-            // water rather than beside it.
-            BuildWaterfall(lake, new Vector3(-MoatHalf + 3.2f, 0f, MoatHalf - 3.2f),
-                new Vector3(0.7f, 0f, -0.7f), 4.4f, 3.8f, waterY);
+            // A lake with no inlet is a tank. The fall is on one corner, inside the wall, and it is
+            // the loudest thing at the centre of the map - which makes the whole approach to the
+            // castle quieter to cross than it looks.
+            BuildWaterfall(lake, new Vector3(-_lakeHalf + 7f, 0f, _lakeHalf - 7f),
+                new Vector3(0.7f, 0f, -0.7f), 8.5f, 7f, waterY);
+
+            // Lanterns along the coping, so the lake has an outline after dark. This is the thing
+            // that makes it visible from three blocks away.
+            int lamps = Mathf.Max(8, Mathf.RoundToInt(_lakeHalf / 7f));
+
+            for (int side = 0; side < 4; side++)
+            {
+                bool horizontal = side % 2 == 0;
+                float sign = side < 2 ? 1f : -1f;
+
+                for (int i = 0; i < lamps; i++)
+                {
+                    float t = (i + 0.5f) / lamps;
+                    float along = Mathf.Lerp(-_lakeHalf * 0.85f, _lakeHalf * 0.85f, t);
+
+                    PostLantern(lake,
+                        horizontal
+                            ? new Vector3(along, LakeWallHeight + 0.18f, _lakeHalf * sign)
+                            : new Vector3(_lakeHalf * sign, LakeWallHeight + 0.18f, along),
+                        1.8f, 11f, 1f);
+                }
+            }
 
             _gardens++;
             return PlinthHeight;
+        }
+
+        /// <summary>
+        /// The four bridges onto the island: a long arched span each, climbing from the outer
+        /// coping to the island top.
+        ///
+        /// Built as a run of decks rather than one plank, because across twenty-five metres a
+        /// single slab is a ramp and the arch is most of what makes it worth looking at. The rail
+        /// is vermilion, which is the one place in this town that colour belongs.
+        /// </summary>
+        private void BuildLakeBridges(Transform lake)
+        {
+            float span = _lakeHalf - _islandHalf;
+            float mid = (_lakeHalf + _islandHalf) * 0.5f;
+
+            int decks = Mathf.Max(5, Mathf.RoundToInt(span / 4f));
+            float deckLength = span / decks;
+
+            for (int axis = 0; axis < 2; axis++)
+            for (int sign = -1; sign <= 1; sign += 2)
+            {
+                bool alongZ = axis == 0;
+
+                for (int i = 0; i < decks; i++)
+                {
+                    float t = (i + 0.5f) / decks;
+
+                    // Zero at the outer wall, one at the island, with an arch over the middle.
+                    float distance = Mathf.Lerp(_lakeHalf, _islandHalf, t);
+                    float deckY = Mathf.Lerp(LakeWallHeight, PlinthHeight, t) +
+                                  Mathf.Sin(t * Mathf.PI) * 1.1f;
+
+                    Transform deck = Box(lake, $"LakeBridge_{axis}_{sign}_{i}",
+                        alongZ
+                            ? new Vector3(0f, deckY, distance * sign)
+                            : new Vector3(distance * sign, deckY, 0f),
+                        alongZ
+                            ? new Vector3(4.2f, 0.34f, deckLength * 1.25f)
+                            : new Vector3(deckLength * 1.25f, 0.34f, 4.2f),
+                        UnseenLayers.Default, _darkTimber);
+                    Acoustics(deck, 0.5f, 1.5f, 1.3f);
+
+                    // A pier down into the water under every second deck, so the span is carried.
+                    if (i % 2 != 0) continue;
+
+                    Detail(lake, $"LakePier_{axis}_{sign}_{i}",
+                        alongZ
+                            ? new Vector3(0f, deckY * 0.5f, distance * sign)
+                            : new Vector3(distance * sign, deckY * 0.5f, 0f),
+                        new Vector3(1.1f, deckY, 1.1f), _darkTimber);
+
+                    for (int rail = -1; rail <= 1; rail += 2)
+                    {
+                        Detail(lake, $"LakeRail_{axis}_{sign}_{i}_{rail}",
+                            alongZ
+                                ? new Vector3(2f * rail, deckY + 0.95f, distance * sign)
+                                : new Vector3(distance * sign, deckY + 0.95f, 2f * rail),
+                            alongZ
+                                ? new Vector3(0.16f, 0.16f, deckLength * 2.2f)
+                                : new Vector3(deckLength * 2.2f, 0.16f, 0.16f),
+                            _vermilion);
+
+                        Detail(lake, $"LakePost_{axis}_{sign}_{i}_{rail}",
+                            alongZ
+                                ? new Vector3(2f * rail, deckY + 0.5f, distance * sign)
+                                : new Vector3(distance * sign, deckY + 0.5f, 2f * rail),
+                            new Vector3(0.18f, 1f, 0.18f), _vermilion);
+                    }
+                }
+
+                // A gate where the bridge meets the island, which is what you are actually
+                // approaching when you cross.
+                for (int post = -1; post <= 1; post += 2)
+                {
+                    Detail(lake, $"LakeGatePost_{axis}_{sign}_{post}",
+                        alongZ
+                            ? new Vector3(2.6f * post, PlinthHeight + 1.9f, _islandHalf * sign)
+                            : new Vector3(_islandHalf * sign, PlinthHeight + 1.9f, 2.6f * post),
+                        new Vector3(0.42f, 3.8f, 0.42f), _vermilion);
+                }
+
+                Detail(lake, $"LakeGateBeam_{axis}_{sign}",
+                    alongZ
+                        ? new Vector3(0f, PlinthHeight + 3.9f, _islandHalf * sign)
+                        : new Vector3(_islandHalf * sign, PlinthHeight + 3.9f, 0f),
+                    alongZ
+                        ? new Vector3(7.2f, 0.36f, 0.5f)
+                        : new Vector3(0.5f, 0.36f, 7.2f),
+                    _vermilion);
+            }
         }
 
         /// <summary>
@@ -3794,16 +4113,26 @@ namespace Unseen.Environment
             }
 
             // The mound: boulders in decreasing size going up, so it has a summit you can climb.
+            // A wide low mass underneath the whole thing first, so nothing above it is resting
+            // on air. The pile used to be a spiral of shrinking boulders climbing 2.6 m on a
+            // shrinking radius, and the upper ones simply hung in the sky wherever the spiral
+            // stepped inward faster than they were wide.
+            Organic(garden, "MoundBase", OrganicMeshFactory.Blob(7, 12, 0.26f, 5),
+                new Vector3(0f, 0.5f, half * 0.55f),
+                new Vector3(half * 1.9f, 1.9f, half * 1.7f), WetStone());
+
             for (int i = 0; i < 14; i++)
             {
                 float t = i / 13f;
                 float angle = i * 2.399f;
-                float band = Mathf.Lerp(half * 0.85f, half * 0.3f, t);
-                float size = Mathf.Lerp(2.4f, 0.9f, t) * (0.7f + (float)rng.NextDouble() * 0.6f);
+                float band = Mathf.Lerp(half * 0.8f, half * 0.22f, t);
+                float size = Mathf.Lerp(2.6f, 1.5f, t) * (0.82f + (float)rng.NextDouble() * 0.36f);
 
+                // Climbing only as fast as the boulders are tall, so each course sits into the one
+                // below it instead of hovering over the gap between two of them.
                 var at = new Vector3(
                     Mathf.Cos(angle) * band,
-                    0.2f + t * 2.6f,
+                    0.5f + t * 1.7f,
                     Mathf.Sin(angle) * band + half * 0.55f);
 
                 Transform block = Box(garden, $"Boulder_{i}", at,
@@ -3920,6 +4249,14 @@ namespace Unseen.Environment
                 _lakeWater.SetFloat("_DeepHalf", 10000f);
                 _lakeWater.SetFloat("_ShallowDepth", 0.9f);
                 _lakeWater.SetFloat("_DeepDepth", 1.5f);
+            }
+
+            // Less crest foam than the river. A still lake is not white-capped, and across a
+            // hundred and twenty metres of it any foam at all compounds into a texture.
+            if (_lakeWater.HasProperty("_FoamAmount"))
+            {
+                _lakeWater.SetFloat("_FoamAmount", 0.28f);
+                _lakeWater.SetFloat("_ShoreFoam", 0.4f);
             }
 
             return _lakeWater;
