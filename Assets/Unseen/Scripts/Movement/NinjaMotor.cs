@@ -294,8 +294,23 @@ namespace Unseen.Movement
                 return;
             }
 
+            // Look for a lip to get over on EVERY tick of the climb, not only at the moment the
+            // wall runs out.
+            //
+            // This is the reported bug. A roof with a parapet on it never stops being wall in front
+            // of the chest, so the old check never fired; the climb simply timed out and dropped
+            // the player into Airborne hard against the face of the wall, apparently standing in
+            // mid-air until they crouched and fell. There was no way over a ledge at all.
+            //
+            // Held forward is the input, as asked: pressing up against a lip scrambles over it.
+            if (intent.Move.y > 0.1f && TryMantleFromClimb(cfg)) return;
+
             if (_wallTimer > cfg.Movement.WallClimbDuration || intent.Crouch)
             {
+                // One last attempt at the top before giving up, so a climb that runs out of stamina
+                // exactly at the lip finishes the move rather than dropping you down the wall.
+                if (TryMantleFromClimb(cfg)) return;
+
                 _velocity = _wallNormal * 1.5f;
                 _agent.Locomotion = LocomotionState.Airborne;
                 return;
@@ -304,7 +319,8 @@ namespace Unseen.Movement
             // Reaching the top of the wall turns into a mantle rather than a hop into the void.
             if (!ParkourProbe.FindWall(_agent.TorsoPosition, into, cfg.Movement.Radius + 0.5f, out _))
             {
-                if (TryMantle(cfg, intent)) return;
+                if (TryMantleFromClimb(cfg)) return;
+                if (TryGrabLedge(cfg)) return;
                 _agent.Locomotion = LocomotionState.Airborne;
                 return;
             }
@@ -344,7 +360,10 @@ namespace Unseen.Movement
         {
             _velocity = float3.zero;
 
-            if (_jumpPressed && TryMantle(cfg, intent)) return;
+            // Jump OR forward. Hanging from a lip and pushing the stick towards it is the most
+            // natural way anyone tries to climb up, and requiring a jump press there is a rule
+            // nobody guesses.
+            if ((_jumpPressed || intent.Move.y > 0.1f) && TryMantle(cfg, intent)) return;
 
             if (intent.Crouch)
             {
@@ -418,7 +437,18 @@ namespace Unseen.Movement
                         out Vector3 direction, out float distance))
                     continue;
 
-                position += direction * (distance + 0.02f);
+                // Never straight down.
+                //
+                // The shortest way out of a collider is sometimes downward, and the spirit forest's
+                // wall now reaches sixteen metres below ground so it fills the river channel. A
+                // body caught in it on the drop was being resolved down through the world and
+                // ending up at minus seventeen metres with nothing under it. Out of a wall means
+                // sideways or up; if the only way out is down, staying put is better than falling
+                // out of the map.
+                if (direction.y < 0f) direction.y = 0f;
+                if (direction.sqrMagnitude < 0.0001f) continue;
+
+                position += direction.normalized * (distance + 0.02f);
             }
 
             MoveDirect(position);
@@ -457,6 +487,21 @@ namespace Unseen.Movement
                 // you onto it rather than stopping you dead in the air beside it.
                 _velocity = reel * 0.4f;
                 if (arrived) _velocity.y = math.max(_velocity.y, 1.5f);
+
+                // Arriving at an anchor on an eave used to leave the player hanging in the air
+                // beside the roof with nothing to do but fall. If there is a lip within reach of
+                // where the rope has put them, they take hold of it.
+                if (arrived)
+                {
+                    _hook.Release(cfg.Movement.GrappleCooldown);
+                    _agent.Flags &= ~AgentFlags.Grappling;
+
+                    if (TryGrabLedge(cfg)) return;
+
+                    _agent.Locomotion = LocomotionState.Airborne;
+                    PushOutOfGeometry();
+                    return;
+                }
 
                 return;
             }
@@ -525,12 +570,94 @@ namespace Unseen.Movement
                     0.4f, cfg.Movement.StandHeight + 0.9f, out LedgeHit ledge))
                 return false;
 
-            float3 target = ledge.Top + forward * 0.35f;
-            if (!ParkourProbe.HasClearance(target, cfg.Movement.Radius, cfg.StanceHeight(_agent.Stance)))
-                return false;
+            if (!FindStandableTop(cfg, ledge, forward, out float3 target)) return false;
 
             BeginMotionWarp(target, _agent.Yaw, cfg.Movement.MantleDuration);
             return true;
+        }
+
+        /// <summary>
+        /// A mantle attempted from part-way up a wall.
+        ///
+        /// <see cref="TryMantle"/> probes forward from the FEET, which is right when you are
+        /// standing in front of something waist-high and useless when you are flat against a wall
+        /// with the lip somewhere above your head: the ray goes into the wall and the ledge search
+        /// never starts. This one sweeps the probe up the body - feet, waist, chest, eyes - and
+        /// takes the first lip it finds within reach.
+        /// </summary>
+        /// <summary>
+        /// Finds a spot on TOP of a ledge that a body can actually stand on.
+        ///
+        /// The obvious target - the lip plus a step forward - lands past the far edge of anything
+        /// thin, and a compound wall is thin. That was the reported bug, and it does not look like
+        /// an overshoot from the player's seat: the mantle plays, you arrive on the wall, and a
+        /// tick later you are falling. The trace reads WallClimb, Locked, Grounded at 3.55 m,
+        /// Airborne, ground.
+        ///
+        /// So the step forward is tried longest-first and each candidate has to have floor under
+        /// it, which lands a thick roof deep and a thin parapet right on its centre line.
+        /// </summary>
+        private bool FindStandableTop(UnseenConfig cfg, in LedgeHit ledge, float3 forward,
+            out float3 target)
+        {
+            target = default;
+            // Including zero and a step BACK.
+            //
+            // ledge.Top is already a quarter of a metre in from the near face - that is where the
+            // probe that found it looked down - so on a compound wall three tenths of a metre thick
+            // every forward offset lands past the far edge and finds no floor. The mantle then
+            // never fired at all, and the climb ratcheted up and fell out of itself forever at two
+            // and a half metres: the limbo that was reported.
+            float[] steps = { 0.45f, 0.3f, 0.18f, 0.08f, 0f, -0.1f };
+
+            for (int i = 0; i < steps.Length; i++)
+            {
+                float3 candidate = ledge.Top + forward * steps[i] + new float3(0f, 0.05f, 0f);
+
+                // Floor directly under it, close enough to be the same surface as the lip.
+                if (!Physics.Raycast(candidate + new float3(0f, 0.6f, 0f), Vector3.down,
+                        out RaycastHit floor, 1.1f, UnseenLayers.WorldGeometry,
+                        QueryTriggerInteraction.Ignore))
+                    continue;
+
+                if (Vector3.Dot(floor.normal, Vector3.up) < 0.6f) continue;
+
+                float3 stand = new float3(candidate.x, floor.point.y + 0.03f, candidate.z);
+                if (!ParkourProbe.HasClearance(stand, cfg.Movement.Radius,
+                        cfg.StanceHeight(_agent.Stance)))
+                    continue;
+
+                target = stand;
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryMantleFromClimb(UnseenConfig cfg)
+        {
+            float3 forward = -_wallNormal;
+            float stand = cfg.Movement.StandHeight;
+
+            // Four heights up the body. A lip level with the eyes is reachable; one two metres
+            // above them is a different wall.
+            float[] offsets = { 0f, stand * 0.45f, stand * 0.8f, stand * 1.15f };
+
+            for (int i = 0; i < offsets.Length; i++)
+            {
+                float3 from = _agent.Position + new float3(0f, offsets[i], 0f);
+
+                if (!ParkourProbe.FindLedge(from, forward, cfg.Movement.LedgeGrabReach + 0.6f,
+                        0.25f, stand + 1.1f, out LedgeHit ledge))
+                    continue;
+
+                if (!FindStandableTop(cfg, ledge, forward, out float3 target)) continue;
+
+                BeginMotionWarp(target, _agent.Yaw, cfg.Movement.MantleDuration);
+                return true;
+            }
+
+            return false;
         }
 
         private bool TryGrabLedge(UnseenConfig cfg)

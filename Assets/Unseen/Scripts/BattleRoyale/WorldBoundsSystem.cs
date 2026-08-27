@@ -1,4 +1,5 @@
 using Unity.Mathematics;
+using UnityEngine;
 using Unseen.Core;
 using Unseen.Entities;
 
@@ -84,9 +85,31 @@ namespace Unseen.BattleRoyale
                 }
 
                 // Below the sewer floor there is nothing to land on, so a fall there never ends.
-                if (position.y < _floorY)
+                //
+                // Put them back on the GROUND rather than at the floor plane. Clamping the height
+                // alone stops the endless fall but leaves the body hanging in the void with nothing
+                // under it, which is a different soft-lock rather than a fix - the drop test found
+                // exactly that, an agent parked on the clamp at minus seventeen metres.
+                // Only for bodies that have LANDED. Someone still under a glider is below the
+                // floor because the drop line starts there, and teleporting them onto the nearest
+                // roof mid-descent put thirty-nine of them inside geometry - a worse outcome than
+                // the one being fixed. They just get lifted.
+                bool deployed = (agent.Flags & AgentFlags.Deployed) != 0;
+
+                if (position.y < _floorY && !deployed)
                 {
                     position.y = _floorY + 2f;
+                    corrected = true;
+                }
+                else if (position.y < _floorY)
+                {
+                    if (Physics.Raycast(new Vector3(position.x, _ceilingY, position.z),
+                            Vector3.down, out RaycastHit ground, _ceilingY - _floorY + 20f,
+                            UnseenLayers.WorldGeometry, QueryTriggerInteraction.Ignore))
+                        position = new float3(position.x, ground.point.y + 0.2f, position.z);
+                    else
+                        position = new float3(_center.x, _floorY + 2f, _center.z);
+
                     corrected = true;
                 }
                 else if (position.y > _ceilingY)
