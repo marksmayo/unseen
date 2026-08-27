@@ -1863,6 +1863,11 @@ MonoBehaviour:
   Rig: {fileID: 5744183643793801691}
   Body: {fileID: 5640816742968432950}
   SpeedSmoothing: 8
+  ActionBlendSpeed: 9
+  CrouchBodyDrop: 0.31948912
+  ProneBodyDrop: 0.28882617
+  CrouchBlendSpeed: 7
+  ProxyFlags: 0
 --- !u!1 &8182593873120526549
 GameObject:
   m_ObjectHideFlags: 0

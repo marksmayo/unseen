@@ -49,10 +49,10 @@ namespace Unseen.Entities
         [Tooltip("How far the body sinks when crouched. The crouch pose folds the knees, which " +
                  "lifts the feet; this puts them back on the floor. Measured with " +
                  "Unseen > Art > Capture Animation Poses rather than guessed.")]
-        public float CrouchBodyDrop = 0.348f;
+        public float CrouchBodyDrop = 0.319f;
 
         [Tooltip("How far the body sinks when prone. Same measurement, a much deeper fold.")]
-        public float ProneBodyDrop = 0.339f;
+        public float ProneBodyDrop = 0.289f;
 
         [Tooltip("How quickly the body settles into and out of a crouch.")]
         public float CrouchBlendSpeed = 7f;
