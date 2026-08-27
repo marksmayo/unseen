@@ -91,13 +91,13 @@ namespace Unseen.Combat
 
                 // Rising edge only. Holding the button is one throw, not a stream of them.
                 if (!wants || held) continue;
-                if (agent.Shuriken <= 0) continue;
+                if (!cfg.Unlimited && agent.Shuriken <= 0) continue;
 
                 _nextThrow.TryGetValue(id, out float ready);
                 if (frame.Time < ready) continue;
 
                 _nextThrow[id] = frame.Time + cfg.Cooldown;
-                agent.Shuriken--;
+                if (!cfg.Unlimited) agent.Shuriken--;
                 Thrown++;
 
                 var blade = new Blade
@@ -113,7 +113,8 @@ namespace Unseen.Combat
                 _blades.Add(blade);
 
                 // The throw itself is heard, separately from the whistle: a body moving hard enough
-                // to sling steel is not quiet.
+                // to sling steel is not quiet. This one IS the thrower's - everyone else should be
+                // able to tell where it came from, and the thrower does not need telling they threw.
                 Ctx.Sound.Emit(agent.Id, agent.Position, SoundKind.WeaponSwing,
                     cfg.ThrowLoudness, cfg.ThrowRadius, frame.Tick);
             }
@@ -156,7 +157,8 @@ namespace Unseen.Combat
                     Physics.Raycast(from, math.normalize(step), out RaycastHit world, distance,
                         UnseenLayers.WorldGeometry, QueryTriggerInteraction.Ignore))
                 {
-                    Ctx.Sound.Emit(blade.Owner, world.point, SoundKind.ShurikenHit,
+                    // The blade's, not the thrower's - see the note on the whistle.
+                    Ctx.Sound.Emit(AgentId.None, world.point, SoundKind.ShurikenHit,
                         cfg.HitLoudness, cfg.HitRadius, frame.Tick);
 
                     Land(cfg, blade, (float3)world.point + (float3)world.normal * 0.06f, frame);
@@ -182,7 +184,14 @@ namespace Unseen.Combat
                 if (frame.Time >= blade.NextWhistle)
                 {
                     blade.NextWhistle = frame.Time + cfg.WhistleInterval;
-                    Ctx.Sound.Emit(blade.Owner, blade.Position, SoundKind.ShurikenWhistle,
+
+                    // Attributed to NOBODY, so the person who threw it can hear it.
+                    //
+                    // The acoustic model refuses to deliver a sound to the agent it names as the
+                    // source, which is right for footsteps. Credited to the thrower, the one player
+                    // in the match who could not hear their own blade was the one who threw it -
+                    // no whistle, no hit, no feedback of any kind. The blade is making the noise.
+                    Ctx.Sound.Emit(AgentId.None, blade.Position, SoundKind.ShurikenWhistle,
                         cfg.WhistleLoudness, cfg.WhistleRadius, frame.Tick);
                 }
 
@@ -235,7 +244,7 @@ namespace Unseen.Combat
                 Direction = direction
             });
 
-            Ctx.Sound.Emit(blade.Owner, best.TorsoPosition, SoundKind.ShurikenHit,
+            Ctx.Sound.Emit(AgentId.None, best.TorsoPosition, SoundKind.ShurikenHit,
                 cfg.HitLoudness, cfg.HitRadius, frame.Tick);
 
             Hits++;
@@ -301,6 +310,11 @@ namespace Unseen.Combat
 
         private void Collect(UnseenConfig.ShurikenSection cfg, in SimFrame frame)
         {
+            // Nothing to collect when nobody can run out. Blades still land and still lie there,
+            // because a courtyard with steel in the gravel is worth looking at - they are just no
+            // longer ammunition.
+            if (cfg.Unlimited) return;
+
             EntityRegistry registry = Ctx.Entities;
 
             for (int i = 0; i < registry.Count; i++)

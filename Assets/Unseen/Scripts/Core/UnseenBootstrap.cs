@@ -91,6 +91,9 @@ namespace Unseen.Core
 
         /// <summary>The map this boot resolved. Exposed so tools can check bounds against it.</summary>
         public MapDescriptor Map { get; private set; }
+
+        /// <summary>The bot director. Exposed so probes can exercise spawn placement directly.</summary>
+        public AI.BotDirector Bots => _bots;
         public MatchDirector Match => _match;
         public ClientNetworkView ClientView => _clientView;
 

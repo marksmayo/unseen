@@ -4,6 +4,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
+using UnityEngine.AI;
 using Unseen.BattleRoyale;
 using Unseen.Core;
 using Unseen.Entities;
@@ -95,18 +96,75 @@ namespace Unseen.AI
             }
         }
 
+        /// <summary>
+        /// Somewhere to put a body: on the ground, out of the water, and somewhere it can path from.
+        ///
+        /// Two things were wrong with this and both put bots in the lake.
+        ///
+        /// It only asked for GROUND, and a riverbed is ground - solid stone under a metre and a half
+        /// of water, which a downward ray reports as a perfectly good floor. Sampled four thousand
+        /// times, 10.3% of placements came down in water deep enough to drown in. The roster is
+        /// topped up all match, so that is not a one-off at the drop: at worst thirteen bots were
+        /// stood in drownable water at once, and some bot was in it for 176 of 180 seconds. It also
+        /// explains a number I could not shift by making the water unwalkable - they were not
+        /// walking in, they were being put there.
+        ///
+        /// And the radius was uniform rather than area-uniform, which piles samples into the middle
+        /// of the map: picking r evenly gives a density proportional to 1/r. The middle of this map
+        /// is now a lake, so the bias aimed the bug straight at it. The square root fixes the
+        /// distribution and is the whole difference between an even scatter and a crowd at the
+        /// centre.
+        /// </summary>
+        /// <summary>
+        /// Public so a probe can test the REAL placement rather than a copy of it.
+        ///
+        /// The first version of the spawn probe re-implemented this sampling inline and reported the
+        /// same 10.3% hazard rate after the fix as before it - because it was measuring its own copy
+        /// of the old algorithm. A test that reproduces the code under test proves nothing about the
+        /// code under test.
+        /// </summary>
+        public float3 PickSpawnPoint() => RandomGroundPoint();
+
         private float3 RandomGroundPoint()
         {
-            for (int attempt = 0; attempt < 6; attempt++)
+            float3 fallback = default;
+            bool haveFallback = false;
+
+            for (int attempt = 0; attempt < 16; attempt++)
             {
                 float angle = (float)Ctx.Random.NextDouble() * math.PI * 2f;
-                float radius = (float)Ctx.Random.NextDouble() * _mapRadius;
+
+                // Area-uniform, not radius-uniform.
+                float radius = math.sqrt((float)Ctx.Random.NextDouble()) * _mapRadius;
+
                 float3 candidate = _mapCenter + new float3(math.cos(angle) * radius, 0f, math.sin(angle) * radius);
 
-                if (Physics.Raycast(candidate + new float3(0f, 300f, 0f), Vector3.down, out RaycastHit hit, 600f,
+                if (!Physics.Raycast(candidate + new float3(0f, 300f, 0f), Vector3.down, out RaycastHit hit, 600f,
                         UnseenLayers.WorldGeometry, QueryTriggerInteraction.Ignore))
-                    return (float3)hit.point + new float3(0f, 0.2f, 0f);
+                    continue;
+
+                float3 feet = (float3)hit.point + new float3(0f, 0.2f, 0f);
+
+                // Never in water a body could drown in. Ankle deep is fine and is a legitimate
+                // place to be standing.
+                if (Environment.WaterVolume.DepthAt(feet) > 0.5f) continue;
+
+                // Keep the first dry spot in hand, so a map with no NavMesh still gets an answer.
+                if (!haveFallback)
+                {
+                    fallback = feet;
+                    haveFallback = true;
+                }
+
+                // And somewhere the navigator can actually start from. This also excludes deep
+                // water a second time over, since that is carved out of the mesh - but the reason
+                // to ask is the general one: a body dropped somewhere unreachable can only ever
+                // whisker-steer, and will spend its whole life doing it.
+                if (NavMesh.SamplePosition(feet, out NavMeshHit _, 2f, NavMesh.AllAreas))
+                    return feet;
             }
+
+            if (haveFallback) return fallback;
 
             return _mapCenter + new float3(0f, 1f, 0f);
         }

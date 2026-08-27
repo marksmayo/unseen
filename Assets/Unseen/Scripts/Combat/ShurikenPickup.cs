@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using Unity.Mathematics;
 using UnityEngine;
+using UnityEngine.Rendering;
+using Unseen.Core;
 using Unseen.Environment;
 
 namespace Unseen.Combat
@@ -25,6 +27,15 @@ namespace Unseen.Combat
         }
 
         private static readonly List<Dropped> Lying = new List<Dropped>(64);
+
+        /// <summary>
+        /// Most blades left lying about at once.
+        ///
+        /// Needed once the supply became unlimited: sixty-four players throwing every five seconds
+        /// for a fifteen minute match is ten thousand blades, and every one of them was a
+        /// GameObject with four renderers on it. The oldest goes when a new one lands.
+        /// </summary>
+        private const int MaxLying = 96;
         private static Transform _root;
         private static Mesh _mesh;
         private static Material _material;
@@ -42,6 +53,12 @@ namespace Unseen.Combat
 
                 // Lying flat, tilted a little, as a thrown thing does.
                 visual.rotation = Quaternion.Euler(88f, at.x * 37f % 360f, 0f);
+            }
+
+            if (Lying.Count >= MaxLying)
+            {
+                if (Lying[0].Visual != null) Object.Destroy(Lying[0].Visual.gameObject);
+                Lying.RemoveAt(0);
             }
 
             Lying.Add(new Dropped { Position = at, AvailableAt = availableAt, Visual = visual });
@@ -116,13 +133,27 @@ namespace Unseen.Combat
             var blade = new GameObject("Blade");
             blade.transform.SetParent(_root, false);
 
+            // Deliberately oversized.
+            //
+            // A shuriken is about fifteen centimetres across, and at that size it is simply not
+            // visible: in flight it is a couple of pixels crossing a dark courtyard, and on the
+            // ground it is nothing at all. Drawn at roughly twice life size it reads as a thrown
+            // thing, which is what it needs to do. Nothing about the hit test changes with this -
+            // that is HitRadiusMetres, and it is a separate number on purpose.
+            float size = UnseenConfig.Default != null
+                ? UnseenConfig.Default.Shuriken.VisualSize
+                : 0.34f;
+
+            float arm = size * 0.5f;
+
             for (int i = 0; i < 4; i++)
             {
                 var point = new GameObject($"Point_{i}");
                 point.transform.SetParent(blade.transform, false);
                 point.transform.localRotation = Quaternion.Euler(0f, 0f, i * 90f);
-                point.transform.localScale = new Vector3(0.035f, 0.075f, 0.008f);
-                point.transform.localPosition = point.transform.localRotation * new Vector3(0f, 0.05f, 0f);
+                point.transform.localScale = new Vector3(arm * 0.42f, arm * 0.9f, arm * 0.1f);
+                point.transform.localPosition = point.transform.localRotation *
+                                                new Vector3(0f, arm * 0.6f, 0f);
 
                 point.AddComponent<MeshFilter>().sharedMesh = BoxMeshFactory.Get(Vector3.one, 1f);
 
@@ -149,6 +180,19 @@ namespace Unseen.Combat
                 _material.SetFloat("_Smoothness", 0.72f);
             if (_material.HasProperty("_Metallic"))
                 _material.SetFloat("_Metallic", 0.85f);
+
+            // A little glow, so it catches the eye against a dark street. Polished steel under a
+            // moon does exactly this, and without it a dark blade against dark gravel is invisible
+            // however big it is drawn.
+            if (_material.HasProperty("_EmissionColor"))
+            {
+                _material.EnableKeyword("_EMISSION");
+                _material.SetColor("_EmissionColor", new Color(0.30f, 0.34f, 0.40f));
+
+                // Realtime only, never baked: these are created at runtime and there is no
+                // lightmap for them to contribute to.
+                _material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
+            }
 
             return _material;
         }

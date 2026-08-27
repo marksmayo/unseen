@@ -8,13 +8,18 @@ using Unseen.Entities;
 namespace Unseen.EditorTools
 {
     /// <summary>
-    /// Checks the four rules a thrown blade has to follow.
+    /// Checks the rules a thrown blade has to follow.
     ///
     /// A ranged attack is dangerous in a game built on not being seen, because a weapon you can use
     /// from cover without moving undoes most of what the stealth model is for. What keeps it honest
-    /// is the cost attached to it, so the costs are what get asserted: one blade to start with, two
-    /// seconds between throws, a whistle the whole way, and a miss that lands on the ground for
-    /// anyone - including the target - to pick up.
+    /// is the cost attached to it - so the costs are what get asserted.
+    ///
+    /// The costs changed. Counting blades is gone: the supply is unlimited and the price of a throw
+    /// is now the five seconds before the next one and the noise it makes, which is a decision a
+    /// player can feel rather than an inventory they have to manage. So this asserts the cooldown
+    /// hard, in both directions, and asserts that the blade arrives roughly where it was pointed -
+    /// the old numbers put it 1.35 m below the crosshair at twenty-four metres, which read as the
+    /// throw simply not working.
     /// </summary>
     public static class UnseenShurikenTest
     {
@@ -76,48 +81,102 @@ namespace Unseen.EditorTools
                 var from = new float3(spot.x, spot.y, spot.z);
                 var to = from + new float3(0f, 0f, 8f);
 
-                thrower.Shuriken = 1;
+                int heldBefore = thrower.Shuriken;
                 float targetHealth = target.Vitals.Fraction;
 
                 Hold(boot, thrower, target, from, to, 30, throwing: false);
                 int whistles = Hold(boot, thrower, target, from, to, 90, throwing: true);
 
                 bool hit = target.Vitals.Fraction < targetHealth - 0.01f;
-                bool spent = thrower.Shuriken == 0;
+
+                // Throwing costs nothing but time now. Asserted as "the count did not move",
+                // because the opposite - a silent decrement that nothing reads any more - would
+                // leave a stale number on the agent for something else to trip over later.
+                bool unlimited = cfg.Unlimited && thrower.Shuriken == heldBefore;
 
                 Debug.Log($"[shuriken] target health {targetHealth:0.00} -> " +
-                          $"{target.Vitals.Fraction:0.00}; thrower now holds {thrower.Shuriken}");
+                          $"{target.Vitals.Fraction:0.00}; thrower holds {heldBefore} -> " +
+                          $"{thrower.Shuriken}");
                 Debug.Log($"[shuriken] a thrown blade hits and hurts: {(hit ? "PASS" : "FAIL")}");
-                Debug.Log($"[shuriken] throwing spends it: {(spent ? "PASS" : "FAIL")}");
+                Debug.Log($"[shuriken] the supply is unlimited and a throw does not spend it: " +
+                          $"{(unlimited ? "PASS" : "FAIL")}");
                 Debug.Log($"[shuriken] {whistles} whistles heard in flight");
                 Debug.Log($"[shuriken] it whistles on the way: {(whistles > 0 ? "PASS" : "FAIL")}");
 
                 // ---------------------------------------------------------- the cooldown
-                thrower.Shuriken = 3;
-
+                //
                 // Let the previous throw's cooldown expire first, or this measures nothing: zero
                 // throws from a spent cooldown passes a "no more than one" test for the wrong
-                // reason.
-                for (int i = 0; i < 60 * 3; i++) Drive(boot, thrower, from, throwing: false);
+                // reason. Waited off the CONFIGURED cooldown rather than a hard-coded three
+                // seconds, which is how this quietly started measuring nothing when the floor went
+                // from two seconds to five.
+                int settle = Mathf.CeilToInt(60f * (cfg.Cooldown + 1f));
+                for (int i = 0; i < settle; i++) Drive(boot, thrower, from, throwing: false);
 
                 int before = system.Thrown;
 
-                // Half a second of hammering the button. At a two second floor that is one throw,
-                // and it has to be exactly one - none would mean the throw is simply broken.
-                for (int i = 0; i < 30; i++)
-                {
-                    Drive(boot, thrower, from, throwing: i % 2 == 0);
-                }
+                // A second of hammering the button. At a five second floor that is one throw, and
+                // it has to be exactly one - none would mean the throw is simply broken.
+                for (int i = 0; i < 60; i++) Drive(boot, thrower, from, throwing: i % 2 == 0);
 
                 int burst = system.Thrown - before;
                 bool paced = burst == 1;
 
-                Debug.Log($"[shuriken] {burst} throws from half a second of mashing the button");
+                Debug.Log($"[shuriken] {burst} throws from a second of mashing the button at a " +
+                          $"{cfg.Cooldown:0} s floor");
                 Debug.Log($"[shuriken] no gatling: {(paced ? "PASS" : "FAIL")}");
 
-                // ---------------------------------------------------------- a miss can be recovered
+                // And the other direction: the cooldown has to END. A floor that never lifts is
+                // indistinguishable from one throw per match, and both pass the test above.
+                for (int i = 0; i < settle; i++) Drive(boot, thrower, from, throwing: false);
+
+                int second = system.Thrown;
+                for (int i = 0; i < 30; i++) Drive(boot, thrower, from, throwing: i % 2 == 0);
+
+                bool recovers = system.Thrown - second == 1;
+
+                Debug.Log($"[shuriken] {system.Thrown - second} throw(s) after waiting the " +
+                          $"cooldown out again");
+                Debug.Log($"[shuriken] the cooldown lifts: {(recovers ? "PASS" : "FAIL")}");
+
+                // ---------------------------------------------------------- it goes where it points
+                //
+                // Thrown dead level at a target twenty-four metres away, which is a normal sightline
+                // in this town. The old numbers - 34 m/s with 5.5 m/s^2 of drop - put the blade 1.35
+                // m low over that distance, and a player aiming at a chest and hitting the ground
+                // reasonably concluded the throw was broken rather than ballistic.
+                ShurikenPickup.ClearAll();
+
+                var farTo = from + new float3(0f, 0f, 24f);
+                float farHealth = target.Vitals.Fraction;
+
+                for (int i = 0; i < settle; i++) Drive(boot, thrower, from, throwing: false);
+                Hold(boot, thrower, target, from, farTo, 120, throwing: true);
+
+                bool reaches = target.Vitals.Fraction < farHealth - 0.01f;
+
+                // What the drop actually costs over that distance, from the configured numbers.
+                float flight = 24f / Mathf.Max(1f, cfg.Speed);
+                float sag = 0.5f * cfg.Drop * flight * flight;
+
+                Debug.Log($"[shuriken] at 24 m the blade sags {sag:0.00} m " +
+                          $"({cfg.Speed:0} m/s, {cfg.Drop:0.0} m/s^2)");
+                Debug.Log($"[shuriken] target health {farHealth:0.00} -> " +
+                          $"{target.Vitals.Fraction:0.00}");
+                Debug.Log($"[shuriken] it arrives where it was aimed at 24 m: " +
+                          $"{(reaches && sag < 0.35f ? "PASS" : "FAIL")}");
+
+                bool straight = reaches && sag < 0.35f;
+
+                // ---------------------------------------------------------- a miss still lands
                 ShurikenPickup.ClearAll();
                 thrower.Shuriken = 1;
+
+                // Wait the cooldown out FIRST. The straightness check above throws a blade, and at
+                // a five second floor this section was asking for another one two frames later,
+                // being refused, and then reporting that a missed blade does not land - a failure
+                // in a mechanic that was working, caused entirely by the test's own previous throw.
+                for (int i = 0; i < settle; i++) Drive(boot, thrower, from, throwing: false);
 
                 // Aimed at the sky over open ground, so it lands rather than hitting anybody.
                 int landed = 0;
@@ -131,30 +190,29 @@ namespace Unseen.EditorTools
                 Debug.Log($"[shuriken] {landed} blade(s) on the ground after a miss");
                 Debug.Log($"[shuriken] a miss lands rather than vanishing: {(drops ? "PASS" : "FAIL")}");
 
-                // And somebody can pick it up. The thrower is out, so recovering one re-arms them.
-                bool recovered = false;
+                // Blades on the ground are scenery now, not ammunition. Nothing should be
+                // collecting them, and the litter must not grow without bound either - sixty-four
+                // players throwing every five seconds for fifteen minutes is ten thousand blades,
+                // and each one was a GameObject with four renderers on it.
+                int lyingBefore = ShurikenPickup.Count;
 
-                if (drops && ShurikenPickup.TryPeek(out float3 lying))
+                if (ShurikenPickup.TryPeek(out float3 lying))
                 {
-                    thrower.Shuriken = 0;
-
-                    // Put the thrower beside the blade rather than walking them at it from wherever
-                    // they happen to be. A lobbed throw can land thirty metres away in a direction
-                    // nobody recorded, and "walk forward and hope" was testing pathing rather than
-                    // pickup.
                     var beside = lying + new float3(1f, 0.2f, 0f);
-
-                    for (int i = 0; i < 60 * 4 && !recovered; i++)
-                    {
-                        Drive(boot, thrower, beside, throwing: false);
-                        if (thrower.Shuriken > 0) recovered = true;
-                    }
+                    for (int i = 0; i < 60 * 3; i++) Drive(boot, thrower, beside, throwing: false);
                 }
 
-                Debug.Log($"[shuriken] a dropped blade can be picked up: " +
-                          $"{(recovered ? "PASS" : "FAIL")} (holding {thrower.Shuriken})");
+                // Requires there to have been something lying there in the first place: "nothing
+                // was picked up" is trivially true of an empty street.
+                bool notAmmunition = lyingBefore > 0 && ShurikenPickup.Count == lyingBefore;
 
-                if (startsArmed && hit && spent && whistles > 0 && paced && drops && recovered)
+                Debug.Log($"[shuriken] {lyingBefore} blade(s) lying; still {ShurikenPickup.Count} " +
+                          $"after standing on one for three seconds");
+                Debug.Log($"[shuriken] a landed blade is scenery, not ammunition: " +
+                          $"{(notAmmunition ? "PASS" : "FAIL")}");
+
+                if (startsArmed && hit && unlimited && whistles > 0 && paced && recovers &&
+                    straight && drops && notAmmunition)
                     Debug.Log("[shuriken] PASSED");
                 else
                     Debug.LogError("[shuriken] FAILED");

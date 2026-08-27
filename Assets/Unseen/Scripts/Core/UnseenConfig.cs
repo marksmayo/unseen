@@ -368,30 +368,43 @@ namespace Unseen.Core
         {
             public bool Enabled = true;
 
-            [Tooltip("How many everyone starts a match holding. One: it is a decision, not a rate " +
-                     "of fire.")]
+            [Tooltip("Never run out. The cost of a throw is the five seconds before the next " +
+                     "one and the noise it makes, not the counting.")]
+            public bool Unlimited = true;
+
+            [Tooltip("How many everyone starts a match holding. Ignored when Unlimited.")]
             public int StartingCount = 1;
 
-            [Tooltip("Most anyone can carry at once, however many they find on the ground.")]
+            [Tooltip("Most anyone can carry at once. Ignored when Unlimited.")]
             public int MaxCarried = 3;
 
-            [Tooltip("Seconds between throws. Stops a lucky pickup run becoming a machine gun.")]
-            public float Cooldown = 2f;
+            [Tooltip("Seconds between throws. This is the whole cost of a ranged attack now, so " +
+                     "it is long: five seconds is a committed decision, not a rate of fire.")]
+            public float Cooldown = 5f;
 
-            [Tooltip("Metres per second. Fast enough to be a threat across a courtyard, slow " +
-                     "enough that a moving target is a real miss.")]
-            public float Speed = 34f;
+            [Tooltip("Metres per second. Fast enough to arrive roughly where it was aimed - see " +
+                     "Drop, which is the other half of that.")]
+            public float Speed = 46f;
 
-            [Tooltip("Downward acceleration in flight. Gentle - a blade is not a thrown rock.")]
-            public float Drop = 5.5f;
+            [Tooltip("Downward acceleration in flight, in m/s^2. Nearly flat.\n\n" +
+                     "This was 5.5 with a speed of 34, which put the blade 1.35 m below the " +
+                     "crosshair at twenty-four metres - far enough to read as the throw simply not " +
+                     "going where it was aimed. A hard-thrown blade barely dips over the distances " +
+                     "this town has sightlines for.")]
+            public float Drop = 1.6f;
 
             [Tooltip("Seconds before a blade that has hit nothing falls out of the air.")]
             public float Lifetime = 2.2f;
 
             public float Damage = 34f;
 
-            [Tooltip("How near the torso the blade has to pass to count as a hit, in metres.")]
+            [Tooltip("How near the body the blade has to pass to count as a hit, in metres.")]
             public float HitRadiusMetres = 0.42f;
+
+            [Tooltip("How big the star is drawn, across the points, in metres. A real one is " +
+                     "about fifteen centimetres and at that size it is invisible in flight, so " +
+                     "this is deliberately oversized - it has to be readable as a thrown thing.")]
+            public float VisualSize = 0.34f;
 
             [Tooltip("Seconds a landed blade waits before anyone can pick it up, so a throw is " +
                      "not instantly recovered by the thrower walking forward.")]

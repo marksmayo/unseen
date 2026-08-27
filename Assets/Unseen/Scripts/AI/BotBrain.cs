@@ -480,6 +480,24 @@ namespace Unseen.AI
             {
                 intent.Jump = true;
             }
+
+            // Scrabbling out of deep water.
+            //
+            // A body in a lake is off the NavMesh, so every path request fails and it falls through
+            // to whisker steering - which knows about walls and nothing about drowning. Making the
+            // water unwalkable stopped bots ROUTING through it and did nothing for the ones already
+            // in, and measured over three minutes there were up to thirteen of them standing in it
+            // at once with one in there for 176 of 180 seconds.
+            //
+            // Jumping is not a solution so much as an attempt. A bank is usually a step or a kerb,
+            // and a bot pressed against one with the jump held will often get up it; the ones that
+            // do not are no worse off than they were. Sprinting too, because the depth penalty on
+            // wading makes the climb out slow enough to matter.
+            if (Environment.WaterVolume.DepthAt(_agent.Position) > 0.9f)
+            {
+                intent.Jump = true;
+                intent.Sprint = true;
+            }
         }
 
         /// <summary>Points the bot at something above it and pulls the trigger.</summary>

@@ -53,18 +53,24 @@ namespace Unseen.Environment
         /// than an animal's dash.</summary>
         private float _flightFor = 2.2f;
 
+        /// <summary>Offset into the idle cycle, so a crowd of critters is not synchronised.</summary>
+        private float _idlePhase;
+
         [Tooltip("Seconds before it comes back to its perch.")]
         public float ResettleDelay = 22f;
 
         [Tooltip("How far from home it will wander while undisturbed, in metres.")]
         public float WanderRadius = 9f;
 
+        [Tooltip("How much of the wander radius a single outing covers, as a fraction.")]
+        public Vector2 StrollReach = new Vector2(0.2f, 0.6f);
+
         [Tooltip("Shortest and longest it stands still between moves, in seconds.\n\n" +
                  "Long. A bird that repositions every couple of seconds reads as a glitch, and a " +
                  "street of them twitching in unison reads as a broken game. The point of this is " +
                  "that the town is alive, which is a thing you notice out of the corner of your " +
                  "eye rather than a thing that demands attention.")]
-        public Vector2 RestSeconds = new Vector2(18f, 55f);
+        public Vector2 RestSeconds = new Vector2(2.5f, 9f);
 
         [Tooltip("Metres per second while moving. An unhurried walk or a series of hops.")]
         public float StrollSpeed = 1.15f;
@@ -113,6 +119,7 @@ namespace Unseen.Environment
 
             // Staggered, or every critter in the town sets off on the same tick.
             _restUntil = Random.Range(0f, RestSeconds.y);
+            _idlePhase = Random.Range(0f, 12f);
 
             _leftWing = leftWing;
             _rightWing = rightWing;
@@ -235,6 +242,45 @@ namespace Unseen.Environment
         }
 
         /// <summary>
+        /// What a settled critter does, which is never nothing.
+        ///
+        /// Even with the rest interval brought down from eighteen-to-fifty-five seconds to
+        /// two-and-a-half-to-nine, a critter is only walking for about a third of the time - and for
+        /// the other two thirds it was perfectly motionless, which is what made a town of two
+        /// hundred and ninety animals read as a town of two hundred and ninety ornaments. The
+        /// measurement was 3.9% of the time in motion.
+        ///
+        /// So this is the other half of the fix: a settled bird shifts its weight, turns its head
+        /// and pecks; a settled animal breathes and looks around. All of it is a few centimetres
+        /// and a few degrees, driven off the clock rather than stored, and none of it moves the
+        /// critter off its perch.
+        /// </summary>
+        private void Idle()
+        {
+            float t = _clock + _idlePhase;
+
+            bool bird = Kind == Species.Bird;
+
+            // Weight shifting. Small, and at a different rate per critter so a hedge full of birds
+            // does not pulse in time.
+            float bob = Mathf.Sin(t * (bird ? 2.6f : 1.5f)) * (bird ? 0.022f : 0.014f);
+
+            // A peck or a sniff: a short dip, a few seconds apart, rather than a constant nodding.
+            float cycle = bird ? 3.1f : 5.3f;
+            float phase = Mathf.Repeat(t, cycle) / cycle;
+            float dip = phase < 0.16f ? Mathf.Sin(phase / 0.16f * Mathf.PI) : 0f;
+
+            transform.localPosition = _perch + new Vector3(0f, bob - dip * 0.03f, 0f);
+
+            // Looking about. A slow drift with an occasional flick, which is most of what makes a
+            // small animal look like it is paying attention to something.
+            float look = Mathf.Sin(t * 0.45f) * 22f + Mathf.Sin(t * 1.9f) * 5f;
+
+            transform.localRotation = _perchRotation *
+                                      Quaternion.Euler(dip * (bird ? 34f : 18f), look, 0f);
+        }
+
+        /// <summary>
         /// Stops where it is and calls that home.
         ///
         /// Used by an animal at the end of a bolt. The point on the ground under it becomes the new
@@ -300,7 +346,11 @@ namespace Unseen.Environment
         /// </summary>
         private void Rest()
         {
-            if (_clock < _restUntil) return;
+            if (_clock < _restUntil)
+            {
+                Idle();
+                return;
+            }
 
             for (int attempt = 0; attempt < 8; attempt++)
             {
@@ -311,7 +361,8 @@ namespace Unseen.Environment
                 // still have somewhere to go a metre away, and giving up because the first few
                 // throws were long is how they end up standing still.
                 float shrink = 1f - attempt / 10f;
-                float reach = WanderRadius * Random.Range(0.2f, 0.45f) * shrink;
+                float reach = WanderRadius *
+                              Random.Range(StrollReach.x, StrollReach.y) * shrink;
                 Vector3 target = _home + new Vector3(Mathf.Sin(angle) * reach, 0f, Mathf.Cos(angle) * reach);
 
                 // Ground it. A bird keeps roughly to the height it was perched at - it hops along a
