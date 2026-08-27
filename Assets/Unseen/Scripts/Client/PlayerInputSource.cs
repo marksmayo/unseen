@@ -26,6 +26,7 @@ namespace Unseen.Client
         public KeyCode JumpKey = KeyCode.Space;
         public KeyCode GrappleKey = KeyCode.F;
         public KeyCode InteractKey = KeyCode.E;
+        public KeyCode ThrowKey = KeyCode.Q;
         public KeyCode Utility1 = KeyCode.Alpha1;
         public KeyCode Utility2 = KeyCode.Alpha2;
         public KeyCode Utility3 = KeyCode.Alpha3;
@@ -76,6 +77,7 @@ namespace Unseen.Client
             JumpKey = settings.Key(settings.Jump, KeyCode.Space);
             GrappleKey = settings.Key(settings.Grapple, KeyCode.F);
             InteractKey = settings.Key(settings.Interact, KeyCode.E);
+            ThrowKey = settings.Key(settings.Throw, KeyCode.Q);
             HeavyModifier = settings.Key(settings.Heavy, KeyCode.LeftAlt);
             Utility1 = settings.Key(settings.Utility1, KeyCode.Alpha1);
             Utility2 = settings.Key(settings.Utility2, KeyCode.Alpha2);
@@ -133,6 +135,10 @@ namespace Unseen.Client
                 Prone = Input.GetKey(ProneKey),
                 Jump = Input.GetKey(JumpKey),
                 Grapple = Input.GetKey(GrappleKey),
+
+                // Edge-triggered here as well as server-side. Holding it is one throw either way,
+                // but sending the edge keeps the wire honest about what the player did.
+                Throw = Input.GetKeyDown(ThrowKey),
                 Interact = Input.GetKeyDown(InteractKey),
                 AttackLight = Input.GetMouseButton(0) && !guard,
                 AttackHeavy = Input.GetMouseButton(0) && Input.GetKey(HeavyModifier),

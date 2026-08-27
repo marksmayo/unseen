@@ -181,6 +181,7 @@ namespace Unseen.Client
             GUILayout.Label("Guard zone          Where you look: up high, level mid, down low", _hint);
             GUILayout.Label("Takedown            Attack from behind an unaware enemy", _hint);
             GUILayout.Label("Prone               C (rebindable above)", _hint);
+            GUILayout.Label("Throw shuriken      Q (rebindable above) - one every 2 s", _hint);
             GUILayout.Label("Map zoom            M", _hint);
             GUILayout.Label("Spectate next       Jump key, once eliminated", _hint);
             GUILayout.Label("Debug overlay       F3", _hint);

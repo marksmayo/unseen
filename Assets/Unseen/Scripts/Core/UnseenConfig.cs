@@ -364,6 +364,61 @@ namespace Unseen.Core
         }
 
         [Serializable]
+        public sealed class ShurikenSection
+        {
+            public bool Enabled = true;
+
+            [Tooltip("How many everyone starts a match holding. One: it is a decision, not a rate " +
+                     "of fire.")]
+            public int StartingCount = 1;
+
+            [Tooltip("Most anyone can carry at once, however many they find on the ground.")]
+            public int MaxCarried = 3;
+
+            [Tooltip("Seconds between throws. Stops a lucky pickup run becoming a machine gun.")]
+            public float Cooldown = 2f;
+
+            [Tooltip("Metres per second. Fast enough to be a threat across a courtyard, slow " +
+                     "enough that a moving target is a real miss.")]
+            public float Speed = 34f;
+
+            [Tooltip("Downward acceleration in flight. Gentle - a blade is not a thrown rock.")]
+            public float Drop = 5.5f;
+
+            [Tooltip("Seconds before a blade that has hit nothing falls out of the air.")]
+            public float Lifetime = 2.2f;
+
+            public float Damage = 34f;
+
+            [Tooltip("How near the torso the blade has to pass to count as a hit, in metres.")]
+            public float HitRadiusMetres = 0.42f;
+
+            [Tooltip("Seconds a landed blade waits before anyone can pick it up, so a throw is " +
+                     "not instantly recovered by the thrower walking forward.")]
+            public float PickupDelay = 1.2f;
+
+            public float PickupRadius = 1.7f;
+
+            [Tooltip("Seconds between whistles from one blade. It sounds the whole way, which " +
+                     "draws a line from the thrower to wherever it lands.")]
+            public float WhistleInterval = 0.16f;
+
+            public float WhistleLoudness = 0.55f;
+            public float WhistleRadius = 26f;
+
+            [Tooltip("The throw itself. A body slinging steel is not quiet.")]
+            public float ThrowLoudness = 0.6f;
+
+            public float ThrowRadius = 16f;
+
+            public float HitLoudness = 0.9f;
+            public float HitRadius = 24f;
+
+            [Tooltip("Visual only: how fast the star turns over in the air.")]
+            public float SpinDegreesPerSecond = 1400f;
+        }
+
+        [Serializable]
         public sealed class CritterSection
         {
             [Tooltip("Place birds and animals at all.")]
@@ -432,6 +487,9 @@ namespace Unseen.Core
 
         [Tooltip("Being underwater, and running out of air while you are.")]
         public WaterSection Water = new WaterSection();
+
+        [Tooltip("Thrown steel: how far, how hard, and how often.")]
+        public ShurikenSection Shuriken = new ShurikenSection();
         public BotSection Bots = new BotSection();
 
         private static UnseenConfig _default;

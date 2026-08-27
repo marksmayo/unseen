@@ -352,6 +352,7 @@ namespace Unseen.Net
             // button into a field that means something else.
             byte extra = 0;
             if (intent.Prone) extra |= 1 << 0;
+            if (intent.Throw) extra |= 1 << 1;
             writer.WriteByte(extra);
 
             writer.WriteByte((byte)intent.Zone);
@@ -382,6 +383,7 @@ namespace Unseen.Net
 
             byte extra = reader.ReadByte();
             intent.Prone = (extra & (1 << 0)) != 0;
+            intent.Throw = (extra & (1 << 1)) != 0;
             intent.Zone = (GuardZone)reader.ReadByte();
             intent.UseUtility = reader.ReadByte();
 

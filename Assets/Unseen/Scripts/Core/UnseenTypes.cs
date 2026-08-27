@@ -108,7 +108,13 @@ namespace Unseen.Core
         AnimalScatter = 15,
 
         /// <summary>Somebody underwater and out of air.</summary>
-        Choking = 16
+        Choking = 16,
+
+        /// <summary>A thrown blade turning over in the air.</summary>
+        ShurikenWhistle = 17,
+
+        /// <summary>Steel arriving, in a body or in a wall.</summary>
+        ShurikenHit = 18
     }
 
     public enum DamageKind : byte
@@ -145,6 +151,9 @@ namespace Unseen.Core
         public bool Prone;
         public bool Jump;
         public bool Grapple;
+
+        /// <summary>Throw a shuriken. Edge-triggered by the server; holding it is one throw.</summary>
+        public bool Throw;
         public bool Interact;
         public bool AttackLight;
         public bool AttackHeavy;

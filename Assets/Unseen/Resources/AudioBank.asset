@@ -136,6 +136,22 @@ MonoBehaviour:
     Volume: 0.95
     PitchJitter: 0.1
     MaxDistance: 32
+  - Kind: 17
+    Clips:
+    - {fileID: 8300000, guid: bef87e3031ca5864ea9358b3df57b8fe, type: 3}
+    - {fileID: 8300000, guid: d7e31491b786adc4c969a355b71df15e, type: 3}
+    - {fileID: 8300000, guid: 99fa53416be60a84da00f70ad7526312, type: 3}
+    Volume: 0.6
+    PitchJitter: 0.18
+    MaxDistance: 26
+  - Kind: 18
+    Clips:
+    - {fileID: 8300000, guid: cc5e97292a462c74d87592a2d6907d52, type: 3}
+    - {fileID: 8300000, guid: 4e5b8a29e44805240a6e0eb9195dc785, type: 3}
+    - {fileID: 8300000, guid: 15f705f89fa49284cbf8130d71c76f2c, type: 3}
+    Volume: 0.95
+    PitchJitter: 0.12
+    MaxDistance: 26
   FootstepHard:
   - {fileID: 8300000, guid: bb685c6456cfab24a9a6c75e66f67412, type: 3}
   - {fileID: 8300000, guid: 29363bd12eab5ca4f914d049728a9776, type: 3}

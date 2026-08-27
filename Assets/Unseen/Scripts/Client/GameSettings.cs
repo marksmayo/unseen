@@ -31,6 +31,7 @@ namespace Unseen.Client
         public string Jump = KeyCode.Space.ToString();
         public string Grapple = KeyCode.F.ToString();
         public string Interact = KeyCode.E.ToString();
+        public string Throw = KeyCode.Q.ToString();
         public string Heavy = KeyCode.LeftAlt.ToString();
         public string Utility1 = KeyCode.Alpha1.ToString();
         public string Utility2 = KeyCode.Alpha2.ToString();
@@ -115,6 +116,7 @@ namespace Unseen.Client
             Prone = defaults.Prone;
             Jump = defaults.Jump;
             Grapple = defaults.Grapple;
+            Throw = defaults.Throw;
             Interact = defaults.Interact;
             Heavy = defaults.Heavy;
             Utility1 = defaults.Utility1;

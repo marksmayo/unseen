@@ -1,4 +1,4 @@
-"""Generates the drowning sounds as 22.05 kHz mono WAVs.
+"""Generates game sounds as 22.05 kHz mono WAVs.
 
 Synthesised rather than sourced, for the same reason the textures are: no licences to track, no
 downloads to keep in sync, and every clip can be regenerated from the recipe that made it.
@@ -10,7 +10,7 @@ primitives from scratch. Anything else added to the bank belongs beside this.
 
 Pure standard library on purpose (wave/struct/math/random), so it runs anywhere Python does.
 
-    python Tools/make_choking.py
+    python Tools/make_audio.py
 """
 import math
 import os
@@ -188,6 +188,59 @@ def choking(seed):
     return lowpass2(out, 1100)
 
 
+
+def shuriken_whistle(seed):
+    """A steel star turning over in the air.
+
+    Two things at once and the beating between them is the whole sound: a thrown blade spins, so the
+    tone it cuts warbles at the spin rate rather than holding steady. A clean sine reads as a
+    cartoon whistle; a sine wobbling at twenty hertz reads as something sharp going past.
+    """
+    rng = random.Random(seed)
+    length = 0.8
+    n = int(RATE * length)
+
+    base = rng.uniform(1650, 2100)
+
+    # The carrier, warbling with the spin, and sinking a little as it goes away.
+    out = []
+    phase = 0.0
+    for i in range(n):
+        t = i / n
+        spin = math.sin(2 * math.pi * 19.0 * (i / RATE))
+        f = base * (1.0 - 0.22 * t) * (1.0 + 0.06 * spin)
+        phase += 2.0 * math.pi * f / RATE
+        out.append(math.sin(phase))
+
+    # Air over the edges: a thin band of noise riding the same envelope.
+    air = lowpass2(highpass(white(n, rng), 2600), 7000)
+
+    body = envelope([o * 0.7 + a * 0.5 for o, a in zip(out, air)], 0.03, length, curve=1.2)
+    return body
+
+
+def shuriken_hit(seed):
+    """Steel into a body, or steel into a wall.
+
+    The same clip serves both, because what identifies it is the metal: a short bright ring on the
+    front of a dull impact. Which of the two it was is told by the sound the victim makes, not by
+    this.
+    """
+    rng = random.Random(seed)
+    length = 0.5
+    n = int(RATE * length)
+
+    ring = envelope(sine(rng.uniform(2400, 3200), 0.22, sweep=-500), 0.001, 0.22, curve=3.0)
+    tap = envelope(lowpass2(white(n, rng), 1800), 0.001, 0.09, curve=3.4)
+    thud = envelope(sine(rng.uniform(90, 130), 0.28, sweep=-40), 0.002, 0.28, curve=2.4)
+
+    return mix(gain(ring, 0.42), gain(tap, 0.7), gain(thud, 0.55))
+
+
 if __name__ == '__main__':
     for i in range(3):
         write('choking_%d' % (i + 1), choking(881 + i))
+    for i in range(3):
+        write('shuriken_whistle_%d' % (i + 1), shuriken_whistle(941 + i))
+    for i in range(3):
+        write('shuriken_hit_%d' % (i + 1), shuriken_hit(977 + i))

@@ -67,7 +67,9 @@ namespace Unseen.EditorTools
                 Entry(SoundKind.BambooRustle, 0.85f, 0.14f, 40f, Series("bamboo_rustle_", 3)),
                 Entry(SoundKind.BirdFlush, 0.9f, 0.12f, 46f, Series("bird_flush_", 3)),
                 Entry(SoundKind.AnimalScatter, 0.7f, 0.16f, 28f, Series("animal_scatter_", 3)),
-                Entry(SoundKind.Choking, 0.95f, 0.1f, 32f, Series("choking_", 3))
+                Entry(SoundKind.Choking, 0.95f, 0.1f, 32f, Series("choking_", 3)),
+                Entry(SoundKind.ShurikenWhistle, 0.6f, 0.18f, 26f, Series("shuriken_whistle_", 3)),
+                Entry(SoundKind.ShurikenHit, 0.95f, 0.12f, 26f, Series("shuriken_hit_", 3))
             };
 
             entries.RemoveAll(e => e.Clips == null || e.Clips.Length == 0);

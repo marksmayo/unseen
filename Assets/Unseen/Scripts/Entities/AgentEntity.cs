@@ -69,6 +69,9 @@ namespace Unseen.Entities
 
         public MoveIntent Intent = MoveIntent.Idle;
 
+        [Tooltip("Shuriken in hand. Everyone starts with one; a miss can be picked up by anybody.")]
+        public int Shuriken;
+
         /// <summary>Combat pocket membership. Hot agents simulate and replicate at the combat rate.</summary>
         public bool IsHot { get; internal set; }
 
@@ -185,6 +188,7 @@ namespace Unseen.Entities
             IsHot = false;
             HotUntil = 0f;
             Intent = MoveIntent.Idle;
+            Shuriken = UnseenConfig.Default != null ? UnseenConfig.Default.Shuriken.StartingCount : 1;
             Visible.Clear();
             Heard.Clear();
             _lastSawTime.Clear();
