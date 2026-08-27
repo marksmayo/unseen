@@ -60,6 +60,10 @@ namespace Unseen.Core
         [Tooltip("Generates the greybox castle town at runtime when the scene has no MapDescriptor.")]
         public bool GenerateGreyboxIfEmpty = true;
 
+        [Tooltip("Builds a NavMesh over the town at startup. Off, bots fall back to whisker " +
+                 "steering, which is what they did for the whole project before this existed.")]
+        public bool BuildNavMesh = true;
+
         [Header("Diagnostics")]
         [Tooltip("Logs a server status line at this interval. Zero disables it.")]
         public float StatusLogInterval = 5f;
@@ -119,6 +123,23 @@ namespace Unseen.Core
             _ctx.Destructibles = new DestructibleRegistry();
 
             MapDescriptor map = ResolveMap();
+
+            // The NavMesh, now that there is a town to build it over.
+            //
+            // Must be here rather than in the editor: the town is generated at startup and differs
+            // by seed, so there is no level to bake in advance. BotNavigator has been written to
+            // use one since it was first committed and has silently fallen through to whisker
+            // steering every time, because nothing was ever built.
+            if (BuildNavMesh)
+            {
+                bool built = Unseen.AI.NavMeshBaker.Build(map);
+
+                if (VerboseStartup || StatusLogInterval > 0f)
+                    Debug.Log($"[Unseen] navmesh: built={built} in " +
+                              $"{Unseen.AI.NavMeshBaker.LastBakeSeconds:0.00} s, " +
+                              $"{Unseen.AI.NavMeshBaker.LastCarvedVolumes} water volume(s) carved " +
+                              $"out as unwalkable");
+            }
             Map = map;
 
             _spawner = new AgentSpawner(_ctx, transform, AgentPrefab, Mode != LaunchMode.DedicatedServer);

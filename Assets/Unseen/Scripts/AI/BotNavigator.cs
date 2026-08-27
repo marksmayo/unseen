@@ -56,6 +56,31 @@ namespace Unseen.AI
 
         public bool HasDestination { get; private set; }
         public bool UsingNavMesh { get; private set; }
+
+        /// <summary>
+        /// True when this bot is standing somewhere the NavMesh does not cover and is walking back
+        /// onto it rather than pursuing its destination.
+        ///
+        /// This is the case that made the whole bake do nothing for the thing it was built for.
+        /// Marking deep water unwalkable stops a bot ROUTING through a lake, and does nothing at
+        /// all about one that is already in it: sampling from a position with no NavMesh under it
+        /// fails, every path request fails with it, and the bot drops to whisker steering - which
+        /// knows about walls and nothing about water. It then mills about in the lake until the
+        /// mist or a drowning clock deals with it.
+        /// </summary>
+        public bool Recovering { get; private set; }
+
+        /// <summary>Where it is heading to get back onto the mesh. Only meaningful while recovering.</summary>
+        private float3 _recovery;
+
+        /// <summary>
+        /// How far to look for the nearest NavMesh when off it, in metres.
+        ///
+        /// Generous, because the point of it is to cover being in the middle of something large -
+        /// the castle lake is sixty-five metres across. The ordinary sampling radius stays small so
+        /// that normal path requests are not quietly answered from the far side of a wall.
+        /// </summary>
+        public const float RecoveryReach = 45f;
         public float3 Destination => _destination;
 
         /// <summary>
@@ -101,7 +126,18 @@ namespace Unseen.AI
                 _committedUntil = 0f;
             }
 
-            if (!NavMesh.SamplePosition(from, out NavMeshHit fromHit, 3f, NavMesh.AllAreas)) return;
+            if (!NavMesh.SamplePosition(from, out NavMeshHit fromHit, 3f, NavMesh.AllAreas))
+            {
+                // Off the mesh. Get back onto it before worrying about where we were going.
+                Recovering = NavMesh.SamplePosition(from, out NavMeshHit bank, RecoveryReach,
+                    NavMesh.AllAreas);
+
+                if (Recovering) _recovery = bank.position;
+                return;
+            }
+
+            Recovering = false;
+
             if (!NavMesh.SamplePosition(to, out NavMeshHit toHit, 6f, NavMesh.AllAreas)) return;
 
             _path ??= new NavMeshPath();
@@ -117,6 +153,7 @@ namespace Unseen.AI
         {
             HasDestination = false;
             UsingNavMesh = false;
+            Recovering = false;
             Stuck = false;
             _cornerCount = 0;
             _cornerIndex = 0;
@@ -130,6 +167,18 @@ namespace Unseen.AI
             if (!HasDestination) return float3.zero;
 
             TrackProgress(position, now);
+
+            // Getting back on the mesh comes first, and deliberately ignores the destination: a bot
+            // wading out of a lake toward a target on the far side would walk further into it.
+            if (Recovering)
+            {
+                float3 out_ = UnseenMath.Horizontal(_recovery - position);
+
+                if (math.lengthsq(out_) > 1.2f * 1.2f)
+                    return Avoid(position, math.normalizesafe(out_), now);
+
+                Recovering = false;
+            }
 
             float3 waypoint = _destination;
 
@@ -162,6 +211,28 @@ namespace Unseen.AI
         /// </summary>
         private void TrackProgress(float3 position, float now)
         {
+            // While recovering, progress is measured toward the bank rather than the destination.
+            // Judged against a destination it cannot approach, a bot wading out of a lake declares
+            // itself stuck halfway and gives up in the water.
+            if (Recovering)
+            {
+                float toBank = math.distance(UnseenMath.Horizontal(position),
+                    UnseenMath.Horizontal(_recovery));
+
+                if (toBank < _bestDistance - ProgressEpsilon)
+                {
+                    _bestDistance = toBank;
+                    _lastProgressAt = now;
+                    Stuck = false;
+                }
+                else if (now - _lastProgressAt > StuckAfter)
+                {
+                    Stuck = true;
+                }
+
+                return;
+            }
+
             float distance = math.distance(UnseenMath.Horizontal(position),
                 UnseenMath.Horizontal(_destination));
 

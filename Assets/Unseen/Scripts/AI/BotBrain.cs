@@ -25,6 +25,13 @@ namespace Unseen.AI
         private readonly List<PrimitiveTask> _plan = new List<PrimitiveTask>(8);
         private readonly BotNavigator _nav = new BotNavigator();
 
+        /// <summary>
+        /// This bot's path follower. Exposed so a probe can ask whether it is actually following a
+        /// NavMesh path rather than falling back to whisker steering - which is what it silently
+        /// did for the whole project before one was ever baked.
+        /// </summary>
+        public BotNavigator Navigator => _nav;
+
         private AgentEntity _agent;
         private System.Random _rng;
         private BotFacts _facts;

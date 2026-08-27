@@ -998,7 +998,12 @@ namespace Unseen.Environment
                 new Vector3(RiverWidth, surfaceThickness, length), _water);
 
             water.gameObject.AddComponent<WaterVolume>().Configure(
-                waterTop, new Vector2(RiverWidth * 0.5f, length * 0.5f), WadeDeep + 0.2f);
+                waterTop, new Vector2(RiverWidth * 0.5f, length * 0.5f), WadeDeep + 0.2f,
+                innerHalfSize: default,
+                // Only the middle drowns you. The shelves either side are shin to knee deep, so
+                // they stay walkable for the NavMesh and a bot can still ford the river at its
+                // edges instead of treating the whole channel as a wall.
+                deepHalfSize: new Vector2(RiverWidth * 0.28f, length * 0.5f));
 
             // Tell the water shader the shape of the bed underneath it.
             //

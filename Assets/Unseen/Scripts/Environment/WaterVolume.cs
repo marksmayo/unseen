@@ -34,6 +34,17 @@ namespace Unseen.Environment
                  "A moat is a body of water with a castle in the middle of it.")]
         public Vector2 InnerHalfSize;
 
+        [Tooltip("Half-extents of the part deep enough to drown in, or zero to mean all of it. " +
+                 "The river has shallow shelves either side of a deep middle; a lake is deep " +
+                 "throughout. Read by the NavMesh bake, which makes the deep part unwalkable so " +
+                 "bots use the bridges instead of drowning in it.")]
+        public Vector2 DeepHalfSize;
+
+        /// <summary>The deep footprint, falling back to the whole body when none was given.</summary>
+        public Vector2 DeepFootprint => DeepHalfSize.x > 0f && DeepHalfSize.y > 0f
+            ? DeepHalfSize
+            : HalfSize;
+
         /// <summary>
         /// Describes a body of water and registers it for queries.
         ///
@@ -44,12 +55,13 @@ namespace Unseen.Environment
         /// wading was silently doing nothing in all of them.
         /// </summary>
         public void Configure(float surfaceY, Vector2 halfSize, float maxDepth,
-            Vector2 innerHalfSize = default)
+            Vector2 innerHalfSize = default, Vector2 deepHalfSize = default)
         {
             SurfaceY = surfaceY;
             HalfSize = halfSize;
             MaxDepth = maxDepth;
             InnerHalfSize = innerHalfSize;
+            DeepHalfSize = deepHalfSize;
 
             if (!Volumes.Contains(this)) Volumes.Add(this);
         }
@@ -92,6 +104,9 @@ namespace Unseen.Environment
 
         /// <summary>How many bodies of water are registered. Diagnostics only.</summary>
         public static int Registered => Volumes.Count;
+
+        /// <summary>Every body of water. Read by the NavMesh bake and by the probes.</summary>
+        public static IReadOnlyList<WaterVolume> All => Volumes;
 
         /// <summary>
         /// Metres of water standing above a pair of feet. Zero on dry land.
