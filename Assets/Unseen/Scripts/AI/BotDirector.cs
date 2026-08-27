@@ -183,7 +183,7 @@ namespace Unseen.AI
             {
                 if (_spawner == null) return;
                 candidate = _spawner.Spawn(AgentKind.Player, connectionId, RandomGroundPoint(), $"player-{connectionId}");
-                Debug.Log($"[Unseen] connection {connectionId} spawned fresh as {candidate.DisplayName}");
+                UnseenLog.Info($"[Unseen] connection {connectionId} spawned fresh as {candidate.DisplayName}");
                 return;
             }
 
@@ -194,7 +194,7 @@ namespace Unseen.AI
             if (candidate.Brain != null) candidate.Brain.enabled = false;
             Ctx.Entities.SetConnection(candidate, connectionId);
 
-            Debug.Log($"[Unseen] connection {connectionId} took over bot slot {candidate.Id}");
+            UnseenLog.Info($"[Unseen] connection {connectionId} took over bot slot {candidate.Id}");
         }
 
         /// <summary>A disconnect hands the body straight back to a bot so the match stays full.</summary>
@@ -219,7 +219,7 @@ namespace Unseen.AI
 
             brain.enabled = true;
             brain.ResetBrain();
-            Debug.Log($"[Unseen] connection {connectionId} left; {agent.DisplayName} is now a bot");
+            UnseenLog.Info($"[Unseen] connection {connectionId} left; {agent.DisplayName} is now a bot");
         }
 
         private AgentEntity PickBotToReplace()

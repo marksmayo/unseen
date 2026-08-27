@@ -41,7 +41,6 @@ namespace Unseen.Client
         private MapDescriptor _map;
         private SnapshotData _snapshot;
         private Texture2D _white;
-        private GUIStyle _tiny;
 
         private static readonly Color Backdrop = new Color(0.05f, 0.06f, 0.09f, 0.78f);
         private static readonly Color BlockColour = new Color(0.30f, 0.31f, 0.35f, 0.95f);
@@ -93,7 +92,6 @@ namespace Unseen.Client
             if (_map == null) _map = MapDescriptor.Find();
             if (_sketch == null) return;
 
-            EnsureStyles();
 
             float span = ShowWholeMap ? _sketch.Extent * 2.2f : NearSpan;
             float pixelsPerMetre = Size / span;
@@ -121,9 +119,18 @@ namespace Unseen.Client
             // Rim last, over the clipped contents.
             DrawRim(panel);
 
-            GUI.Label(new Rect(panel.x + 6f, panel.yMax + 2f, Size, 18f),
-                ShowWholeMap ? $"town   {ExpandKey} to zoom in" : $"{span:0} m   {ExpandKey} for the town",
-                _tiny);
+            // Centred under the dial rather than tucked against its left edge, which on a circle
+            // put the text under thin air.
+            var caption = new GUIStyle(UnseenUi.Caption)
+            {
+                alignment = TextAnchor.UpperCenter
+            };
+
+            UnseenUi.Say(new Rect(panel.x, panel.yMax + 4f, Size, 18f),
+                ShowWholeMap
+                    ? $"town  ·  {ExpandKey} to zoom in"
+                    : $"{span:0} m  ·  {ExpandKey} for the town",
+                caption, UnseenUi.Faint);
         }
 
         private void DrawLandmarks(Vector2 origin, Vector2 focus, float scale)
@@ -282,37 +289,29 @@ namespace Unseen.Client
             }
         }
 
-        private void EnsureStyles()
-        {
-            if (_tiny != null) return;
-            _tiny = new GUIStyle(GUI.skin.label) { fontSize = 10 };
-        }
-
-        /// <summary>Fills the round face, one horizontal band per row.</summary>
+        /// <summary>
+        /// The dial the map is drawn on, and its shadow.
+        ///
+        /// This used to be a scanline loop - one Fill per horizontal line of a circle, plus a
+        /// hundred and twenty little squares stepped round the edge for the rim. Three hundred draw
+        /// calls a frame for a shape that a rounded rectangle with a radius of half its width
+        /// describes exactly, in one.
+        /// </summary>
         private void DrawDial(Rect panel)
         {
             float radius = Size * 0.5f;
-            Vector2 centre = new Vector2(panel.x + radius, panel.y + radius);
 
-            for (float y = -radius; y <= radius; y += 1f)
-            {
-                float halfWidth = Mathf.Sqrt(Mathf.Max(0f, radius * radius - y * y));
-                Fill(new Rect(centre.x - halfWidth, centre.y + y, halfWidth * 2f, 1f), Backdrop);
-            }
+            for (int i = 3; i >= 1; i--)
+                UnseenUi.Rounded(new Rect(panel.x - i, panel.y - i * 0.5f + 3f,
+                        panel.width + i * 2f, panel.height + i * 2f),
+                    new Color(0f, 0f, 0f, 0.10f), radius + i);
+
+            UnseenUi.Rounded(panel, Backdrop, radius);
         }
 
         private void DrawRim(Rect panel)
         {
-            float radius = Size * 0.5f - 1f;
-            Vector2 centre = new Vector2(panel.x + Size * 0.5f, panel.y + Size * 0.5f);
-
-            const int steps = 120;
-            for (int i = 0; i < steps; i++)
-            {
-                float angle = i / (float)steps * Mathf.PI * 2f;
-                Fill(new Rect(centre.x + Mathf.Sin(angle) * radius - 1f,
-                    centre.y + Mathf.Cos(angle) * radius - 1f, 2f, 2f), new Color(0f, 0f, 0f, 0.9f));
-            }
+            UnseenUi.Rounded(panel, Color.clear, Size * 0.5f, UnseenUi.Edge, 1.5f);
         }
 
         private void Outline(Rect rect, Color colour)

@@ -355,7 +355,7 @@ namespace Unseen.Environment
             descriptor.FloorY = -SewerDepth - 2f;
             descriptor.CeilingY = WallHeight + SecondStoreyHeight + 12f;
 
-            Debug.Log($"[Unseen] greybox town generated: {ShojiPanel.All.Count} shoji, " +
+            UnseenLog.Info($"[Unseen] greybox town generated: {ShojiPanel.All.Count} shoji, " +
                       $"{Lantern.All.Count} lanterns, {LootContainer.All.Count} containers, " +
                       $"radius {descriptor.Radius:0} m, " +
                       $"{(_textured ? "textured" : "flat greybox")}, " +
@@ -1092,7 +1092,7 @@ namespace Unseen.Environment
                 Acoustics(shelf, 0.2f, 2.2f, 2.4f);
             }
 
-            Debug.Log($"[Unseen] riverbed: {WadeShallow:0.00} m over the shelves, " +
+            UnseenLog.Info($"[Unseen] riverbed: {WadeShallow:0.00} m over the shelves, " +
                       $"{WadeDeep:0.00} m down the middle");
         }
 
@@ -2001,7 +2001,7 @@ namespace Unseen.Environment
                 }
             }
 
-            Debug.Log($"[Unseen] town mist: {patches} panels lying in the streets");
+            UnseenLog.Info($"[Unseen] town mist: {patches} panels lying in the streets");
         }
 
         private static Mesh _mistQuad;
@@ -2116,7 +2116,7 @@ namespace Unseen.Environment
                         baseZ + (float)(_random.NextDouble() * 2f - 1f) * 6f));
             }
 
-            Debug.Log($"[Unseen] greenery: {hedges} hedges, {pots} potted plants");
+            UnseenLog.Info($"[Unseen] greenery: {hedges} hedges, {pots} potted plants");
         }
 
         /// <summary>
@@ -2385,7 +2385,7 @@ namespace Unseen.Environment
                 }
             }
 
-            Debug.Log($"[Unseen] verges: {patches} patches of grass and bare earth");
+            UnseenLog.Info($"[Unseen] verges: {patches} patches of grass and bare earth");
         }
 
         // ---------------------------------------------------------------- streets        // ---------------------------------------------------------------- streets
@@ -2447,7 +2447,7 @@ namespace Unseen.Environment
                 }
             }
 
-            Debug.Log($"[Unseen] street furniture: {wells} wells, {boards} notice boards, " +
+            UnseenLog.Info($"[Unseen] street furniture: {wells} wells, {boards} notice boards, " +
                       $"{stacks} stacks of goods");
         }
 
@@ -2850,7 +2850,7 @@ namespace Unseen.Environment
             float wanted = wallHeight * Mathf.Max(1f, MaterialSetBambooHeight());
             float clearing = tallest + BambooClearance;
 
-            Debug.Log($"[Unseen] tallest structure {tallest:0.0} m; spirit forest stands " +
+            UnseenLog.Info($"[Unseen] tallest structure {tallest:0.0} m; spirit forest stands " +
                       $"{Mathf.Max(wanted, clearing):0.0} m");
 
             GreyboxMaterialSet set = MaterialSet != null ? MaterialSet : GreyboxMaterialSet.Load();

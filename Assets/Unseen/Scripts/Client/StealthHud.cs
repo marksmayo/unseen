@@ -35,8 +35,6 @@ namespace Unseen.Client
 
         private readonly List<Ping> _pings = new List<Ping>(24);
         private SnapshotData _snapshot;
-        private GUIStyle _label;
-        private GUIStyle _small;
         private Texture2D _white;
 
         private void Awake()
@@ -89,10 +87,7 @@ namespace Unseen.Client
         {
             if (!GameSettings.Current.ShowHud) return;
 
-            EnsureStyles();
-
-            DrawStealthMeter();
-            DrawHealth();
+            DrawVitals();
             DrawMatchState();
             DrawGuardZone();
             DrawEliminations();
@@ -105,48 +100,81 @@ namespace Unseen.Client
             if (ShowDebug) DrawDebug();
         }
 
-        private void EnsureStyles()
-        {
-            if (_label != null) return;
-
-            _label = new GUIStyle(GUI.skin.label) { fontSize = 15, fontStyle = FontStyle.Bold };
-            _small = new GUIStyle(GUI.skin.label) { fontSize = 12 };
-        }
-
-        private void DrawStealthMeter()
+        /// <summary>
+        /// How hidden you are and how hurt you are, as one block in the bottom-left corner.
+        ///
+        /// These were two loose bars sitting on the screen with a label floating above one of them.
+        /// Grouping them on a panel is most of the difference: a reading with an edge around it is
+        /// an instrument, and the same reading without one is a stray rectangle.
+        ///
+        /// Hidden is the larger of the two on purpose. It is the number this game is about, and it
+        /// is the one a player should be able to read out of the corner of their eye.
+        /// </summary>
+        private void DrawVitals()
         {
             float hidden = _snapshot?.SelfStealth ?? 0f;
-            var area = new Rect(24f, Screen.height - 74f, 220f, 18f);
-
-            Fill(area, new Color(0f, 0f, 0f, 0.55f));
-            Fill(new Rect(area.x, area.y, area.width * hidden, area.height),
-                Color.Lerp(new Color(0.85f, 0.7f, 0.25f), new Color(0.2f, 0.35f, 0.7f), hidden));
-
-            GUI.Label(new Rect(area.x, area.y - 20f, 260f, 20f),
-                $"hidden {(hidden * 100f):0}%", _label);
-        }
-
-        private void DrawHealth()
-        {
             float health = _snapshot?.SelfHealth ?? 1f;
-            var area = new Rect(24f, Screen.height - 44f, 220f, 12f);
 
-            Fill(area, new Color(0f, 0f, 0f, 0.55f));
-            Fill(new Rect(area.x, area.y, area.width * health, area.height),
-                Color.Lerp(new Color(0.75f, 0.15f, 0.15f), new Color(0.55f, 0.75f, 0.4f), health));
+            var panel = new Rect(22f, Screen.height - 104f, 252f, 82f);
+            UnseenUi.Panel(panel);
+
+            float x = panel.x + 16f;
+            float w = panel.width - 32f;
+
+            // Cool when you are hidden, warm when you are not: the colour says as much as the
+            // length does, and at a glance it says it faster.
+            Color tint = Color.Lerp(UnseenUi.Gold, UnseenUi.Cool, hidden);
+
+            UnseenUi.Say(new Rect(x, panel.y + 10f, w, 18f), "HIDDEN", UnseenUi.Section,
+                UnseenUi.Faint);
+
+            UnseenUi.Say(new Rect(x, panel.y + 8f, w, 20f), $"{hidden * 100f:0}%",
+                UnseenUi.Number, tint);
+
+            UnseenUi.Meter(new Rect(x, panel.y + 32f, w, 8f), hidden, tint);
+
+            UnseenUi.Say(new Rect(x, panel.y + 48f, w, 16f), "BODY", UnseenUi.Section,
+                UnseenUi.Faint);
+
+            UnseenUi.Meter(new Rect(x, panel.y + 64f, w, 6f), health,
+                Color.Lerp(UnseenUi.Blood, new Color(0.52f, 0.72f, 0.44f), health));
         }
 
+        /// <summary>
+        /// The phase, the survivor count, and where the mist has got to.
+        ///
+        /// Sits under the minimap in the top-right corner. The alive count is the largest figure
+        /// here because it is the one that changes the way a match feels - forty alive and four
+        /// alive are different games - and it used to be the same size as the words around it.
+        /// </summary>
         private void DrawMatchState()
         {
             if (_snapshot == null) return;
 
-            // Below the minimap, which occupies the top-right corner.
-            const float top = 236f;
+            var panel = new Rect(Screen.width - 246f, 232f, 224f, 74f);
+            UnseenUi.Panel(panel);
+
+            float x = panel.x + 16f;
+            float w = panel.width - 32f;
+
             string phase = ((BattleRoyale.MatchPhase)_snapshot.MatchPhase).ToString();
-            GUI.Label(new Rect(Screen.width - 230f, top, 220f, 22f),
-                $"{phase}   alive {_snapshot.AliveCount}", _label);
-            GUI.Label(new Rect(Screen.width - 230f, top + 22f, 220f, 22f),
-                $"mist stage {_snapshot.ZoneStage}   r {(_snapshot.ZoneRadius):0} m", _small);
+
+            UnseenUi.Say(new Rect(x, panel.y + 10f, w, 18f), phase.ToUpperInvariant(),
+                UnseenUi.Section, UnseenUi.Accent);
+
+            UnseenUi.Say(new Rect(x, panel.y + 26f, 60f, 28f), $"{_snapshot.AliveCount}",
+                UnseenUi.Title, UnseenUi.Text);
+
+            UnseenUi.Say(new Rect(x + 34f, panel.y + 30f, w - 34f, 20f), "still unseen",
+                UnseenUi.Caption, UnseenUi.Muted);
+
+            UnseenUi.Fill(new Rect(x, panel.y + 56f, w, 1f), new Color(1f, 1f, 1f, 0.07f));
+
+            UnseenUi.Say(new Rect(x, panel.y + 56f, w, 18f),
+                $"mist {_snapshot.ZoneStage}", UnseenUi.Caption, UnseenUi.Faint);
+
+            UnseenUi.Say(new Rect(x, panel.y + 56f, w, 18f),
+                $"{_snapshot.ZoneRadius:0} m", UnseenUi.Number, UnseenUi.Muted);
         }
 
         private void DrawGuardZone()
@@ -154,9 +182,12 @@ namespace Unseen.Client
             if (Input == null || !Input.Current.Guard) return;
 
             string zone = Input.Current.Zone.ToString().ToUpperInvariant();
-            var rect = new Rect(Screen.width * 0.5f - 60f, Screen.height * 0.5f + 60f, 120f, 24f);
-            Fill(rect, new Color(0f, 0f, 0f, 0.4f));
-            GUI.Label(rect, $"  guard: {zone}", _label);
+            var rect = new Rect(Screen.width * 0.5f - 58f, Screen.height * 0.5f + 58f, 116f, 26f);
+
+            UnseenUi.Rounded(rect, UnseenUi.Ink, UnseenUi.SmallRadius, UnseenUi.Edge, 1f);
+
+            var centred = new GUIStyle(UnseenUi.Section) { alignment = TextAnchor.MiddleCenter };
+            UnseenUi.Say(rect, $"GUARD  {zone}", centred, UnseenUi.Cool);
         }
 
         private struct Elimination
@@ -230,38 +261,55 @@ namespace Unseen.Client
                 if (Time.time > _eliminations[i].ExpiresAt)
                     _eliminations.RemoveAt(i);
 
-            float y = 288f;
+            float y = 318f;
             for (int i = 0; i < _eliminations.Count; i++)
             {
                 Elimination e = _eliminations[i];
-                float life = Mathf.Clamp01(e.ExpiresAt - Time.time);
-                var rect = new Rect(Screen.width - 330f, y + i * 24f, 320f, 22f);
 
-                Fill(rect, new Color(0f, 0f, 0f, 0.4f * Mathf.Min(1f, life * 2f)));
-                GUI.color = e.Involved
-                    ? new Color(1f, 0.86f, 0.5f, Mathf.Min(1f, life * 2f))
-                    : new Color(0.85f, 0.85f, 0.85f, Mathf.Min(1f, life * 2f));
-                GUI.Label(new Rect(rect.x + 8f, rect.y, rect.width - 12f, rect.height), e.Text, _small);
-                GUI.color = Color.white;
+                // Fading out over the last half second rather than blinking off.
+                float life = Mathf.Clamp01((e.ExpiresAt - Time.time) * 2f);
+
+                var rect = new Rect(Screen.width - 336f, y + i * 26f, 314f, 24f);
+
+                UnseenUi.Rounded(rect, UnseenUi.Ink * new Color(1f, 1f, 1f, life),
+                    UnseenUi.SmallRadius);
+
+                // A stripe down the left in the accent when you were part of it. The feed is
+                // mostly other people's business and the ones that are yours should not need
+                // reading to be noticed.
+                if (e.Involved)
+                    UnseenUi.Rounded(new Rect(rect.x, rect.y + 4f, 2f, rect.height - 8f),
+                        UnseenUi.Gold * new Color(1f, 1f, 1f, life), 1f);
+
+                UnseenUi.Say(new Rect(rect.x + 12f, rect.y, rect.width - 20f, rect.height),
+                    e.Text, UnseenUi.Label, e.Involved ? UnseenUi.Gold : UnseenUi.Muted, life);
             }
 
             if (_ownDeath == null) return;
 
             // Your own death stays up. It is the end of your match, not a feed item.
-            var banner = new Rect(Screen.width * 0.5f - 210f, Screen.height * 0.32f, 420f, 90f);
-            Fill(banner, new Color(0f, 0f, 0f, 0.62f));
-            GUI.Label(new Rect(banner.x + 20f, banner.y + 10f, banner.width - 40f, 28f),
-                "ELIMINATED", _label);
-            GUI.Label(new Rect(banner.x + 20f, banner.y + 36f, banner.width - 40f, 22f),
-                _ownDeath, _small);
+            var banner = new Rect(Screen.width * 0.5f - 230f, Screen.height * 0.30f, 460f, 104f);
+
+            UnseenUi.Panel(banner);
+            UnseenUi.Accented(banner, UnseenUi.Blood);
+
+            UnseenUi.Say(new Rect(banner.x + 24f, banner.y + 16f, banner.width - 48f, 32f),
+                "ELIMINATED", UnseenUi.Display, UnseenUi.Text);
+
+            UnseenUi.Say(new Rect(banner.x + 24f, banner.y + 50f, banner.width - 48f, 22f),
+                _ownDeath, UnseenUi.Body, UnseenUi.Muted);
 
             // Tell them the match is still running and how to watch it. Without this the screen
             // after death is a corpse and no explanation.
             string watching = Spectating != null
-                ? $"spectating {Spectating}   -   jump key cycles"
+                ? $"spectating {Spectating}  ·  jump cycles"
                 : "waiting for the next match";
-            GUI.Label(new Rect(banner.x + 20f, banner.y + 58f, banner.width - 40f, 22f),
-                watching, _small);
+
+            UnseenUi.Fill(new Rect(banner.x + 24f, banner.y + 78f, banner.width - 48f, 1f),
+                new Color(1f, 1f, 1f, 0.07f));
+
+            UnseenUi.Say(new Rect(banner.x + 24f, banner.y + 78f, banner.width - 48f, 22f),
+                watching, UnseenUi.Caption, UnseenUi.Faint);
         }
 
         /// <summary>
@@ -287,29 +335,31 @@ namespace Unseen.Client
             if ((BattleRoyale.MatchPhase)_snapshot.MatchPhase != BattleRoyale.MatchPhase.PostMatch) return;
 
             bool won = _snapshot.Winner.IsValid && _snapshot.Winner == _snapshot.SelfId;
-            var accent = won ? new Color(1f, 0.86f, 0.45f) : new Color(0.78f, 0.79f, 0.84f);
+            Color accent = won ? UnseenUi.Gold : UnseenUi.Accent;
 
             BuildBoard();
 
-            const float rowHeight = 21f;
-            float width = 620f;
-            float header = 92f;
-            float footer = 54f;
+            const float rowHeight = 26f;
+            const float width = 660f;
+            const float header = 128f;
+            const float footer = 62f;
+
             float height = header + _board.Count * rowHeight + footer;
 
-            var panel = new Rect(Screen.width * 0.5f - width * 0.5f,
-                Mathf.Max(24f, Screen.height * 0.5f - height * 0.5f), width, height);
+            var panel = new Rect(
+                Mathf.Round(Screen.width * 0.5f - width * 0.5f),
+                Mathf.Round(Mathf.Max(24f, Screen.height * 0.5f - height * 0.5f)),
+                width, height);
 
-            Fill(panel, new Color(0f, 0f, 0f, 0.82f));
-            Fill(new Rect(panel.x, panel.y, panel.width, 3f), accent);
+            UnseenUi.Panel(panel);
+            UnseenUi.Accented(panel, accent);
 
-            float left = panel.x + 22f;
-            float inner = panel.width - 44f;
+            float left = panel.x + 26f;
+            float inner = panel.width - 52f;
 
-            GUI.color = accent;
-            GUI.Label(new Rect(left, panel.y + 14f, inner, 32f),
-                won ? "THE LAST UNSEEN" : "MATCH OVER", _label);
-            GUI.color = Color.white;
+            // ---------------------------------------------------------------- the headline
+            UnseenUi.Say(new Rect(left, panel.y + 22f, inner, 34f),
+                won ? "THE LAST UNSEEN" : "MATCH OVER", UnseenUi.Display, accent);
 
             // The player's own line, spelled out above the table. It is the one fact they came to
             // this screen for and it should not have to be found in a list.
@@ -317,23 +367,25 @@ namespace Unseen.Client
                 ? $"#{_snapshot.SelfPlacement}"
                 : won ? "#1" : "still standing";
 
-            GUI.color = new Color(0.72f, 0.74f, 0.8f);
-            GUI.Label(new Rect(left, panel.y + 40f, inner, 20f),
+            UnseenUi.Say(new Rect(left, panel.y + 58f, inner, 22f),
                 $"you finished {placement} with {_snapshot.SelfKills} " +
-                (_snapshot.SelfKills == 1 ? "elimination" : "eliminations"), _small);
-            GUI.color = Color.white;
+                (_snapshot.SelfKills == 1 ? "elimination" : "eliminations"),
+                UnseenUi.Body, UnseenUi.Muted);
 
-            // Column heads.
-            float y = panel.y + 66f;
-            GUI.color = new Color(0.55f, 0.57f, 0.63f);
-            GUI.Label(new Rect(left, y, 40f, 18f), "#", _small);
-            GUI.Label(new Rect(left + 44f, y, 180f, 18f), "ninja", _small);
-            GUI.Label(new Rect(left + 232f, y, 60f, 18f), "kills", _small);
-            GUI.Label(new Rect(left + 300f, y, inner - 300f, 18f), "fate", _small);
-            GUI.color = Color.white;
+            // ---------------------------------------------------------------- column heads
+            float y = panel.y + 96f;
 
-            Fill(new Rect(left, y + 19f, inner, 1f), new Color(1f, 1f, 1f, 0.14f));
+            UnseenUi.Say(new Rect(left, y, 44f, 18f), "#", UnseenUi.Section, UnseenUi.Faint);
+            UnseenUi.Say(new Rect(left + 48f, y, 190f, 18f), "NINJA", UnseenUi.Section,
+                UnseenUi.Faint);
+            UnseenUi.Say(new Rect(left + 238f, y, 60f, 18f), "KILLS", UnseenUi.Number,
+                UnseenUi.Faint);
+            UnseenUi.Say(new Rect(left + 320f, y, inner - 320f, 18f), "FATE", UnseenUi.Section,
+                UnseenUi.Faint);
 
+            UnseenUi.Fill(new Rect(left, y + 20f, inner, 1f), new Color(1f, 1f, 1f, 0.10f));
+
+            // ---------------------------------------------------------------- the table
             y = panel.y + header;
 
             for (int i = 0; i < _board.Count; i++)
@@ -342,42 +394,45 @@ namespace Unseen.Client
                 bool self = row.Id == _snapshot.SelfId;
                 bool first = row.Placement == 1;
 
-                var line = new Rect(left - 6f, y, inner + 12f, rowHeight);
+                var line = new Rect(left - 8f, y, inner + 16f, rowHeight);
 
-                if (self) Fill(line, new Color(0.36f, 0.5f, 0.72f, 0.34f));
-                else if (i % 2 == 1) Fill(line, new Color(1f, 1f, 1f, 0.035f));
+                if (self)
+                    UnseenUi.Rounded(line, accent * new Color(1f, 1f, 1f, 0.16f),
+                        UnseenUi.SmallRadius, accent * new Color(1f, 1f, 1f, 0.45f), 1f);
+                else if (i % 2 == 1)
+                    UnseenUi.Rounded(line, UnseenUi.Raised, UnseenUi.SmallRadius);
 
-                GUI.color = first ? new Color(1f, 0.86f, 0.45f)
-                    : self ? Color.white
-                    : new Color(0.82f, 0.83f, 0.87f);
+                Color ink = first ? UnseenUi.Gold : self ? UnseenUi.Text : UnseenUi.Muted;
 
-                GUI.Label(new Rect(left, y + 2f, 40f, 18f),
-                    row.Placement > 0 ? $"{row.Placement}" : "-", _small);
+                UnseenUi.Say(new Rect(left, y, 44f, rowHeight),
+                    row.Placement > 0 ? $"{row.Placement}" : "-", UnseenUi.Label, ink);
 
-                GUI.Label(new Rect(left + 44f, y + 2f, 180f, 18f),
-                    string.IsNullOrEmpty(row.Name) ? "ninja" : row.Name, _small);
+                UnseenUi.Say(new Rect(left + 48f, y, 190f, rowHeight),
+                    string.IsNullOrEmpty(row.Name) ? "ninja" : row.Name, UnseenUi.Body, ink);
 
-                GUI.Label(new Rect(left + 232f, y + 2f, 60f, 18f), $"{row.Kills}", _small);
+                UnseenUi.Say(new Rect(left + 238f, y, 60f, rowHeight), $"{row.Kills}",
+                    UnseenUi.Number, row.Kills > 0 ? ink : UnseenUi.Faint);
 
-                GUI.color = first ? new Color(1f, 0.86f, 0.45f) : new Color(0.66f, 0.68f, 0.73f);
-                GUI.Label(new Rect(left + 300f, y + 2f, inner - 300f, 18f), FateText(row), _small);
+                UnseenUi.Say(new Rect(left + 320f, y, inner - 320f, rowHeight), FateText(row),
+                    UnseenUi.Label, first ? UnseenUi.Gold : UnseenUi.Faint);
 
-                GUI.color = Color.white;
                 y += rowHeight;
             }
 
+            // ---------------------------------------------------------------- the countdown
             float countdown = Mathf.Max(0f, _snapshot.PhaseSecondsRemaining);
-            GUI.color = new Color(0.72f, 0.74f, 0.8f);
-            GUI.Label(new Rect(left, panel.yMax - 44f, inner, 20f),
-                countdown > 0f ? $"next match in {countdown:0}s" : "next match starting", _small);
-            GUI.color = Color.white;
 
-            var bar = new Rect(left, panel.yMax - 20f, inner, 5f);
-            Fill(bar, new Color(1f, 1f, 1f, 0.12f));
+            UnseenUi.Fill(new Rect(left, panel.yMax - 50f, inner, 1f),
+                new Color(1f, 1f, 1f, 0.07f));
 
+            UnseenUi.Say(new Rect(left, panel.yMax - 44f, inner, 20f),
+                countdown > 0f ? $"next match in {countdown:0}s" : "next match starting",
+                UnseenUi.Caption, UnseenUi.Muted);
+
+            var bar = new Rect(left, panel.yMax - 22f, inner, 5f);
             float span = Mathf.Max(1f, PostMatchSpan);
-            Fill(new Rect(bar.x, bar.y, bar.width * Mathf.Clamp01(1f - countdown / span), bar.height),
-                accent);
+
+            UnseenUi.Meter(bar, Mathf.Clamp01(1f - countdown / span), accent);
         }
 
         private readonly List<Standing> _board = new List<Standing>(24);
@@ -487,52 +542,81 @@ namespace Unseen.Client
             var centre = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
             bool grapple = HasPrompt(SelfPrompt.Grapple);
 
-            Fill(new Rect(centre.x - 2f, centre.y - 2f, 4f, 4f),
-                grapple ? new Color(0.6f, 0.85f, 1f, 0.95f) : new Color(1f, 1f, 1f, 0.5f));
+            // A ring rather than a square pixel, with a dark rim so it survives being over a
+            // pale wall as well as a dark street.
+            UnseenUi.Rounded(new Rect(centre.x - 3.5f, centre.y - 3.5f, 7f, 7f),
+                new Color(0f, 0f, 0f, 0.55f), 3.5f);
+
+            UnseenUi.Rounded(new Rect(centre.x - 2f, centre.y - 2f, 4f, 4f),
+                grapple ? UnseenUi.Cool : new Color(1f, 1f, 1f, 0.62f), 2f);
 
             if (!grapple) return;
 
             // Corner ticks when an anchor is in reach. Without this the hook is invisible: you
             // cannot tell a bad angle from a broken button.
-            const float gap = 9f, len = 6f;
-            var tint = new Color(0.6f, 0.85f, 1f, 0.9f);
-            Fill(new Rect(centre.x - gap - len, centre.y - 1f, len, 2f), tint);
-            Fill(new Rect(centre.x + gap, centre.y - 1f, len, 2f), tint);
-            Fill(new Rect(centre.x - 1f, centre.y - gap - len, 2f, len), tint);
-            Fill(new Rect(centre.x - 1f, centre.y + gap, 2f, len), tint);
+            const float gap = 10f, len = 7f;
+            Color tint = UnseenUi.Cool;
+
+            UnseenUi.Rounded(new Rect(centre.x - gap - len, centre.y - 1f, len, 2f), tint, 1f);
+            UnseenUi.Rounded(new Rect(centre.x + gap, centre.y - 1f, len, 2f), tint, 1f);
+            UnseenUi.Rounded(new Rect(centre.x - 1f, centre.y - gap - len, 2f, len), tint, 1f);
+            UnseenUi.Rounded(new Rect(centre.x - 1f, centre.y + gap, 2f, len), tint, 1f);
         }
 
         /// <summary>Context prompts for whatever is actually in reach, straight from the server.</summary>
         private void DrawPrompts()
         {
             string action = null;
-            if (HasPrompt(SelfPrompt.Container)) action = "E   loot chest";
-            else if (HasPrompt(SelfPrompt.Shoji)) action = "E   slice shoji";
-            else if (HasPrompt(SelfPrompt.Lantern)) action = "E   douse lantern";
+            if (HasPrompt(SelfPrompt.Container)) action = "loot the chest";
+            else if (HasPrompt(SelfPrompt.Shoji)) action = "slice the shoji";
+            else if (HasPrompt(SelfPrompt.Lantern)) action = "douse the lantern";
 
-            var lines = new List<string>(2);
-            if (action != null) lines.Add(action);
-            if (HasPrompt(SelfPrompt.Grapple)) lines.Add("F   grapple");
-            if (lines.Count == 0) return;
+            _prompts.Clear();
+            if (action != null) _prompts.Add(("E", action));
+            if (HasPrompt(SelfPrompt.Grapple)) _prompts.Add(("F", "grapple"));
+            if (_prompts.Count == 0) return;
 
-            float y = Screen.height * 0.5f + 96f;
-            for (int i = 0; i < lines.Count; i++)
+            float y = Screen.height * 0.5f + 92f;
+
+            for (int i = 0; i < _prompts.Count; i++)
             {
-                var rect = new Rect(Screen.width * 0.5f - 90f, y + i * 26f, 180f, 22f);
-                Fill(rect, new Color(0f, 0f, 0f, 0.45f));
-                GUI.Label(new Rect(rect.x + 10f, rect.y, rect.width, rect.height), lines[i], _label);
+                (string key, string what) = _prompts[i];
+
+                float textWidth = UnseenUi.Body.CalcSize(new GUIContent(what)).x;
+                float width = textWidth + 62f;
+
+                var rect = new Rect(Screen.width * 0.5f - width * 0.5f, y + i * 30f, width, 26f);
+
+                UnseenUi.Rounded(rect, UnseenUi.Ink, UnseenUi.SmallRadius, UnseenUi.Edge, 1f);
+
+                // The key drawn as a cap rather than run into the sentence. It is the part a player
+                // is looking for, and "E  loot the chest" makes them read the whole line to find it.
+                var cap = new Rect(rect.x + 5f, rect.y + 5f, 22f, 16f);
+                UnseenUi.Rounded(cap, new Color(1f, 1f, 1f, 0.16f), 3f);
+
+                var centred = new GUIStyle(UnseenUi.Section)
+                {
+                    alignment = TextAnchor.MiddleCenter
+                };
+
+                UnseenUi.Say(cap, key, centred, UnseenUi.Text);
+                UnseenUi.Say(new Rect(rect.x + 34f, rect.y, rect.width - 40f, rect.height), what,
+                    UnseenUi.Body, UnseenUi.Muted);
             }
         }
+
+        /// <summary>Reused between frames so a per-frame prompt list allocates nothing.</summary>
+        private readonly List<(string Key, string What)> _prompts = new List<(string, string)>(2);
 
         /// <summary>The three utility slots, so 1/2/3 say what they will do before you press them.</summary>
         private void DrawUtilityBar()
         {
             if (_snapshot == null) return;
 
-            const float slotWidth = 92f, slotHeight = 26f, spacing = 6f;
+            const float slotWidth = 104f, slotHeight = 34f, spacing = 8f;
             float total = slotWidth * 3f + spacing * 2f;
             float x = Screen.width * 0.5f - total * 0.5f;
-            float y = Screen.height - 40f;
+            float y = Screen.height - 52f;
 
             for (int i = 0; i < 3; i++)
             {
@@ -540,11 +624,28 @@ namespace Unseen.Client
                 byte effect = _snapshot.SelfUtility[i];
                 bool filled = effect != 0;
 
-                Fill(rect, filled ? new Color(0.08f, 0.1f, 0.16f, 0.8f) : new Color(0f, 0f, 0f, 0.35f));
-                GUI.Label(new Rect(rect.x + 6f, rect.y + 3f, 16f, 20f), (i + 1).ToString(),
-                    filled ? _label : _small);
-                GUI.Label(new Rect(rect.x + 22f, rect.y + 5f, slotWidth - 26f, 20f),
-                    filled ? UtilityName((UtilityEffect)effect) : "-", _small);
+                // An empty slot is drawn as an outline with nothing in it, rather than as a filled
+                // box with a dash. The shape alone then says how many you are carrying.
+                if (filled)
+                    UnseenUi.Rounded(rect, UnseenUi.Ink, UnseenUi.SmallRadius, UnseenUi.Edge, 1f);
+                else
+                    UnseenUi.Rounded(rect, new Color(0f, 0f, 0f, 0.25f), UnseenUi.SmallRadius,
+                        new Color(1f, 1f, 1f, 0.06f), 1f);
+
+                var cap = new Rect(rect.x + 7f, rect.y + 9f, 18f, 16f);
+                UnseenUi.Rounded(cap, new Color(1f, 1f, 1f, filled ? 0.16f : 0.06f), 3f);
+
+                var centred = new GUIStyle(UnseenUi.Section)
+                {
+                    alignment = TextAnchor.MiddleCenter
+                };
+
+                UnseenUi.Say(cap, (i + 1).ToString(), centred,
+                    filled ? UnseenUi.Text : UnseenUi.Faint);
+
+                UnseenUi.Say(new Rect(rect.x + 32f, rect.y, rect.width - 38f, rect.height),
+                    filled ? UtilityName((UtilityEffect)effect) : "empty",
+                    UnseenUi.Label, filled ? UnseenUi.Text : UnseenUi.Faint);
             }
         }
 
@@ -587,10 +688,13 @@ namespace Unseen.Client
                     centre.y - Mathf.Cos(relative) * radius - 3f,
                     width, 6f);
 
-                Fill(rect, new Color(1f, 0.92f, 0.7f, alpha * 0.8f));
+                // Rounded, so a smeared marker reads as a soft band rather than a bar of pixels.
+                UnseenUi.Rounded(rect, new Color(1f, 0.94f, 0.78f, alpha * 0.85f), 3f);
 
                 if (ping.Occlusion < 0.3f && ping.Intensity > 0.5f)
-                    GUI.Label(new Rect(rect.x - 12f, rect.y - 18f, 120f, 18f), ping.Kind.ToString(), _small);
+                    UnseenUi.Say(new Rect(rect.x - 12f, rect.y - 19f, 120f, 18f),
+                        ping.Kind.ToString().ToLowerInvariant(), UnseenUi.Caption,
+                        UnseenUi.Text, alpha);
             }
         }
 
@@ -598,8 +702,11 @@ namespace Unseen.Client
 
         private void DrawDebug()
         {
-            var rect = new Rect(24f, 18f, 420f, 168f);
-            Fill(rect, new Color(0f, 0f, 0f, 0.55f));
+            var rect = new Rect(22f, 18f, 430f, 176f);
+            UnseenUi.Panel(rect);
+
+            UnseenUi.Say(new Rect(rect.x + 16f, rect.y + 8f, rect.width - 32f, 18f),
+                "DIAGNOSTICS  ·  F3", UnseenUi.Section, UnseenUi.Faint);
 
             _frameMs = Mathf.Lerp(_frameMs, Time.unscaledDeltaTime * 1000f, 0.06f);
 
@@ -612,7 +719,8 @@ namespace Unseen.Client
                 $"loco {(LocomotionState)(_snapshot?.SelfLocomotion ?? 0)}\n" +
                 $"flags {(AgentFlags)(_snapshot?.SelfFlags ?? 0)}";
 
-            GUI.Label(new Rect(rect.x + 8f, rect.y + 6f, rect.width - 16f, rect.height - 12f), body, _small);
+            UnseenUi.Say(new Rect(rect.x + 16f, rect.y + 26f, rect.width - 32f, rect.height - 34f),
+                body, UnseenUi.Caption, UnseenUi.Muted);
         }
 
         private void Fill(Rect rect, Color colour)

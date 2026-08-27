@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using Unseen.Core;
 
 namespace Unseen.Environment
 {
@@ -45,7 +46,7 @@ namespace Unseen.Environment
             }
 
             _distances = new float[_lights.Count];
-            Debug.Log($"[Unseen] lantern light budget: {_lights.Count} lanterns, {Budget} lit at once");
+            UnseenLog.Info($"[Unseen] lantern light budget: {_lights.Count} lanterns, {Budget} lit at once");
         }
 
         private void LateUpdate()

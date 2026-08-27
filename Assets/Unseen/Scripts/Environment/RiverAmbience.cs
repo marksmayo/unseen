@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using Unseen.Audio;
+using Unseen.Core;
 
 namespace Unseen.Environment
 {
@@ -73,7 +74,7 @@ namespace Unseen.Environment
                 _sources.Add(source);
             }
 
-            Debug.Log($"[Unseen] river ambience: {_sources.Count} emitters, {Budget} audible at once");
+            UnseenLog.Info($"[Unseen] river ambience: {_sources.Count} emitters, {Budget} audible at once");
         }
 
         private void Update()

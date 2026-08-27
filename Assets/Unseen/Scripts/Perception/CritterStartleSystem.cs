@@ -160,7 +160,7 @@ namespace Unseen.Perception
                 cell.Add(critter);
             }
 
-            Debug.Log($"[Unseen] critter grid: {_indexedCount} critters across {_grid.Count} cells " +
+            UnseenLog.Info($"[Unseen] critter grid: {_indexedCount} critters across {_grid.Count} cells " +
                       $"of {CellSize:0} m");
         }
 

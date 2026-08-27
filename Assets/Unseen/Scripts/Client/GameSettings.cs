@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
+using Unseen.Core;
 
 namespace Unseen.Client
 {
@@ -61,11 +62,11 @@ namespace Unseen.Client
                 {
                     string json = File.ReadAllText(Path);
                     JsonUtility.FromJsonOverwrite(json, settings);
-                    Debug.Log($"[Unseen] settings loaded from {Path}");
+                    UnseenLog.Info($"[Unseen] settings loaded from {Path}");
                 }
                 else
                 {
-                    Debug.Log($"[Unseen] no settings file; defaults will be written to {Path}");
+                    UnseenLog.Info($"[Unseen] no settings file; defaults will be written to {Path}");
                 }
             }
             catch (Exception e)

@@ -138,7 +138,7 @@ namespace Unseen.Core
                 bool built = Unseen.AI.NavMeshBaker.Build(map);
 
                 if (VerboseStartup || StatusLogInterval > 0f)
-                    Debug.Log($"[Unseen] navmesh: built={built} in " +
+                    UnseenLog.Info($"[Unseen] navmesh: built={built} in " +
                               $"{Unseen.AI.NavMeshBaker.LastBakeSeconds:0.00} s, " +
                               $"{Unseen.AI.NavMeshBaker.LastCarvedVolumes} water volume(s) carved " +
                               $"out as unwalkable");
@@ -158,7 +158,7 @@ namespace Unseen.Core
 
             if (VerboseStartup)
             {
-                Debug.Log($"[Unseen] booted as {Mode} seed {Seed} | {_ctx.Destructibles.Describe()} | " +
+                UnseenLog.Info($"[Unseen] booted as {Mode} seed {Seed} | {_ctx.Destructibles.Describe()} | " +
                           $"tick {Config.Network.BaseTickRate}/{Config.Network.CombatTickRate} Hz");
             }
         }
@@ -374,7 +374,7 @@ namespace Unseen.Core
             ApplyBrightness(GameSettings.Current);
             GameSettings.Changed += ApplyBrightness;
 
-            Debug.Log($"[Unseen] post-processing: volume created, postExposure 1.9, " +
+            UnseenLog.Info($"[Unseen] post-processing: volume created, postExposure 1.9, " +
                       $"renderPostProcessing={cameraData.renderPostProcessing}, " +
                       $"volumeMask={cameraData.volumeLayerMask.value}, " +
                       $"pipeline={UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline?.name ?? "none"}");
@@ -524,7 +524,7 @@ namespace Unseen.Core
             if (StatusLogInterval <= 0f || Time.unscaledTime < _nextStatusLogAt) return;
             _nextStatusLogAt = Time.unscaledTime + StatusLogInterval;
 
-            Debug.Log($"[Unseen] {_match.StatusLine()} | sim {_sim.LastFrameMilliseconds:0.00} ms | " +
+            UnseenLog.Info($"[Unseen] {_match.StatusLine()} | sim {_sim.LastFrameMilliseconds:0.00} ms | " +
                       $"hot {_pockets.HotAgents}/{_motion.HotAgentsLastTick} | {_interest.DescribeLoad()} | " +
                       $"{_bots.Describe()} | out {_replication.KilobitsPerSecond:0} kbps");
 
@@ -542,7 +542,7 @@ namespace Unseen.Core
             AgentEntity local = _ctx.Entities.ByConnection(_net.LocalConnectionId);
             if (local == null)
             {
-                Debug.Log("[Unseen] local player: no agent bound to this connection");
+                UnseenLog.Info("[Unseen] local player: no agent bound to this connection");
                 return;
             }
 
@@ -555,7 +555,7 @@ namespace Unseen.Core
             int visualsInScene = FindObjectsByType<Unseen.Entities.AgentVisual>(FindObjectsSortMode.None).Length;
             Unseen.Entities.AgentVisualSet set = Unseen.Entities.AgentVisualSet.Load();
 
-            Debug.Log($"[Unseen] visual check: set={(set != null)} usable={(set != null && set.IsUsable)} " +
+            UnseenLog.Info($"[Unseen] visual check: set={(set != null)} usable={(set != null && set.IsUsable)} " +
                       $"skins={(set != null && set.Skins != null ? set.Skins.Length : 0)} " +
                       $"| local visual={(visual != null)} skinned={(skinned != null)} " +
                       $"enabled={(skinned != null && skinned.enabled)} " +
@@ -565,7 +565,7 @@ namespace Unseen.Core
                       $"scale={(visual != null ? visual.transform.lossyScale.ToString("0.000") : "n/a")} " +
                       $"| AgentVisuals in scene={visualsInScene}");
 
-            Debug.Log($"[Unseen] local {local.DisplayName} pos {local.Position} " +
+            UnseenLog.Info($"[Unseen] local {local.DisplayName} pos {local.Position} " +
                       $"loco {local.Locomotion} stance {local.Stance} " +
                       $"alive {local.IsAlive} deployed {(local.Flags & AgentFlags.Deployed) != 0} " +
                       $"grounded {(local.Motor != null && local.Motor.IsGrounded)} " +

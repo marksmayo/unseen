@@ -158,7 +158,7 @@ namespace Unseen.BattleRoyale
                 EnterPhase(MatchPhase.Infiltration, now, Ctx.Config.Match.InfiltrationDuration);
             }
             MatchStarted?.Invoke(MatchNumber);
-            Debug.Log($"[Unseen] match {MatchNumber} starting with {Ctx.Entities.Count} entities " +
+            UnseenLog.Info($"[Unseen] match {MatchNumber} starting with {Ctx.Entities.Count} entities " +
                       $"({Ctx.Entities.Count - Ctx.Entities.BotCount} human)");
         }
 
@@ -211,7 +211,7 @@ namespace Unseen.BattleRoyale
 
             EnterPhase(MatchPhase.PostMatch, frame.Time, PostMatchDuration);
             MatchEnded?.Invoke(Winner);
-            Debug.Log($"[Unseen] match {MatchNumber} won by {(survivor != null ? survivor.DisplayName : "nobody")}");
+            UnseenLog.Info($"[Unseen] match {MatchNumber} won by {(survivor != null ? survivor.DisplayName : "nobody")}");
         }
 
         /// <summary>Called by the combat director whenever an agent dies.</summary>

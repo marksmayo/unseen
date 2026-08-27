@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Unity.Mathematics;
 using UnityEngine;
+using Unseen.Core;
 
 namespace Unseen.Perception
 {
@@ -100,7 +101,7 @@ namespace Unseen.Perception
             }
 
             _builtFrom = all.Count;
-            Debug.Log($"[Unseen] stealth light grid: {LightCount} lights across {_cells.Count} cells " +
+            UnseenLog.Info($"[Unseen] stealth light grid: {LightCount} lights across {_cells.Count} cells " +
                       $"of {CellSize:0} m");
         }
 

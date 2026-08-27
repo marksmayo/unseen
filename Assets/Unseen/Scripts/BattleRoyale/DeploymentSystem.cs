@@ -138,7 +138,7 @@ namespace Unseen.BattleRoyale
                 if (agent.Slot >= 0 && agent.Slot < _glides.Length) _glides[agent.Slot] = default;
             }
 
-            Debug.Log($"[Unseen] infiltration skipped: {placed}/{count} agents placed with clearance");
+            UnseenLog.Info($"[Unseen] infiltration skipped: {placed}/{count} agents placed with clearance");
         }
 
         private float3 PickLandingSpot(float3 mapCenter, float mapRadius, System.Random random)

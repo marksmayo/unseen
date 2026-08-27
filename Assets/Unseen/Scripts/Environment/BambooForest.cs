@@ -164,7 +164,7 @@ namespace Unseen.Environment
                 }
             }
 
-            Debug.Log($"[Unseen] spirit forest laid out: ring of {segments} segments, " +
+            UnseenLog.Info($"[Unseen] spirit forest laid out: ring of {segments} segments, " +
                       $"{_culms.Count} culms, max radius {maxRadius:0} m, full height {height:0} m");
         }
 
