@@ -44,7 +44,22 @@ namespace Unseen.EditorTools
                 Step(boot, 60 * 70);
 
                 var drowning = boot.Simulation.GetSystem<DrowningSystem>();
-                var volume = Object.FindAnyObjectByType<WaterVolume>();
+                // The RIVER specifically, not whichever body of water happens to be first.
+                //
+                // There are two now - the river and the castle moat - and FindAnyObjectByType
+                // returned the moat, whose surface is 1.35 m up on a raised plinth. Every reading
+                // after that was taken against the wrong water: the test measured minus half a
+                // metre of depth and reported three failures in a drowning system that was working.
+                WaterVolume volume = null;
+
+                foreach (WaterVolume candidate in Object.FindObjectsByType<WaterVolume>(
+                    FindObjectsSortMode.None))
+                {
+                    // The river is the long one. Nothing else in this town is hundreds of metres
+                    // of water in one direction and sixteen in the other.
+                    if (volume == null || candidate.HalfSize.y > volume.HalfSize.y)
+                        volume = candidate;
+                }
                 UnseenConfig.WaterSection cfg = config.Water;
 
                 AgentEntity subject = null;
@@ -164,6 +179,26 @@ namespace Unseen.EditorTools
                     var deep = new float3(centreX, under.y, 80f);
                     var air = new float3(centreX, surface + 2.5f, 80f);
 
+                    // Pinned prone every tick, on BOTH sides of the advance.
+                    //
+                    // The only agent available here is a bot, and a bot's brain rewrites its intent
+                    // every think - so "hold Prone" was honoured most of the time and dropped for
+                    // about one tick in twenty. A standing eye in a 1.3 m channel is ABOVE the
+                    // surface, so each of those ticks read as a breath and reset the clock: the
+                    // body was under water for 1983 of 2100 ticks and never got past four seconds
+                    // of held breath. The test was measuring the bot's stance machine, not drowning.
+                    //
+                    // Two other ways to hold it down were tried and are worse. Locking the
+                    // locomotion state stops the eye anchor being updated, and the body then reads
+                    // as submerged for five ticks in two thousand. Writing the Stance field
+                    // directly desyncs it from the motor's own stance tracking, which is what
+                    // actually moves the anchor, and drops it to 266. Switching the brain off and
+                    // driving the intent is the only one of the three that leaves the body
+                    // consistent.
+                    if (second.Brain != null) second.Brain.enabled = false;
+
+                    int submergedTicks = 0;
+
                     for (int i = 0; i < 60 * 35; i++)
                     {
                         second.Motor.Teleport(deep);
@@ -171,9 +206,14 @@ namespace Unseen.EditorTools
                         boot.Network.Poll(1f / 60f);
                         boot.Simulation.Advance(1f / 60f);
                         second.Intent = new MoveIntent { Sequence = (uint)i, Prone = true };
+
+                        if (WaterVolume.IsUnder(second.EyePosition)) submergedTicks++;
                     }
 
                     float beforeSurfacing = drowning.HeldBreath(second.Id);
+
+                    Debug.Log($"[drown] second agent held under for {submergedTicks} of " +
+                              $"{60 * 35} ticks");
 
                     for (int i = 0; i < 60 * 2; i++)
                     {

@@ -117,7 +117,13 @@ namespace Unseen.Environment
         [Range(0f, 0.3f)] public float TeahouseChance = 0.08f;
 
         [Tooltip("Fraction of open plazas given a small shrine and a torii gate.")]
-        [Range(0f, 1f)] public float ShrineChance = 0.55f;
+        [Range(0f, 1f)] public float ShrineChance = 0.4f;
+
+        [Tooltip("Chance an open cell is a raked gravel garden rather than a shrine yard.")]
+        [Range(0f, 1f)] public float ZenGardenChance = 0.22f;
+
+        [Tooltip("Chance an open cell is a rock garden with a waterfall.")]
+        [Range(0f, 1f)] public float RockGardenChance = 0.2f;
 
         [Header("Content density")]
         [Range(0f, 1f)] public float TwoStoreyChance = 0.45f;
@@ -168,6 +174,10 @@ namespace Unseen.Environment
         private int _nagaya;
         private int _gardens;
         private int _shrines;
+        private int _zenGardens;
+        private int _rockGardens;
+        private int _waterfalls;
+        private int _koi;
         private MapSketch _sketch;
         private bool _textured;
         private GreyboxMaterialSet _set;
@@ -249,10 +259,15 @@ namespace Unseen.Environment
                 {
                     // The keep stays square to the world and centred. It is the one building the
                     // town was laid out around, and a crooked castle reads as a mistake.
-                    BuildKeep(new Vector3(
+                    var keepAt = new Vector3(
                         (gx - (GridSize - 1) * 0.5f) * pitch,
                         0f,
-                        (gz - (GridSize - 1) * 0.5f) * pitch));
+                        (gz - (GridSize - 1) * 0.5f) * pitch);
+
+                    // The moat first: it decides how high the keep stands, because the castle is
+                    // built on the island rather than dropped in beside it.
+                    float plinth = BuildCastleLake(keepAt);
+                    BuildKeep(keepAt + Vector3.up * plinth);
                     continue;
                 }
 
@@ -264,7 +279,15 @@ namespace Unseen.Environment
                     _sketch?.Add(MapSketch.Feature.Plaza, origin,
                         new Vector2(BlockSize * 0.5f, BlockSize * 0.5f));
 
-                    if (_random.NextDouble() < ShrineChance) BuildShrine(origin, gx * 31 + gz);
+                    double what = _random.NextDouble();
+                    int plazaSalt = gx * 31 + gz;
+
+                    if (what < ZenGardenChance) BuildZenGarden(origin, plazaSalt);
+                    else if (what < ZenGardenChance + RockGardenChance)
+                        BuildRockGarden(origin, plazaSalt);
+                    else if (what < ZenGardenChance + RockGardenChance + ShrineChance)
+                        BuildShrine(origin, plazaSalt);
+
                     continue;
                 }
 
@@ -328,6 +351,8 @@ namespace Unseen.Environment
                       $"{_root.GetComponentsInChildren<Collider>(true).Length} colliders, " +
                       $"{_pagodas} pagodas, {_kura} kura, {_nagaya} nagaya, " +
                       $"{_gardens} gardens, {_shrines} shrines, {_trees} trees, {_shrubs} shrubs, " +
+                      $"{_zenGardens} zen gardens, {_rockGardens} rock gardens, " +
+                      $"{_waterfalls} waterfalls, {_koi} koi, " +
                       $"{_birds} birds, {_animals} animals, " +
                       $"{_stoodLanterns} lanterns stood on posts, {_unhungLanterns} skipped, " +
                       $"river={(_riverColumn >= 0 ? "yes" : "no")}, " +
@@ -1568,8 +1593,13 @@ namespace Unseen.Environment
                 host.isStatic = true;
                 Acoustics(host.transform, 0.85f, 1.35f, 1.5f);
 
+                if (i == 0) BuildCurvedEave(pagoda, size, y, $"Pagoda_{storey}_{i}");
+
                 y += riser;
             }
+
+            BuildRidge(pagoda, span - inset * 2f * (tiers - 1), y - riser + 0.15f,
+                $"Pagoda_{storey}");
 
             float corner = span * 0.5f - 0.6f;
             for (int sx = -1; sx <= 1; sx += 2)
@@ -1579,6 +1609,119 @@ namespace Unseen.Environment
                     new Vector3(sx * corner, baseY - 0.35f, sz * corner),
                     new Vector3(0.9f, 0.6f, 0.9f), UnseenLayers.GrappleAnchor, _darkTimber);
                 Acoustics(hook, 0.4f, 1f, 1f);
+            }
+        }
+
+        /// <summary>
+        /// The upturned corners of a roof, and the rafter ends under its edge.
+        ///
+        /// This is the single detail that separates a Japanese roof from a stack of slabs, and it
+        /// is entirely in the corners: the eave line dips along each side and then flicks sharply
+        /// UP at the corner, so the roof reads as a curve held at four points rather than as a
+        /// lid. Everything else about the roof can stay square and it still reads correctly.
+        ///
+        /// Built from a short chain of tiles stepping out along the diagonal, each one rising
+        /// faster than the last. A quadratic rise is what makes a sweep - a linear one is a ramp,
+        /// and a ramp on the corner of a roof looks like damage.
+        ///
+        /// Decoration only. Every piece here is renderer-only, so the roof a player lands on is
+        /// still the flat slab the collider describes and parkour is unchanged - a corner tile you
+        /// could stand on would be a two-inch ledge at the exact spot people jump for.
+        /// </summary>
+        private void BuildCurvedEave(Transform parent, float span, float y, string tag)
+        {
+            float half = span * 0.5f;
+
+            const int steps = 5;
+            float reach = Mathf.Min(1.9f, span * 0.11f);
+            float lift = reach * 0.85f;
+
+            for (int sx = -1; sx <= 1; sx += 2)
+            for (int sz = -1; sz <= 1; sz += 2)
+            {
+                for (int i = 1; i <= steps; i++)
+                {
+                    float t = i / (float)steps;
+
+                    // Out along the diagonal at a steady rate, up at an accelerating one.
+                    float out_ = reach * t;
+                    float up = lift * t * t;
+
+                    // Tapering as it goes, so the tip is a point rather than a stub.
+                    float width = Mathf.Lerp(1.5f, 0.42f, t);
+
+                    Detail(parent, $"Sweep_{tag}_{sx}_{sz}_{i}",
+                        new Vector3((half + out_ * 0.72f) * sx, y + up, (half + out_ * 0.72f) * sz),
+                        new Vector3(width, 0.26f, width),
+                        _tile);
+                }
+
+                // The tip ornament: a small block turned up at the very end of the sweep, which is
+                // where a real roof carries a decorated tile.
+                Detail(parent, $"SweepTip_{tag}_{sx}_{sz}",
+                    new Vector3((half + reach * 0.78f) * sx, y + lift + 0.16f,
+                        (half + reach * 0.78f) * sz),
+                    new Vector3(0.36f, 0.4f, 0.36f),
+                    _darkTimber);
+            }
+
+            // Rafter ends along each side, under the eave. Close-packed and small: from the street
+            // they are a band of texture rather than individual pieces, and it is the band that
+            // says "timber roof" instead of "concrete lid".
+            int rafters = Mathf.Clamp(Mathf.RoundToInt(span / 1.1f), 4, 22);
+
+            for (int side = 0; side < 4; side++)
+            {
+                bool horizontal = side % 2 == 0;
+                float sign = side < 2 ? 1f : -1f;
+
+                for (int i = 0; i < rafters; i++)
+                {
+                    float t = (i + 0.5f) / rafters;
+                    float along = Mathf.Lerp(-half * 0.88f, half * 0.88f, t);
+
+                    // Following the dip in the eave line: lowest in the middle of a side, rising
+                    // toward the corners where the sweep takes over.
+                    float dip = Mathf.Abs(along) / Mathf.Max(0.01f, half);
+                    float rise = lift * dip * dip * 0.5f;
+
+                    Detail(parent, $"Rafter_{tag}_{side}_{i}",
+                        horizontal
+                            ? new Vector3(along, y - 0.18f + rise, half * sign * 1.02f)
+                            : new Vector3(half * sign * 1.02f, y - 0.18f + rise, along),
+                        horizontal
+                            ? new Vector3(0.34f, 0.2f, 0.5f)
+                            : new Vector3(0.5f, 0.2f, 0.34f),
+                        _darkTimber);
+                }
+            }
+        }
+
+        /// <summary>
+        /// The ridge along the top of a roof and the ornaments at either end.
+        ///
+        /// Short and entirely cosmetic, but a roof that simply stops at its top slab has no
+        /// silhouette against the sky, and the sky is what every rooftop in this town is seen
+        /// against.
+        /// </summary>
+        private void BuildRidge(Transform parent, float span, float y, string tag)
+        {
+            float length = Mathf.Max(1.5f, span * 0.62f);
+
+            Detail(parent, $"Ridge_{tag}", new Vector3(0f, y + 0.22f, 0f),
+                new Vector3(length, 0.34f, 0.55f), _darkTimber);
+
+            // Onigawara: the raised end tiles. Turned outward and up, which is the shape everyone
+            // recognises even at a distance where the detail is three pixels.
+            for (int sx = -1; sx <= 1; sx += 2)
+            {
+                Detail(parent, $"RidgeEnd_{tag}_{sx}",
+                    new Vector3(length * 0.5f * sx, y + 0.46f, 0f),
+                    new Vector3(0.42f, 0.62f, 0.7f), _darkTimber);
+
+                Detail(parent, $"RidgeHorn_{tag}_{sx}",
+                    new Vector3(length * 0.5f * sx + 0.18f * sx, y + 0.82f, 0f),
+                    new Vector3(0.22f, 0.34f, 0.3f), _darkTimber);
             }
         }
 
@@ -1592,6 +1735,11 @@ namespace Unseen.Environment
         /// cubes however good the bark on it is, because what identifies a tree at forty metres is
         /// its outline, and that was the whole of why this town read as Minecraft.
         /// </summary>
+        /// <summary>Overload taking the mesh last, for calls where the placement is the point.</summary>
+        private Transform Organic(Transform parent, Vector3 position, Vector3 scale,
+            Material material, Mesh mesh)
+            => Organic(parent, "Mass", mesh, position, scale, material);
+
         private Transform Organic(Transform parent, string name, Mesh mesh, Vector3 position,
             Vector3 scale, Material material)
         {
@@ -1786,24 +1934,9 @@ namespace Unseen.Environment
                         ? new Vector3(length, height, 0.9f)
                         : new Vector3(0.9f, height, length);
 
-                    Transform hedge = Box(green, $"Hedge_{gx}_{gz}", at, size,
-                        UnseenLayers.Occluder, _foliage);
+                    Transform hedge = BuildHedge(green, $"Hedge_{gx}_{gz}", at, size, alongX);
                     Acoustics(hedge, 0.3f, 0.8f, 0.9f);
                     hedges++;
-
-                    // Sprigs breaking the top line, so it is a hedge rather than a green wall.
-                    int sprigs = 3 + _random.Next(4);
-                    for (int i = 0; i < sprigs; i++)
-                    {
-                        float t = (i + 0.5f) / sprigs;
-                        Vector3 sprigAt = at + (alongX
-                            ? new Vector3(Mathf.Lerp(-length * 0.45f, length * 0.45f, t), 0f, 0f)
-                            : new Vector3(0f, 0f, Mathf.Lerp(-length * 0.45f, length * 0.45f, t)));
-
-                        sprigAt.y = height + 0.16f;
-                        Detail(green, $"Sprig_{gx}_{gz}_{i}", sprigAt,
-                            new Vector3(0.5f, 0.34f, 0.5f), _reed);
-                    }
 
                     // Birds sit on hedges. Perched at the top, which is where a startled one is
                     // most visible going up.
@@ -1843,6 +1976,86 @@ namespace Unseen.Environment
             }
 
             Debug.Log($"[Unseen] greenery: {hedges} hedges, {pots} potted plants");
+        }
+
+        /// <summary>
+        /// A clipped hedge: a run of overlapping foliage masses over an invisible box.
+        ///
+        /// It used to BE the box - one cube with a leaf texture on it, which is exactly the thing
+        /// that reads as Minecraft. A hedge is not a cuboid; it is a row of shrubs grown into each
+        /// other, and the only part of it the eye actually reads is the ragged top line.
+        ///
+        /// The box is still there and still does all the work that matters. Line of sight, the
+        /// footstep acoustics and the crouch-behind-it cover all come off the collider, so the
+        /// shape a player hides behind is unchanged and is still a stable, predictable rectangle -
+        /// which is what cover in a stealth game has to be. Only the renderer is thrown away, and
+        /// the masses that replace it are deliberately grown a little wider than the collider so
+        /// nobody's shoulder pokes visibly through the leaves.
+        /// </summary>
+        private Transform BuildHedge(Transform parent, string name, Vector3 at, Vector3 size,
+            bool alongX)
+        {
+            Transform hedge = Box(parent, name, at, size, UnseenLayers.Occluder, _foliage);
+
+            var renderer = hedge.GetComponent<MeshRenderer>();
+            if (renderer != null) UnseenObject.Destroy(renderer);
+
+            float length = alongX ? size.x : size.z;
+            float depth = alongX ? size.z : size.x;
+            float height = size.y;
+
+            // Spaced at about two thirds of a mass, so each one buries a third of itself in its
+            // neighbour and the run has no seams.
+            float mass = height * 1.05f;
+            int count = Mathf.Max(2, Mathf.RoundToInt(length / (mass * 0.62f)));
+
+            for (int i = 0; i < count; i++)
+            {
+                float t = count == 1 ? 0.5f : i / (float)(count - 1);
+                float along = Mathf.Lerp(-length * 0.5f, length * 0.5f, t);
+
+                // Deterministic per-position variation. A run of identical spheres is a caterpillar.
+                float wobble = Mathf.Sin((at.x + at.z) * 0.7f + i * 2.3f);
+                float rise = 1f + wobble * 0.16f;
+                float lean = wobble * depth * 0.22f;
+
+                Vector3 offset = alongX
+                    ? new Vector3(along, 0f, lean)
+                    : new Vector3(lean, 0f, along);
+
+                // Sat slightly low so the masses read as growing out of the ground rather than
+                // resting on it, and clipped just proud of the collider on every axis.
+                offset.y = height * (0.06f + 0.04f * wobble);
+
+                Organic(hedge, $"Mass_{i}",
+                    OrganicMeshFactory.Blob(5, 9, 0.44f, i % 8),
+                    offset,
+                    new Vector3(mass * 0.86f, height * rise, depth * 1.5f),
+                    _foliage);
+            }
+
+            // A few sprigs standing proud of the top line. The silhouette is the only part of a
+            // hedge anybody looks at, and a smooth one still reads as topiary.
+            int sprigs = 2 + _random.Next(3);
+            for (int i = 0; i < sprigs; i++)
+            {
+                float t = (i + 0.5f) / sprigs;
+                float along = Mathf.Lerp(-length * 0.42f, length * 0.42f, t);
+
+                Vector3 offset = alongX
+                    ? new Vector3(along, 0f, (float)(_random.NextDouble() - 0.5) * depth * 0.5f)
+                    : new Vector3((float)(_random.NextDouble() - 0.5) * depth * 0.5f, 0f, along);
+
+                offset.y = height * 0.46f;
+
+                Organic(hedge, $"Sprig_{i}",
+                    OrganicMeshFactory.Blade(3, 0.35f),
+                    offset,
+                    new Vector3(0.26f, 0.3f + (float)_random.NextDouble() * 0.22f, 0.26f),
+                    _reed).localRotation = Quaternion.Euler(0f, (float)_random.NextDouble() * 360f, 0f);
+            }
+
+            return hedge;
         }
 
         /// <summary>
@@ -2761,10 +2974,18 @@ namespace Unseen.Environment
                     }
                 }
 
+                // The lowest tier is the one anybody sees from a street, so the sweep goes there.
+                if (i == 0) BuildCurvedEave(compound, span, y, $"Hip_{i}");
+
                 y += riser;
             }
 
             float top = y - riser + slabThickness * 0.5f;
+
+            // A ridge along the top with an ornament at either end. A hip roof that just stops is
+            // the shape of a shed; the ridge and its end tiles are what make it a building
+            // somebody cared about.
+            BuildRidge(compound, eaveSpan - inset * 2f * (tiers - 1), top, "Hip");
 
             // Grapple anchors on the eave corners, not just the ridge. A ridge anchor sits behind
             // its own roof from every street, so the rope-path check refused every shot at it and
@@ -2998,6 +3219,710 @@ namespace Unseen.Environment
 
             // The keep is the richest loot site and therefore the busiest early fight.
             for (int i = 0; i < 4; i++) PlaceContainers(keep, footprint * 0.35f);
+        }
+
+        // ---------------------------------------------------------------- water gardens
+
+        /// <summary>Half-width of the stone island the keep stands on, in metres.</summary>
+        private const float IslandHalf = 15.5f;
+
+        /// <summary>Half-width of the moat's outer wall.</summary>
+        private const float MoatHalf = 23f;
+
+        /// <summary>How high the island stands above the street.</summary>
+        private const float PlinthHeight = 1.6f;
+
+        private Material _lakeWater;
+        private Material _wetStone;
+
+        /// <summary>
+        /// Rock that water runs over, and rock standing in it.
+        ///
+        /// The town's stone textures are all pale - they were cut for walls and paving, which in
+        /// this town are lime and granite - and a five metre boulder wearing a pale gravel texture
+        /// reads as a heap of crumpled paper rather than as rock. Wet stone is dark, so this is
+        /// the same material taken down to about a third of its brightness, which is roughly what
+        /// water does to a rock face.
+        /// </summary>
+        private Material WetStone()
+        {
+            if (_wetStone != null) return _wetStone;
+
+            Material source = _riverStone != null ? _riverStone : _stone;
+            if (source == null) return null;
+
+            _wetStone = new Material(source) { name = "WetStone" };
+
+            // A THIRD of the gravel's own tint, not a third of white. The river stone material is
+            // already dark at 0.22 and its base map is bright, so a tint of 0.29 - which is what
+            // this was - made the rock lighter than the wall behind it. Measured, not guessed:
+            // Unseen > Probe Water Gardens prints the base colour of every material in the lake.
+            var tint = new Color(0.11f, 0.12f, 0.13f);
+
+            if (_wetStone.HasProperty("_BaseColor")) _wetStone.SetColor("_BaseColor", tint);
+            if (_wetStone.HasProperty("_Color")) _wetStone.SetColor("_Color", tint);
+
+            // Smoother than dry stone, though. Wet rock is dark AND shiny, and dark on its own
+            // just reads as a hole.
+            if (_wetStone.HasProperty("_Smoothness"))
+                _wetStone.SetFloat("_Smoothness", 0.58f);
+
+            return _wetStone;
+        }
+
+        /// <summary>
+        /// The moat round the castle, and everything living in it.
+        ///
+        /// Built UP rather than dug down. The ground is laid as flat slabs and the only hole ever
+        /// cut in one is the river channel, so excavating a moat would mean cutting the town's
+        /// floor apart for one building. A castle stands on a stone base anyway - the ishigaki -
+        /// so raising the island and walling the water in around it is both easier and more
+        /// correct than sinking it.
+        ///
+        /// The water is chest deep on the way across. That is a real decision at the centre of the
+        /// map: the two bridges are the fast way in and the obvious place to be watched from, and
+        /// wading is slow, loud, and puts your head under if you go prone - which is also the way
+        /// to cross unseen.
+        ///
+        /// Returns how high the island stands, so the keep can be built on top of it.
+        /// </summary>
+        private float BuildCastleLake(Vector3 origin)
+        {
+            var lake = new GameObject("CastleLake").transform;
+            lake.SetParent(_root, false);
+            lake.localPosition = origin;
+
+            float waterY = PlinthHeight - 0.25f;
+
+            // ------------------------------------------------------------ the island
+            Transform island = Box(lake, "Island", new Vector3(0f, PlinthHeight * 0.5f, 0f),
+                new Vector3(IslandHalf * 2f, PlinthHeight, IslandHalf * 2f),
+                UnseenLayers.Default, _stone);
+            Acoustics(island, 0.9f, 1.1f, 1.1f);
+
+            // Battered stone facing. A vertical wall is a retaining wall; the slope is what makes
+            // it a castle base, and it is what everybody recognises the shape from.
+            for (int course = 0; course < 3; course++)
+            {
+                float t = course / 3f;
+                float out_ = 0.55f * (1f - t);
+                float y = PlinthHeight * (0.12f + t * 0.32f);
+
+                for (int side = 0; side < 4; side++)
+                {
+                    bool horizontal = side % 2 == 0;
+                    float sign = side < 2 ? 1f : -1f;
+                    float reach = IslandHalf + out_;
+
+                    Detail(lake, $"Batter_{course}_{side}",
+                        horizontal
+                            ? new Vector3(0f, y, reach * sign)
+                            : new Vector3(reach * sign, y, 0f),
+                        horizontal
+                            ? new Vector3(IslandHalf * 2f + out_ * 2f, PlinthHeight * 0.3f, 0.3f)
+                            : new Vector3(0.3f, PlinthHeight * 0.3f, IslandHalf * 2f + out_ * 2f),
+                        _stone);
+                }
+            }
+
+            // ------------------------------------------------------------ the outer wall
+            for (int side = 0; side < 4; side++)
+            {
+                bool horizontal = side % 2 == 0;
+                float sign = side < 2 ? 1f : -1f;
+
+                Transform wall = Box(lake, $"MoatWall_{side}",
+                    horizontal
+                        ? new Vector3(0f, PlinthHeight * 0.5f, MoatHalf * sign)
+                        : new Vector3(MoatHalf * sign, PlinthHeight * 0.5f, 0f),
+                    horizontal
+                        ? new Vector3(MoatHalf * 2f + 1.2f, PlinthHeight, 1.2f)
+                        : new Vector3(1.2f, PlinthHeight, MoatHalf * 2f + 1.2f),
+                    UnseenLayers.Occluder, _stone);
+                Acoustics(wall, 0.9f, 1.1f, 1.1f);
+            }
+
+            // ------------------------------------------------------------ the water
+            //
+            // One flat surface across the whole moat, island included. The island stands proud of
+            // it, so the part underneath is never seen and costs one quad to leave there rather
+            // than four strips to cut it out.
+            Transform surface = Detail(lake, "LakeWater",
+                new Vector3(0f, waterY - 0.08f, 0f),
+                new Vector3(MoatHalf * 2f, 0.16f, MoatHalf * 2f), LakeWater());
+
+            surface.gameObject.AddComponent<WaterVolume>().Configure(
+                waterY + origin.y,
+                new Vector2(MoatHalf, MoatHalf),
+                waterY - 0.1f,
+                new Vector2(IslandHalf, IslandHalf));
+
+            // ------------------------------------------------------------ two ways across
+            //
+            // Two, on opposite sides. One would make the approach a single chokepoint that decides
+            // every fight at the centre of the map before it starts; three would make the moat
+            // decorative. Two is a choice.
+            for (int sign = -1; sign <= 1; sign += 2)
+            {
+                float span = MoatHalf - IslandHalf;
+                float mid = (MoatHalf + IslandHalf) * 0.5f;
+
+                // A shallow arch, in three planks, so it reads as a bridge rather than a plank.
+                for (int i = 0; i < 3; i++)
+                {
+                    float t = (i - 1) / 1f;
+                    float rise = 0.42f * (1f - t * t);
+
+                    Transform deck = Box(lake, $"MoatBridge_{sign}_{i}",
+                        new Vector3(0f, PlinthHeight + rise, (mid + t * span * 0.33f) * sign),
+                        new Vector3(3.4f, 0.3f, span * 0.42f),
+                        UnseenLayers.Default, _darkTimber);
+                    Acoustics(deck, 0.5f, 1.5f, 1.3f);
+                }
+
+                for (int rail = -1; rail <= 1; rail += 2)
+                {
+                    Detail(lake, $"MoatRail_{sign}_{rail}",
+                        new Vector3(1.6f * rail, PlinthHeight + 0.85f, mid * sign),
+                        new Vector3(0.14f, 0.14f, span), _vermilion);
+
+                    for (int post = 0; post < 3; post++)
+                    {
+                        float t = (post - 1) / 1f;
+                        Detail(lake, $"MoatPost_{sign}_{rail}_{post}",
+                            new Vector3(1.6f * rail,
+                                PlinthHeight + 0.45f,
+                                (mid + t * span * 0.34f) * sign),
+                            new Vector3(0.16f, 0.9f, 0.16f), _vermilion);
+                    }
+                }
+
+                PostLantern(lake, new Vector3(2.1f * sign, PlinthHeight, mid * sign), 1.9f, 9f, 1f);
+            }
+
+            // ------------------------------------------------------------ rocks in the water
+            //
+            // Some breaking the surface, some not. A pond of uniform depth with nothing in it is a
+            // swimming bath, and it is the ones half under that say how deep the water is.
+            for (int i = 0; i < 22; i++)
+            {
+                float angle = i * 2.399f;
+                float lane = (float)_random.NextDouble();
+                float reach = Mathf.Max(Mathf.Abs(Mathf.Cos(angle)), Mathf.Abs(Mathf.Sin(angle)));
+                float band = Mathf.Lerp(IslandHalf + 1.1f, MoatHalf - 1.1f, lane) /
+                             Mathf.Max(0.35f, reach);
+
+                float size = 0.6f + (float)_random.NextDouble() * 1.5f;
+                float sink = (float)_random.NextDouble();
+
+                Organic(lake, $"MoatRock_{i}",
+                    OrganicMeshFactory.Blob(7, 12, 0.3f, i % 8),
+                    new Vector3(Mathf.Cos(angle) * band,
+                        waterY - size * (0.15f + sink * 0.55f),
+                        Mathf.Sin(angle) * band),
+                    new Vector3(size * 1.3f, size, size * 1.15f),
+                    WetStone());
+            }
+
+            // Reeds against the island, where silt collects.
+            for (int i = 0; i < 30; i++)
+            {
+                float angle = i * 1.257f;
+                float reach = Mathf.Max(Mathf.Abs(Mathf.Cos(angle)), Mathf.Abs(Mathf.Sin(angle)));
+                float band = (IslandHalf + 0.55f) / Mathf.Max(0.35f, reach);
+                float tall = 0.7f + (float)_random.NextDouble() * 0.8f;
+
+                Organic(lake, $"MoatReed_{i}",
+                    OrganicMeshFactory.Blade(4, 0.5f),
+                    new Vector3(Mathf.Cos(angle) * band, waterY - 0.15f, Mathf.Sin(angle) * band),
+                    new Vector3(0.5f, tall, 0.5f), _reed)
+                    .localRotation = Quaternion.Euler(0f, angle * Mathf.Rad2Deg, 0f);
+            }
+
+            // ------------------------------------------------------------ the fish
+            for (int i = 0; i < 9; i++)
+            {
+                Transform fish = BuildKoiBody(lake, i);
+
+                fish.gameObject.AddComponent<Koi>().Configure(
+                    origin + new Vector3(0f, 0f, 0f),
+                    new Vector2(IslandHalf + 1.6f, MoatHalf - 1.6f),
+                    origin.y + waterY,
+                    i,
+                    square: true);
+
+                _koi++;
+            }
+
+            // ------------------------------------------------------------ the water comes from
+            //                                                              somewhere
+            //
+            // A moat with no inlet is a tank. The fall is on one corner, outside the wall, and it
+            // is the loudest thing at the centre of the map - which makes the whole approach to
+            // the keep quieter to cross than it looks.
+            // In the corner of the moat itself, against the outer wall, so it pours into the
+            // water rather than beside it.
+            BuildWaterfall(lake, new Vector3(-MoatHalf + 3.2f, 0f, MoatHalf - 3.2f),
+                new Vector3(0.7f, 0f, -0.7f), 4.4f, 3.8f, waterY);
+
+            _gardens++;
+            return PlinthHeight;
+        }
+
+        /// <summary>
+        /// One carp: a body, a tail and two fins.
+        ///
+        /// Small and seen through moving water from several metres up, so the whole fish is four
+        /// pieces. What identifies it is the shape of the silhouette and the fact that it is
+        /// slowly turning, not the modelling.
+        /// </summary>
+        private Transform BuildKoiBody(Transform parent, int index)
+        {
+            var fish = new GameObject($"Koi_{index}").transform;
+            fish.SetParent(parent, false);
+
+            // Carp come in white, orange and near-black, and the pale ones are the only ones
+            // visible through the water at all - so most of them are pale.
+            Material skin = index % 3 == 0 ? _darkTimber : (index % 3 == 1 ? _vermilion : _plaster);
+
+            Organic(fish, "Body", OrganicMeshFactory.Blob(5, 8, 0.18f, index % 8),
+                Vector3.zero, new Vector3(0.16f, 0.13f, 0.46f), skin);
+
+            Organic(fish, "Tail", OrganicMeshFactory.Blade(3, 0.4f),
+                new Vector3(0f, 0.02f, -0.3f), new Vector3(0.2f, 0.2f, 0.2f), skin)
+                .localRotation = Quaternion.Euler(-72f, 0f, 0f);
+
+            for (int side = -1; side <= 1; side += 2)
+            {
+                Organic(fish, $"Fin_{side}", OrganicMeshFactory.Blade(3, 0.3f),
+                    new Vector3(0.07f * side, -0.02f, 0.04f),
+                    new Vector3(0.14f, 0.14f, 0.14f), skin)
+                    .localRotation = Quaternion.Euler(-80f, 0f, 55f * side);
+            }
+
+            return fish;
+        }
+
+        /// <summary>
+        /// A waterfall: a rock face, a sheet of falling water, a plunge pool and the mist off it.
+        ///
+        /// The sheet is the water material stood on its end. That is not a cheat - the shader
+        /// scrolls its waves along the surface, and a vertical surface scrolling downward is
+        /// exactly what falling water is - and it means the fall has the same colour and movement
+        /// as everything else wet in the town instead of being a white box.
+        /// </summary>
+        private void BuildWaterfall(Transform parent, Vector3 at, Vector3 outward,
+            float height, float width, float poolY)
+        {
+            var fall = new GameObject("Waterfall").transform;
+            fall.SetParent(parent, false);
+            fall.localPosition = at;
+
+            Vector3 back = -outward.normalized;
+            Vector3 across = Vector3.Cross(Vector3.up, outward.normalized);
+
+            // The cliff. One box does the colliding, because cover in this game has to be a
+            // shape a player can predict from looking at it, and the rock masses on top of it are
+            // what they actually see.
+            Transform block = Box(fall, "Crag", back * 1.1f + Vector3.up * (height * 0.5f),
+                new Vector3(width * 0.95f, height, 2.6f), UnseenLayers.Occluder, _riverStone);
+            Acoustics(block, 0.95f, 1f, 1f);
+
+            var blockRenderer = block.GetComponent<MeshRenderer>();
+            if (blockRenderer != null) UnseenObject.Destroy(blockRenderer);
+
+            // Masses stepping BACK as they rise, hung on the collider so they cannot drift off
+            // it. Wide enough to cover the collider - a fall coming off the edge of an invisible
+            // wall is worse than no fall - and no wider, because a boulder taller than the
+            // building behind it stops being scenery and becomes the subject.
+            Vector3 localBack = block.InverseTransformDirection(back);
+
+            for (int i = 0; i < 6; i++)
+            {
+                float t = i / 5f;
+                float size = Mathf.Lerp(width * 1.05f, width * 0.6f, t);
+
+                Organic(block,
+                    localBack * (t * 1.1f) +
+                    new Vector3(
+                        Mathf.Sin(i * 2.1f) * width * 0.12f,
+                        height * (t - 0.5f) * 0.94f,
+                        0f),
+                    new Vector3(size, height * 0.34f, size * 0.85f),
+                    WetStone(),
+                    OrganicMeshFactory.Blob(7, 12, 0.3f, i % 8));
+            }
+
+            // The sheet. Renderer only - falling water is not a floor, and a collider here would
+            // let people stand halfway up it.
+            //
+            // The flat face has to point OUT of the cliff. Turned the other way it is a thin blue
+            // stripe seen edge-on, which is a rod of water rather than a fall, and the difference
+            // is one axis.
+            Transform sheet = Detail(fall, "Sheet",
+                outward.normalized * (width * 0.16f) +
+                Vector3.up * (height * 0.5f + poolY * 0.5f),
+                new Vector3(width * 0.82f, height - poolY, 0.22f), FallWater());
+            sheet.localRotation = Quaternion.LookRotation(outward.normalized, Vector3.up);
+
+            // A lip at the top, so the water comes over something instead of starting in mid-air.
+            Detail(fall, "Lip", Vector3.up * (height + 0.05f) + outward.normalized * 0.35f,
+                new Vector3(width * 0.9f, 0.22f, 1.1f), WetStone());
+
+            // Spray where it lands, and mist drifting off the pool. Both are the ground-mist
+            // material, which already drifts and already fades with distance.
+            if (_groundMist != null)
+            {
+                for (int i = 0; i < 7; i++)
+                {
+                    float t = i / 6f;
+
+                    Transform puff = Detail(fall, $"Spray_{i}",
+                        Vector3.up * (poolY + 0.3f + t * 1.5f) +
+                        across * ((float)(_random.NextDouble() * 2f - 1f) * width * 0.6f) +
+                        outward.normalized * ((float)_random.NextDouble() * 1.6f),
+                        new Vector3(width * (1f + t), 0.06f, width * (0.7f + t * 0.6f)),
+                        _groundMist);
+
+                    var renderer = puff.GetComponent<MeshRenderer>();
+                    if (renderer != null)
+                        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                }
+            }
+
+            // Rocks at the foot, broken off the face.
+            for (int i = 0; i < 6; i++)
+            {
+                float size = 0.4f + (float)_random.NextDouble() * 0.9f;
+
+                Organic(fall, $"Scree_{i}",
+                    OrganicMeshFactory.Blob(6, 10, 0.34f, (i + 3) % 8),
+                    outward.normalized * (0.8f + (float)_random.NextDouble() * 2.2f) +
+                    across * ((float)(_random.NextDouble() * 2f - 1f) * width * 0.8f) +
+                    Vector3.up * (poolY - size * 0.3f),
+                    new Vector3(size * 1.3f, size, size), WetStone());
+            }
+
+            _waterfalls++;
+        }
+
+        /// <summary>
+        /// A karesansui: raked gravel, a handful of standing stones, moss, and a wall round it.
+        ///
+        /// The whole point of one of these is that it is EMPTY - a rectangle of gravel with five
+        /// stones in it and nothing else - which makes it the one place in a dense town with a
+        /// clear sightline across it, and therefore the last place anybody sensible walks through.
+        /// It earns its place in a stealth game by being beautiful and lethal at the same time.
+        ///
+        /// The rake lines are thin slabs a few centimetres proud of the gravel. At any distance
+        /// they are the pattern; up close they are ridges, which is what raked gravel actually is.
+        /// </summary>
+        private void BuildZenGarden(Vector3 origin, int salt)
+        {
+            var garden = new GameObject("ZenGarden").transform;
+            garden.SetParent(_root, false);
+            garden.localPosition = origin;
+
+            var rng = new System.Random(salt * 7919 + Seed);
+
+            float half = BlockSize * 0.36f;
+
+            _sketch?.Add(MapSketch.Feature.Garden, origin, new Vector2(half, half));
+
+            // The gravel bed, very slightly raised, so it has an edge.
+            Transform bed = Box(garden, "Gravel", new Vector3(0f, 0.06f, 0f),
+                new Vector3(half * 2f, 0.12f, half * 2f), UnseenLayers.Default, _riverStone);
+            Acoustics(bed, 0.6f, 1.6f, 1.5f);
+
+            // The wall. Low enough to see over standing, high enough to hide behind crouched,
+            // which is the only wall height that matters in this game.
+            for (int side = 0; side < 4; side++)
+            {
+                bool horizontal = side % 2 == 0;
+                float sign = side < 2 ? 1f : -1f;
+                float reach = half + 0.4f;
+
+                Transform wall = Box(garden, $"GardenWall_{side}",
+                    horizontal
+                        ? new Vector3(0f, 0.6f, reach * sign)
+                        : new Vector3(reach * sign, 0.6f, 0f),
+                    horizontal
+                        ? new Vector3(half * 2f + 0.8f, 1.2f, 0.36f)
+                        : new Vector3(0.36f, 1.2f, half * 2f + 0.8f),
+                    UnseenLayers.Occluder, _plaster);
+                Acoustics(wall, 0.85f, 1f, 1f);
+
+                Detail(garden, $"GardenCap_{side}",
+                    horizontal
+                        ? new Vector3(0f, 1.26f, reach * sign)
+                        : new Vector3(reach * sign, 1.26f, 0f),
+                    horizontal
+                        ? new Vector3(half * 2f + 1.1f, 0.14f, 0.62f)
+                        : new Vector3(0.62f, 0.14f, half * 2f + 1.1f),
+                    _tile);
+            }
+
+            // Five stones in three groups, which is the arrangement. Placed off-centre and never
+            // evenly, because an even one reads as a car park.
+            var groups = new[]
+            {
+                new Vector3(-half * 0.42f, 0f, half * 0.22f),
+                new Vector3(half * 0.3f, 0f, -half * 0.36f),
+                new Vector3(half * 0.5f, 0f, half * 0.48f)
+            };
+
+            int stone = 0;
+
+            for (int g = 0; g < groups.Length; g++)
+            {
+                int inGroup = g == 0 ? 2 : (g == 1 ? 2 : 1);
+
+                for (int i = 0; i < inGroup; i++)
+                {
+                    float size = 0.7f + (float)rng.NextDouble() * 1.3f;
+                    Vector3 nudge = new Vector3(
+                        (float)(rng.NextDouble() * 2f - 1f) * 1.2f, 0f,
+                        (float)(rng.NextDouble() * 2f - 1f) * 1.2f);
+
+                    Vector3 at = groups[g] + nudge;
+
+                    Organic(garden, $"Stone_{stone}",
+                        OrganicMeshFactory.Blob(7, 12, 0.3f, stone % 8),
+                        at + Vector3.up * (0.12f + size * 0.32f),
+                        new Vector3(size * 1.1f, size, size * 0.9f), _riverStone);
+
+                    // Moss at the foot of each one, where the rain runs off it.
+                    Organic(garden, $"Moss_{stone}",
+                        OrganicMeshFactory.Blob(4, 8, 0.5f, (stone + 4) % 8),
+                        at + Vector3.up * 0.13f,
+                        new Vector3(size * 2.1f, 0.16f, size * 1.9f), _moss);
+
+                    // Raked rings around the group: the gravel is combed AROUND the stones, which
+                    // is the detail that makes a rock in gravel read as placed rather than dropped.
+                    for (int ring = 1; ring <= 3; ring++)
+                    {
+                        float radius = size * (0.9f + ring * 0.55f);
+                        int segments = Mathf.Clamp(Mathf.RoundToInt(radius * 5f), 8, 30);
+
+                        for (int seg = 0; seg < segments; seg++)
+                        {
+                            float a = seg / (float)segments * Mathf.PI * 2f;
+
+                            Detail(garden, $"Ripple_{stone}_{ring}_{seg}",
+                                at + new Vector3(Mathf.Cos(a) * radius, 0.14f,
+                                    Mathf.Sin(a) * radius),
+                                new Vector3(0.26f, 0.05f, 0.26f), _plaster);
+                        }
+                    }
+
+                    stone++;
+                }
+            }
+
+            // And straight rakes across the open gravel, which is the rest of the pattern.
+            int lines = 11;
+            for (int i = 0; i < lines; i++)
+            {
+                float t = (i + 0.5f) / lines;
+                float z = Mathf.Lerp(-half * 0.92f, half * 0.92f, t);
+
+                Detail(garden, $"Rake_{i}", new Vector3(0f, 0.14f, z),
+                    new Vector3(half * 1.84f, 0.05f, 0.16f), _plaster);
+            }
+
+            // One stone lantern, at a corner, which is where they go.
+            PostLantern(garden, new Vector3(-half * 0.78f, 0.12f, -half * 0.78f), 1.5f, 8f, 0.85f);
+
+            _zenGardens++;
+            _gardens++;
+        }
+
+        /// <summary>
+        /// A rock garden built round a waterfall: a mound of boulders, a pool at the foot, and
+        /// pines growing out of the gaps.
+        ///
+        /// The opposite of the raked garden in every way that matters to a player. That one is
+        /// open ground you cross at your peril; this one is broken cover, high ground, and the
+        /// loudest place in the district - the fall drowns footsteps for ten metres around it,
+        /// which makes it the best ambush in the town and the worst place to be ambushed.
+        /// </summary>
+        private void BuildRockGarden(Vector3 origin, int salt)
+        {
+            var garden = new GameObject("RockGarden").transform;
+            garden.SetParent(_root, false);
+            garden.localPosition = origin;
+
+            var rng = new System.Random(salt * 6151 + Seed);
+
+            float half = BlockSize * 0.34f;
+            float poolY = 0.55f;
+
+            _sketch?.Add(MapSketch.Feature.Garden, origin, new Vector2(half, half));
+
+            // The pool. Walled rather than dug, same reason as the moat.
+            for (int side = 0; side < 4; side++)
+            {
+                bool horizontal = side % 2 == 0;
+                float sign = side < 2 ? 1f : -1f;
+                float reach = half * 0.55f;
+
+                Transform kerb = Box(garden, $"PoolKerb_{side}",
+                    horizontal
+                        ? new Vector3(0f, poolY * 0.5f + 0.1f, reach * sign)
+                        : new Vector3(reach * sign, poolY * 0.5f + 0.1f, 0f),
+                    horizontal
+                        ? new Vector3(half * 1.1f + 0.9f, poolY + 0.2f, 0.9f)
+                        : new Vector3(0.9f, poolY + 0.2f, half * 1.1f + 0.9f),
+                    UnseenLayers.Default, _riverStone);
+                Acoustics(kerb, 0.8f, 1.2f, 1.1f);
+            }
+
+            Detail(garden, "PoolWater", new Vector3(0f, poolY - 0.05f, 0f),
+                new Vector3(half * 1.1f, 0.14f, half * 1.1f), LakeWater());
+
+            // Stepping stones across it. Shallow enough to walk, which is the point of a garden
+            // pool as opposed to a moat.
+            for (int i = 0; i < 4; i++)
+            {
+                float t = (i + 0.5f) / 4f;
+
+                Organic(garden, $"Stepping_{i}",
+                    OrganicMeshFactory.Blob(5, 9, 0.3f, i % 8),
+                    new Vector3(Mathf.Lerp(-half * 0.45f, half * 0.45f, t), poolY - 0.1f,
+                        (float)(rng.NextDouble() * 2f - 1f) * 0.7f),
+                    new Vector3(1.1f, 0.5f, 1.0f), _riverStone);
+            }
+
+            // The mound: boulders in decreasing size going up, so it has a summit you can climb.
+            for (int i = 0; i < 14; i++)
+            {
+                float t = i / 13f;
+                float angle = i * 2.399f;
+                float band = Mathf.Lerp(half * 0.85f, half * 0.3f, t);
+                float size = Mathf.Lerp(2.4f, 0.9f, t) * (0.7f + (float)rng.NextDouble() * 0.6f);
+
+                var at = new Vector3(
+                    Mathf.Cos(angle) * band,
+                    0.2f + t * 2.6f,
+                    Mathf.Sin(angle) * band + half * 0.55f);
+
+                Transform block = Box(garden, $"Boulder_{i}", at,
+                    new Vector3(size * 1.2f, size, size * 1.1f),
+                    UnseenLayers.Occluder, _riverStone);
+                Acoustics(block, 0.9f, 1.1f, 1f);
+
+                // The collider is a box because cover has to be predictable; the shape on top of
+                // it is not, because a boulder is not.
+                var renderer = block.GetComponent<MeshRenderer>();
+                if (renderer != null) UnseenObject.Destroy(renderer);
+
+                // Stone, not river gravel. The gravel texture is a field of small pale chips,
+                // which at boulder scale reads as crumpled paper rather than rock.
+                Organic(block, "Mass", OrganicMeshFactory.Blob(7, 12, 0.28f, i % 8),
+                    Vector3.zero, new Vector3(size * 1.5f, size * 1.25f, size * 1.35f),
+                    WetStone());
+
+                if (rng.NextDouble() < 0.5)
+                    Organic(block, "Moss", OrganicMeshFactory.Blob(4, 8, 0.5f, (i + 2) % 8),
+                        new Vector3(0f, size * 0.5f, 0f),
+                        new Vector3(size * 1.2f, size * 0.3f, size * 1.1f), _moss);
+            }
+
+            // The fall, off the back of the mound into the pool.
+            BuildWaterfall(garden, new Vector3(0f, 0f, half * 0.62f), Vector3.back,
+                4.2f, 3.2f, poolY);
+
+            // Pines specifically, not whatever the general tree roll comes up with. A stand of
+            // bamboo in here swamps the rock work it is supposed to be growing out of, and the
+            // rocks are the garden.
+            for (int i = 0; i < 5; i++)
+            {
+                float angle = i * 1.9f + 0.4f;
+
+                var stem = new GameObject($"Pine_{i}").transform;
+                stem.SetParent(garden, false);
+                stem.localPosition = new Vector3(
+                    Mathf.Cos(angle) * half * 0.78f, 0f,
+                    Mathf.Sin(angle) * half * 0.78f - half * 0.25f);
+
+                BuildPine(stem, 3.4f + (float)rng.NextDouble() * 2.6f,
+                    1.5f + (float)rng.NextDouble() * 0.9f);
+            }
+
+            for (int i = 0; i < 12; i++)
+            {
+                Organic(garden, $"GroundMoss_{i}",
+                    OrganicMeshFactory.Blob(4, 8, 0.55f, i % 8),
+                    new Vector3((float)(rng.NextDouble() * 2f - 1f) * half,
+                        0.04f,
+                        (float)(rng.NextDouble() * 2f - 1f) * half),
+                    new Vector3(1.4f + (float)rng.NextDouble() * 2f, 0.12f,
+                        1.3f + (float)rng.NextDouble() * 2f),
+                    _moss);
+            }
+
+            PostLantern(garden, new Vector3(half * 0.7f, 0f, -half * 0.6f), 1.6f, 9f, 0.9f);
+
+            _rockGardens++;
+            _gardens++;
+        }
+
+        /// <summary>
+        /// The water material for still water, as opposed to the river.
+        ///
+        /// A separate instance because the river's shader colours itself by distance from the
+        /// channel centre - it has to, that is how the shallows show gravel and the middle goes
+        /// dark - and a pond eighty metres from that centre would render as the far bank of a
+        /// river it is not in. This copy is told it is deep everywhere.
+        /// </summary>
+        private Material _fallWater;
+
+        /// <summary>
+        /// Falling water, as opposed to standing water.
+        ///
+        /// The same shader told the opposite thing about its depth. Still water is deep and
+        /// therefore dark and opaque; a sheet coming off a rock is a few centimetres thick, and
+        /// shallow water in this shader is pale and half transparent - which is exactly what a
+        /// fall looks like, and the only way it is visible at all against wet rock at night.
+        /// </summary>
+        private Material FallWater()
+        {
+            if (_fallWater != null) return _fallWater;
+
+            Material source = LakeWater();
+            if (source == null) return null;
+
+            _fallWater = new Material(source) { name = "FallingWater" };
+
+            if (_fallWater.HasProperty("_DeepHalf"))
+            {
+                // Inside the channel everywhere, deep nowhere.
+                _fallWater.SetFloat("_ChannelHalf", 10000f);
+                _fallWater.SetFloat("_DeepHalf", 0f);
+                _fallWater.SetFloat("_ShallowDepth", 0.06f);
+                _fallWater.SetFloat("_DeepDepth", 0.1f);
+            }
+
+            return _fallWater;
+        }
+
+        private Material LakeWater()
+        {
+            if (_lakeWater != null) return _lakeWater;
+            if (_water == null) return _stone;
+
+            _lakeWater = new Material(_water) { name = "LakeWater" };
+
+            if (_lakeWater.HasProperty("_ChannelCentre"))
+            {
+                _lakeWater.SetFloat("_ChannelCentre", 0f);
+                _lakeWater.SetFloat("_ChannelHalf", 10000f);
+                _lakeWater.SetFloat("_DeepHalf", 10000f);
+                _lakeWater.SetFloat("_ShallowDepth", 0.9f);
+                _lakeWater.SetFloat("_DeepDepth", 1.5f);
+            }
+
+            return _lakeWater;
         }
 
         private void BuildSewerNetwork(float extent, float pitch)

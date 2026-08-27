@@ -187,8 +187,20 @@ namespace Unseen.Environment
                 }
             }
 
-            return Store(key, $"Blob_{rings}_{sides}_{lumpKey}_{variant}",
+            Mesh mesh = Store(key, $"Blob_{rings}_{sides}_{lumpKey}_{variant}",
                 vertices, normals, uvs, triangles);
+
+            // Normals recomputed from the triangles rather than kept as the radial ones written
+            // above.
+            //
+            // On a perfect sphere the direction from the centre IS the surface normal, which is why
+            // they were written that way. On a lumpy one it is not: where the radius dips, the true
+            // surface leans and the radial normal does not, and the shading disagrees with the
+            // silhouette. That disagreement is what made these read as folded paper rather than as
+            // rock - creases lit as if they were flat.
+            if (mesh != null) mesh.RecalculateNormals();
+
+            return mesh;
         }
 
         /// <summary>

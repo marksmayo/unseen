@@ -255,6 +255,72 @@ namespace Unseen.EditorTools
                     Debug.Log($"[shot] pagoda at {pos}");
                 }
 
+                // The castle and its moat, from across the water at eye height - which is the only
+                // angle that shows the bridge, the koi and the curved eaves at once.
+                Transform lake = FindNamed(host.transform, "CastleLake");
+                if (lake != null)
+                {
+                    Vector3 pos = lake.position;
+                    var list = new System.Collections.Generic.List<Shot>(shots)
+                    {
+                        new Shot
+                        {
+                            Name = "11-castle",
+                            Position = pos + new Vector3(0f, 3.2f, -34f),
+                            LookAt = pos + new Vector3(0f, 9f, 0f),
+                            Fov = 58f
+                        },
+                        new Shot
+                        {
+                            Name = "12-moat",
+                            Position = pos + new Vector3(-26f, 2.4f, 26f),
+                            LookAt = pos + new Vector3(-15f, 2.6f, 15f),
+                            Fov = 62f
+                        }
+                    };
+
+                    shots = list.ToArray();
+                    Debug.Log($"[shot] castle lake at {pos}");
+                }
+
+                Transform zen = FindNamed(host.transform, "ZenGarden");
+                if (zen != null)
+                {
+                    Vector3 pos = zen.position;
+                    var list = new System.Collections.Generic.List<Shot>(shots)
+                    {
+                        new Shot
+                        {
+                            Name = "13-zen",
+                            Position = pos + new Vector3(-15f, 6.5f, -15f),
+                            LookAt = pos + new Vector3(0f, 0.5f, 0f),
+                            Fov = 54f
+                        }
+                    };
+
+                    shots = list.ToArray();
+                    Debug.Log($"[shot] zen garden at {pos}");
+                }
+
+                Transform rocks = FindNamed(host.transform, "RockGarden");
+                if (rocks != null)
+                {
+                    Vector3 pos = rocks.position;
+                    var list = new System.Collections.Generic.List<Shot>(shots)
+                    {
+                        new Shot
+                        {
+                            Name = "14-rockgarden",
+                            Position = pos + new Vector3(0f, 4.5f, -20f),
+                            LookAt = pos + new Vector3(0f, 2.5f, 3f),
+                            Fov = 55f
+                        }
+                    };
+
+                    shots = list.ToArray();
+                    Debug.Log($"[shot] rock garden at {pos}");
+                }
+
                 Transform lantern = FindLantern(host.transform);
                 if (lantern != null)
                 {

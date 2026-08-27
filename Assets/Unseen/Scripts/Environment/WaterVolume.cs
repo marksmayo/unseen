@@ -30,6 +30,10 @@ namespace Unseen.Environment
         [Tooltip("Deepest the water gets. Feet below this are treated as standing on the bottom.")]
         public float MaxDepth = 2f;
 
+        [Tooltip("Half-extents of a dry island in the middle of this water, or zero for none. " +
+                 "A moat is a body of water with a castle in the middle of it.")]
+        public Vector2 InnerHalfSize;
+
         /// <summary>
         /// Describes a body of water and registers it for queries.
         ///
@@ -39,13 +43,40 @@ namespace Unseen.Environment
         /// itself in OnEnable was registered in a real game and invisible to every test of it. The
         /// wading was silently doing nothing in all of them.
         /// </summary>
-        public void Configure(float surfaceY, Vector2 halfSize, float maxDepth)
+        public void Configure(float surfaceY, Vector2 halfSize, float maxDepth,
+            Vector2 innerHalfSize = default)
         {
             SurfaceY = surfaceY;
             HalfSize = halfSize;
             MaxDepth = maxDepth;
+            InnerHalfSize = innerHalfSize;
 
             if (!Volumes.Contains(this)) Volumes.Add(this);
+        }
+
+        /// <summary>
+        /// Whether a world column falls in this body of water.
+        ///
+        /// One place, used by all three queries. They were three copies of the same two
+        /// comparisons, which is exactly the shape that lets a moat's dry island exist for wading
+        /// and not for drowning.
+        /// </summary>
+        private bool Covers(float x, float z)
+        {
+            Vector3 at = transform.position;
+
+            float dx = math.abs(x - at.x);
+            float dz = math.abs(z - at.z);
+
+            if (dx > HalfSize.x || dz > HalfSize.y) return false;
+
+            // The island, if there is one. Inside it there is no water at any depth - that is
+            // where the keep stands.
+            if (InnerHalfSize.x > 0f && InnerHalfSize.y > 0f &&
+                dx < InnerHalfSize.x && dz < InnerHalfSize.y)
+                return false;
+
+            return true;
         }
 
         private void OnEnable()
@@ -62,25 +93,31 @@ namespace Unseen.Environment
         /// <summary>How many bodies of water are registered. Diagnostics only.</summary>
         public static int Registered => Volumes.Count;
 
-        /// <summary>Metres of water standing above a pair of feet. Zero on dry land.</summary>
+        /// <summary>
+        /// Metres of water standing above a pair of feet. Zero on dry land.
+        ///
+        /// The DEEPEST answer rather than the first one. There is more than one body of water in
+        /// this town now - a river and a castle moat - and if two ever overlap, which one a player
+        /// is standing in should not depend on which was generated first.
+        /// </summary>
         public static float DepthAt(float3 feet)
         {
+            float deepest = 0f;
+
             for (int i = 0; i < Volumes.Count; i++)
             {
                 WaterVolume volume = Volumes[i];
                 if (volume == null) continue;
 
-                Vector3 at = volume.transform.position;
-                if (math.abs(feet.x - at.x) > volume.HalfSize.x) continue;
-                if (math.abs(feet.z - at.z) > volume.HalfSize.y) continue;
+                if (!volume.Covers(feet.x, feet.z)) continue;
 
                 float over = volume.SurfaceY - feet.y;
                 if (over <= 0.02f) continue;
 
-                return math.min(over, volume.MaxDepth);
+                deepest = math.max(deepest, math.min(over, volume.MaxDepth));
             }
 
-            return 0f;
+            return deepest;
         }
 
         /// <summary>
@@ -97,10 +134,7 @@ namespace Unseen.Environment
                 WaterVolume volume = Volumes[i];
                 if (volume == null) continue;
 
-                Vector3 at = volume.transform.position;
-                if (math.abs(point.x - at.x) > volume.HalfSize.x) continue;
-                if (math.abs(point.z - at.z) > volume.HalfSize.y) continue;
-
+                if (!volume.Covers(point.x, point.z)) continue;
                 if (point.y < volume.SurfaceY) return true;
             }
 
@@ -115,11 +149,11 @@ namespace Unseen.Environment
                 WaterVolume volume = Volumes[i];
                 if (volume == null) continue;
 
-                Vector3 at = volume.transform.position;
-                if (math.abs(feet.x - at.x) > volume.HalfSize.x) continue;
-                if (math.abs(feet.z - at.z) > volume.HalfSize.y) continue;
+                if (!volume.Covers(feet.x, feet.z)) continue;
 
-                return feet.y + eyeHeight < volume.SurfaceY;
+                // Any water over the eye counts, so a shallow puddle overlapping a deep channel
+                // cannot report a head above water that is actually under one.
+                if (feet.y + eyeHeight < volume.SurfaceY) return true;
             }
 
             return false;
