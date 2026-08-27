@@ -168,6 +168,16 @@ namespace Unseen.Movement
                     TickSlide(ctx, intent, cfg, dt, tick);
                     break;
             }
+
+            // Last word on where the body is allowed to be.
+            //
+            // A character controller cannot sweep its way out of something it is already inside, so
+            // any state that places the body directly - a grapple reeling to an anchor on an eave,
+            // a mantle, a warp, a spawn - can leave it embedded and it stays embedded for good.
+            // This is the guarantee behind those affordances, the same way the world bounds clamp
+            // sits behind the rampart, and it costs nothing in the overwhelming case where the body
+            // overlaps nothing at all.
+            PushOutOfGeometry();
         }
 
         // ---------------------------------------------------------------- states
@@ -377,6 +387,49 @@ namespace Unseen.Movement
             ApplyMotion(ctx, dt, tick, emitFootsteps: true, footstepScale: 0.35f);
         }
 
+        /// <summary>
+        /// Shoves the controller out of anything it has ended up inside.
+        ///
+        /// Uses the physics engine's own penetration solver rather than a guess at a direction:
+        /// ComputePenetration reports the shortest way out of each overlapping collider, which is
+        /// the only answer that works for a corner where two walls meet.
+        /// </summary>
+        private void PushOutOfGeometry()
+        {
+            if (_cc == null) return;
+
+            Transform self = _cc.transform;
+            Vector3 position = self.position;
+
+            Collider[] overlapping = Physics.OverlapCapsule(
+                position + Vector3.up * _cc.radius,
+                position + Vector3.up * math.max(_cc.radius, _cc.height - _cc.radius),
+                _cc.radius, UnseenLayers.WorldGeometry, QueryTriggerInteraction.Ignore);
+
+            if (overlapping.Length == 0) return;
+
+            for (int i = 0; i < overlapping.Length; i++)
+            {
+                Collider other = overlapping[i];
+                if (other == null || other == _cc) continue;
+
+                if (!Physics.ComputePenetration(_cc, position, self.rotation,
+                        other, other.transform.position, other.transform.rotation,
+                        out Vector3 direction, out float distance))
+                    continue;
+
+                position += direction * (distance + 0.02f);
+            }
+
+            MoveDirect(position);
+        }
+
+        /// <summary>Longest a single reel sweep may travel, in metres. Under the thinnest wall.</summary>
+        private const float MaxReelStep = 0.2f;
+
+        /// <summary>Cap on sub-steps, so a pathological reel speed cannot stall the tick.</summary>
+        private const int MaxReelSubSteps = 8;
+
         private void TickGrapple(SimContext ctx, in MoveIntent intent, UnseenConfig cfg, float dt, int tick)
         {
             if (_hook == null || !_hook.Attached)
@@ -404,10 +457,23 @@ namespace Unseen.Movement
                 // you onto it rather than stopping you dead in the air beside it.
                 _velocity = reel * 0.4f;
                 if (arrived) _velocity.y = math.max(_velocity.y, 1.5f);
+
                 return;
             }
 
-            ApplyMotion(ctx, dt, tick, emitFootsteps: false);
+            // Sub-stepped, because the reel is fast.
+            //
+            // A single sweep of the whole frame's travel can pass clean through a thin wall: at
+            // reel speed a sixtieth of a second is most of the thickness of a compound wall, and
+            // the controller's own skin does the rest. A bot grappling for a roof was found wedged
+            // a fifth of a metre inside one. Splitting the move into steps no longer than a fifth
+            // of a metre keeps every sweep well under the thinnest geometry in the town, and it
+            // costs a couple of extra sweeps only while somebody is actually on a rope.
+            float travel = math.length(reel) * dt;
+            int steps = math.clamp((int)math.ceil(travel / MaxReelStep), 1, MaxReelSubSteps);
+            float slice = dt / steps;
+
+            for (int i = 0; i < steps; i++) ApplyMotion(ctx, slice, tick, emitFootsteps: false);
         }
 
         private void TickSlide(SimContext ctx, in MoveIntent intent, UnseenConfig cfg, float dt, int tick)

@@ -214,7 +214,26 @@ namespace Unseen.EditorTools
                         Fov = 72f
                     };
 
-                    var list = new System.Collections.Generic.List<Shot>(shots) { onBridge, underBridge };
+                    // From under the surface, looking along the channel and up at it. The water
+                    // used to be a solid box with back faces culled, so from in here the river
+                    // vanished completely - a shot nobody was taking, of a place players stand in
+                    // every time they crouch in the deep middle.
+                    //
+                    // Placed relative to the WATER, not the bridge. Offsetting from the bridge crown
+                    // put the camera well above the surface and the shot proved nothing.
+                    var volume = host.GetComponentInChildren<Unseen.Environment.WaterVolume>();
+                    float surfaceY = volume != null ? volume.SurfaceY : pos.y - 6f;
+
+                    var submerged = new Shot
+                    {
+                        Name = "16-underwater",
+                        Position = new Vector3(pos.x, surfaceY - 0.7f, pos.z + 22f),
+                        LookAt = new Vector3(pos.x, surfaceY + 1.5f, pos.z),
+                        Fov = 70f
+                    };
+
+                    var list = new System.Collections.Generic.List<Shot>(shots)
+                        { onBridge, underBridge, submerged };
                     shots = list.ToArray();
                     Debug.Log($"[shot] bridge at {pos}");
                 }

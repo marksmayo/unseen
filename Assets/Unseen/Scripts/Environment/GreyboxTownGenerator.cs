@@ -935,9 +935,19 @@ namespace Unseen.Environment
             // The surface is NOT a floor. It used to be an ordinary collider, which meant a
             // player walked across the river with dry feet and the whole channel was a bridge.
             // What you stand on is the bed; this is only the thing you look at.
+            // A thin surface rather than a block of water.
+            //
+            // It used to be a box as deep as the channel, which was harmless while it was also the
+            // collider and disastrous once it stopped being one: crouch or go prone in the deep
+            // middle and the camera ends up INSIDE the box, where every face is back-facing and the
+            // whole river is culled away. The water simply vanished from certain angles.
+            //
+            // The thickness was never doing anything. What is wanted is the surface.
+            const float surfaceThickness = 0.16f;
+
             Transform water = Detail(river, "Water",
-                new Vector3(_riverCentreX, bedY + WaterDepth * 0.5f, 0f),
-                new Vector3(RiverWidth, WaterDepth, length), _water);
+                new Vector3(_riverCentreX, waterTop - surfaceThickness * 0.5f, 0f),
+                new Vector3(RiverWidth, surfaceThickness, length), _water);
 
             water.gameObject.AddComponent<WaterVolume>().Configure(
                 waterTop, new Vector2(RiverWidth * 0.5f, length * 0.5f), WadeDeep + 0.2f);

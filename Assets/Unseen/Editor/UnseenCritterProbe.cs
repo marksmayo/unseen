@@ -122,6 +122,40 @@ namespace Unseen.EditorTools
                           $"at a sprint)");
                 Debug.Log($"[wildlife] crouching disturbs fewer: {(crouchQuiet ? "PASS" : "FAIL")}");
 
+                // ---------------------------------------------------------- and they potter about
+                //
+                // Undisturbed critters should drift around their patch, not stand on a mark for the
+                // whole match. Sampled over four minutes of simulation, because the whole point of
+                // the pacing is that it is slow: a critter that repositions often enough to see in
+                // ten seconds is a twitching one.
+                Critter.ResetAll();
+
+                var homes = new System.Collections.Generic.Dictionary<Critter, Vector3>();
+                foreach (Critter critter in Critter.All)
+                    if (critter != null) homes[critter] = critter.transform.position;
+
+                Step(boot, 60 * 240);
+
+                int moved = 0;
+                float furthest = 0f;
+
+                foreach (System.Collections.Generic.KeyValuePair<Critter, Vector3> kv in homes)
+                {
+                    if (kv.Key == null || !kv.Key.gameObject.activeInHierarchy) continue;
+
+                    float drift = Vector3.Distance(kv.Key.transform.position, kv.Value);
+                    if (drift > 0.5f) moved++;
+                    if (drift > furthest) furthest = drift;
+                }
+
+                bool wanders = moved > homes.Count / 4;
+                bool stayedLocal = furthest < 40f;
+
+                Debug.Log($"[wildlife] {moved}/{homes.Count} critters moved from where they started " +
+                          $"(furthest {furthest:0.0} m)");
+                Debug.Log($"[wildlife] they wander: {(wanders ? "PASS" : "FAIL")}");
+                Debug.Log($"[wildlife] they stay in their own patch: {(stayedLocal ? "PASS" : "FAIL")}");
+
                 // ---------------------------------------------------------- and they come back
                 Critter.ResetAll();
                 bool resettles = true;
@@ -131,7 +165,8 @@ namespace Unseen.EditorTools
                 Debug.Log($"[wildlife] every critter resettles on a new match: " +
                           $"{(resettles ? "PASS" : "FAIL")}");
 
-                if (populated && sprintFlushed && heard && crouchQuiet && resettles)
+                if (populated && sprintFlushed && heard && crouchQuiet && wanders && stayedLocal &&
+                    resettles)
                     Debug.Log("[wildlife] PASSED");
                 else
                     Debug.LogError("[wildlife] FAILED");

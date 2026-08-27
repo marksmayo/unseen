@@ -295,7 +295,37 @@ namespace Unseen.EditorTools
 
                 Debug.Log($"[bamboo] a body cannot run out through it: {(held ? "PASS" : "FAIL")}");
 
-                if (dormant && shoots && tall && tracks && noGap && solid && solidFarOut && pushed && held)
+                // ------------------------------------- and it kills what it cannot move
+                //
+                // A player wedged where the push cannot shift them was untouchable: this system
+                // runs after the mist and moves them nominally inside the circle, so the mist
+                // spared them too. They were stuck alive with no way to die.
+                bool crushed = false;
+
+                if (subject != null)
+                {
+                    // Held deep inside the wall every tick, standing in for a body jammed in a room
+                    // the forest has grown through.
+                    Vector3 buried = centre + new Vector3(forest.InnerEdge + 3f, 1f, 0f);
+                    float startHealth = subject.Vitals.Fraction;
+
+                    for (int i = 0; i < 60 * 20; i++)
+                    {
+                        subject.Motor.Teleport(new Unity.Mathematics.float3(buried.x, buried.y, buried.z));
+                        boot.Network.Poll(1f / 60f);
+                        boot.Simulation.Advance(1f / 60f);
+                        if (!subject.IsAlive) break;
+                    }
+
+                    crushed = !subject.IsAlive;
+                    Debug.Log($"[bamboo] held inside the wall: health {startHealth:0.00} -> " +
+                              $"{subject.Vitals.Fraction:0.00}, alive={subject.IsAlive}");
+                }
+
+                Debug.Log($"[bamboo] it kills what it closes over: {(crushed ? "PASS" : "FAIL")}");
+
+                if (dormant && shoots && tall && tracks && noGap && solid && solidFarOut && pushed &&
+                    held && crushed)
                     Debug.Log("[bamboo] PASSED");
                 else
                     Debug.LogError("[bamboo] FAILED");

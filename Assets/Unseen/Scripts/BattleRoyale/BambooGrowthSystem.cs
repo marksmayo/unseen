@@ -157,6 +157,26 @@ namespace Unseen.BattleRoyale
                 if (reach > edge - RustleReach) Rustle(cfg, agent, frame);
                 if (reach <= edge - 0.35f) continue;
 
+                // Inside the wall. Hurt them.
+                //
+                // Pushing alone left a hole in the rules: this system runs after the mist, so a
+                // body it shoved to just inside the circle was then judged safe by the mist and
+                // took no damage from anything. Wedge yourself somewhere the push cannot move you -
+                // a room the forest grows through - and you were untouchable and unkillable, stuck
+                // until somebody closed the server.
+                if (cfg.DamagePerSecond > 0f)
+                {
+                    Ctx.Combat.ApplyDamage(new DamageInfo
+                    {
+                        Attacker = AgentId.None,
+                        Victim = agent.Id,
+                        Kind = DamageKind.SpiritForest,
+                        Amount = cfg.DamagePerSecond * Ctx.Config.BaseTickInterval,
+                        Point = agent.TorsoPosition,
+                        Direction = math.normalizesafe(offset, new float3(1f, 0f, 0f))
+                    });
+                }
+
                 float limit = edge - 0.35f;
                 float3 inward = math.normalizesafe(offset, new float3(1f, 0f, 0f));
 

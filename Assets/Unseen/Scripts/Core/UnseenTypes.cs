@@ -114,7 +114,11 @@ namespace Unseen.Core
         Thrown = 1,
         Takedown = 2,
         Mist = 3,
-        Fall = 4
+        Fall = 4,
+
+        /// <summary>Crushed by the spirit forest. Appended, never renumbered: this goes on the
+        /// wire as a byte.</summary>
+        SpiritForest = 5
     }
 
     /// <summary>One tick of intent produced by a human client or a bot brain. Always validated server-side.</summary>

@@ -42,11 +42,31 @@ namespace Unseen.Environment
         [Tooltip("Seconds before it comes back to its perch.")]
         public float ResettleDelay = 22f;
 
+        [Tooltip("How far from home it will wander while undisturbed, in metres.")]
+        public float WanderRadius = 9f;
+
+        [Tooltip("Shortest and longest it stands still between moves, in seconds.\n\n" +
+                 "Long. A bird that repositions every couple of seconds reads as a glitch, and a " +
+                 "street of them twitching in unison reads as a broken game. The point of this is " +
+                 "that the town is alive, which is a thing you notice out of the corner of your " +
+                 "eye rather than a thing that demands attention.")]
+        public Vector2 RestSeconds = new Vector2(18f, 55f);
+
+        [Tooltip("Metres per second while moving. An unhurried walk or a series of hops.")]
+        public float StrollSpeed = 1.15f;
+
         private Vector3 _perch;
         private Quaternion _perchRotation;
         private Vector3 _flightDirection;
         private float _elapsed;
         private State _state = State.Settled;
+
+        private Vector3 _home;
+        private Vector3 _strollFrom;
+        private Vector3 _strollTo;
+        private float _strollDuration;
+        private float _restUntil;
+        private float _clock;
 
         private Transform _leftWing;
         private Transform _rightWing;
@@ -57,11 +77,14 @@ namespace Unseen.Environment
         {
             Settled = 0,
             Fleeing = 1,
-            Gone = 2
+            Gone = 2,
+
+            /// <summary>Undisturbed and moving to a new spot nearby.</summary>
+            Strolling = 3
         }
 
-        /// <summary>True while it is on its perch and can be startled.</summary>
-        public bool IsSettled => _state == State.Settled;
+        /// <summary>True while it is going about its business and can still be startled.</summary>
+        public bool IsSettled => _state == State.Settled || _state == State.Strolling;
 
         /// <summary>Where it sits when undisturbed.</summary>
         public Vector3 Perch => _perch;
@@ -72,6 +95,10 @@ namespace Unseen.Environment
             Kind = kind;
             _perch = transform.localPosition;
             _perchRotation = transform.localRotation;
+            _home = _perch;
+
+            // Staggered, or every critter in the town sets off on the same tick.
+            _restUntil = Random.Range(0f, RestSeconds.y);
 
             _leftWing = leftWing;
             _rightWing = rightWing;
@@ -96,7 +123,9 @@ namespace Unseen.Environment
         /// </summary>
         public bool Flush(Vector3 from)
         {
-            if (_state != State.Settled) return false;
+            // Strolling counts. IsSettled includes it, so rejecting it here would have the
+            // startle system pick a wandering bird as its victim and then quietly do nothing.
+            if (_state != State.Settled && _state != State.Strolling) return false;
 
             _state = State.Fleeing;
             _elapsed = 0f;
@@ -121,7 +150,19 @@ namespace Unseen.Environment
         /// </summary>
         public void Advance(float dt)
         {
-            if (_state == State.Settled) return;
+            _clock += dt;
+
+            if (_state == State.Settled)
+            {
+                Rest();
+                return;
+            }
+
+            if (_state == State.Strolling)
+            {
+                Stroll(dt);
+                return;
+            }
 
             _elapsed += dt;
 
@@ -167,7 +208,10 @@ namespace Unseen.Environment
                 Critter critter = All[i];
                 if (critter == null) continue;
 
-                critter.transform.localPosition = critter._perch;
+                // Home, not wherever it had wandered to: a new match should look like the first
+                // one, not like the leftovers of the last.
+                critter._perch = critter._home;
+                critter.transform.localPosition = critter._home;
                 critter.transform.localRotation = critter._perchRotation;
 
                 if (critter._leftWing != null) critter._leftWing.localRotation = critter._leftRest;
@@ -176,7 +220,114 @@ namespace Unseen.Environment
                 critter.gameObject.SetActive(true);
                 critter._state = State.Settled;
                 critter._elapsed = 0f;
+                critter._restUntil = critter._clock + Random.Range(0f, critter.RestSeconds.y);
             }
+        }
+
+        /// <summary>
+        /// Standing about. When the rest is over, picks somewhere nearby and sets off.
+        ///
+        /// Somewhere NEARBY, and not far: a third of the wander radius or so, so a critter drifts
+        /// around its patch over a match rather than crossing the town. It is a bird on a street,
+        /// not a migrating one.
+        /// </summary>
+        private void Rest()
+        {
+            if (_clock < _restUntil) return;
+
+            for (int attempt = 0; attempt < 4; attempt++)
+            {
+                float angle = Random.Range(0f, Mathf.PI * 2f);
+                float reach = WanderRadius * Random.Range(0.2f, 0.45f);
+                Vector3 target = _home + new Vector3(Mathf.Sin(angle) * reach, 0f, Mathf.Cos(angle) * reach);
+
+                // Ground it. A bird keeps roughly to the height it was perched at - it hops along a
+                // wall or a branch - and an animal follows whatever it is walking on.
+                Vector3 probe = transform.parent != null
+                    ? transform.parent.TransformPoint(target)
+                    : target;
+
+                float wantY = Kind == Species.Bird ? _home.y : target.y;
+
+                if (Physics.Raycast(probe + Vector3.up * 6f, Vector3.down, out RaycastHit ground, 14f,
+                        UnseenLayers.WorldGeometry, QueryTriggerInteraction.Ignore))
+                {
+                    Vector3 local = transform.parent != null
+                        ? transform.parent.InverseTransformPoint(ground.point)
+                        : ground.point;
+
+                    // Birds only accept a landing within a metre of their perch height, so they do
+                    // not walk down off a hedge into the road.
+                    if (Kind == Species.Bird && Mathf.Abs(local.y - _home.y) > 1f) continue;
+
+                    wantY = Kind == Species.Bird ? _home.y : local.y;
+                    target = new Vector3(target.x, wantY, target.z);
+                }
+                else if (Kind == Species.Animal)
+                {
+                    continue;
+                }
+                else
+                {
+                    target = new Vector3(target.x, wantY, target.z);
+                }
+
+                _strollFrom = transform.localPosition;
+                _strollTo = target;
+
+                float distance = Vector3.Distance(_strollFrom, _strollTo);
+                _strollDuration = Mathf.Max(0.35f, distance / Mathf.Max(0.1f, StrollSpeed));
+                _elapsed = 0f;
+                _state = State.Strolling;
+                return;
+            }
+
+            // Nowhere to go this time. Try again after another rest rather than every tick.
+            _restUntil = _clock + Random.Range(RestSeconds.x, RestSeconds.y);
+        }
+
+        /// <summary>
+        /// Moving to the chosen spot. Smoothed at both ends, so it is a walk rather than a slide,
+        /// and it turns to face where it is going before it gets there.
+        /// </summary>
+        private void Stroll(float dt)
+        {
+            _elapsed += dt;
+
+            float t = Mathf.Clamp01(_elapsed / _strollDuration);
+            float eased = t * t * (3f - 2f * t);
+
+            Vector3 at = Vector3.Lerp(_strollFrom, _strollTo, eased);
+
+            // A bird hops: a little arc between the two points rather than a slide along the wall.
+            // An animal gets a much smaller bob, from its legs rather than from flight.
+            float bobHeight = Kind == Species.Bird ? 0.28f : 0.06f;
+            at.y += Mathf.Sin(t * Mathf.PI) * bobHeight;
+
+            transform.localPosition = at;
+
+            Vector3 travel = _strollTo - _strollFrom;
+            travel.y = 0f;
+            if (travel.sqrMagnitude > 0.0004f)
+            {
+                Quaternion facing = Quaternion.LookRotation(travel.normalized, Vector3.up);
+                transform.localRotation = Quaternion.Slerp(transform.localRotation, facing,
+                    1f - Mathf.Exp(-6f * dt));
+            }
+
+            if (Kind == Species.Bird) BeatWings();
+
+            if (t < 1f) return;
+
+            transform.localPosition = _strollTo;
+            _perch = _strollTo;
+            _perchRotation = transform.localRotation;
+
+            if (_leftWing != null) _leftWing.localRotation = _leftRest;
+            if (_rightWing != null) _rightWing.localRotation = _rightRest;
+
+            _state = State.Settled;
+            _restUntil = _clock + Random.Range(RestSeconds.x, RestSeconds.y);
         }
 
         private void BeatWings()

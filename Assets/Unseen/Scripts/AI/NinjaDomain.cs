@@ -35,7 +35,9 @@ namespace Unseen.AI
             var searchNearby = new PrimitiveTask("search-nearby", BotAction.SearchNearby, duration: 1.5f);
             var loot = new PrimitiveTask("loot", BotAction.LootContainer,
                 f => f.LootNearby, 0.8f);
-            var patrol = new PrimitiveTask("patrol", BotAction.PatrolTo, duration: 2f);
+            // Long enough to commit to a journey across town. At two seconds a bot re-planned
+            // every couple of strides, which is fine for combat and wrong for travel.
+            var patrol = new PrimitiveTask("patrol", BotAction.PatrolTo, duration: 4.5f);
             var creep = new PrimitiveTask("creep", BotAction.CreepTo, duration: 2f);
 
             // Fight: the three-zone clash, with a parry attempt when the enemy commits.

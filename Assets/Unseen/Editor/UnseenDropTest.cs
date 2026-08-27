@@ -87,7 +87,49 @@ namespace Unseen.EditorTools
                     lowest = math.min(lowest, feet.y);
                     highest = math.max(highest, feet.y);
 
-                    if (!ParkourProbe.HasClearance(feet, radius, height)) inGeometry++;
+                    // Hanging, climbing and crawling all put the body deliberately against - and
+                    // partly inside - the thing being held onto. A ninja on a ledge overlapping the
+                    // wall it is hanging from is the feature working, not a landing bug, and this
+                    // check exists to catch bodies that ended up in geometry they cannot get out
+                    // of. The penetration depth below is what distinguishes the two, and for these
+                    // states it is zero.
+                    bool holdingOn = agent.Locomotion == LocomotionState.LedgeHang ||
+                                     agent.Locomotion == LocomotionState.WallClimb ||
+                                     agent.Locomotion == LocomotionState.WallRun ||
+                                     agent.Locomotion == LocomotionState.RafterCrawl;
+
+                    if (!holdingOn && !ParkourProbe.HasClearance(feet, radius, height))
+                    {
+                        inGeometry++;
+
+                        // Naming what it is inside. "One agent is in geometry" is not actionable;
+                        // "one agent is inside a hedge" tells you whether it is a landing bug or a
+                        // prop somebody just added that should not have had a collider.
+                        Collider[] around = Physics.OverlapSphere(
+                            (Vector3)feet + Vector3.up * (height * 0.5f), radius,
+                            UnseenLayers.WorldGeometry, QueryTriggerInteraction.Ignore);
+
+                        string what = around.Length > 0 ? around[0].name : "nothing found";
+
+                        // How deep, not merely whether they touch. HasClearance tests a full-radius
+                        // sphere, so an agent standing with its shoulder against a wall fails it
+                        // while being perfectly fine - the number that matters is how far the
+                        // controller would have to be pushed to be clear.
+                        float depth = 0f;
+                        CharacterController controller = agent.Controller;
+
+                        if (controller != null && around.Length > 0 &&
+                            Physics.ComputePenetration(
+                                controller, agent.Motor.transform.position, agent.Motor.transform.rotation,
+                                around[0], around[0].transform.position, around[0].transform.rotation,
+                                out Vector3 _, out float distance))
+                            depth = distance;
+
+                        Debug.Log($"[drop] {agent.Id} at {feet} is inside '{what}' " +
+                                  $"({around.Length} colliders, {depth:0.000} m of penetration), " +
+                                  $"locomotion={agent.Locomotion}, flags={agent.Flags}, " +
+                                  $"controllerEnabled={(agent.Controller != null && agent.Controller.enabled)}");
+                    }
 
                     // Anything with no floor beneath it never actually landed - unless it is in
                     // the air on purpose. The check runs a minute after the drop, by which point

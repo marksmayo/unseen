@@ -314,6 +314,13 @@ namespace Unseen.Core
             [Tooltip("How firmly a body caught in the bamboo is pushed back inside, in m/s.")]
             public float PushSpeed = 4f;
 
+            [Tooltip("Damage per second to anyone the forest has closed over.\n\n" +
+                     "The push alone was not enough. It runs after the mist and shoves you to just " +
+                     "inside the circle, so the mist damage never fired on you either - a player " +
+                     "wedged in a room the wall passed through was pushed at, missed, ignored by " +
+                     "the mist, and left alive and stuck with no way to die.")]
+            public float DamagePerSecond = 14f;
+
             [Tooltip("Loudness of bamboo being pushed through. It is cover you cannot use quietly.")]
             public float RustleLoudness = 1.5f;
 

@@ -29,6 +29,11 @@ namespace Unseen.AI
         private System.Random _rng;
         private BotFacts _facts;
         private float _nextThinkAt;
+        private float _nextGrappleAt;
+        private float _nextLootAt;
+        private int _lastLandmark = -1;
+        private MapSketch _sketch;
+        private bool _lookedForSketch;
 
         /// <summary>Threat score for the current target, written by the parallel scoring job.</summary>
         public float ThreatScore { get; internal set; }
@@ -43,6 +48,10 @@ namespace Unseen.AI
             _agent = agent;
             _rng = new System.Random(agent.Id.Value * 7919 + 13);
             _bb.SkillOffset = (float)_rng.NextDouble();
+
+            // Which way this bot goes round an obstacle. Fixed per bot so two of them meeting in an
+            // alley do not mirror each other into a standoff.
+            _nav.SetTurnPreference(agent.Id.Value);
             _domain ??= NinjaDomain.Build();
         }
 
@@ -238,9 +247,20 @@ namespace Unseen.AI
                                      target.Melee.Phase == AttackPhase.Windup &&
                                      distance < cfg.Combat.MeleeRange * 2f;
 
+            // Loot is a detour, not a career.
+            //
+            // This used to look twenty-four metres for an unlooted container and prefer looting
+            // over everything whenever it found one. There are nearly three hundred containers in
+            // the town, so there is essentially always another within twenty-four metres: bots
+            // chained from one to the next for the whole match and never went anywhere. Measured at
+            // sixty-one per cent of all bot ticks spent on LootContainer against eight per cent
+            // patrolling, walking a hundred and eighty metres inside a twenty metre box.
+            //
+            // Close by, still needed, and not straight after the last one.
             _facts.LootNearby = _agent.Inventory != null &&
+                                now >= _nextLootAt &&
                                 (_agent.Inventory.Weapon == null || _agent.Inventory.Gear.Count < Inventory.MaxGear) &&
-                                LootContainer.NearestUnlooted(_agent.Position, 24f) != null;
+                                LootContainer.NearestUnlooted(_agent.Position, LootReach) != null;
 
             _facts.LanternNearby = !_facts.Concealed && Lantern.NearestLit(_agent.Position, 4.5f) != null;
         }
@@ -256,6 +276,30 @@ namespace Unseen.AI
                 Pitch = _agent.Pitch,
                 Zone = GuardZone.Mid
             };
+
+            // A destination the navigator cannot close on gets abandoned rather than ground
+            // against. Without this a bot handed a point on the far side of a building pushed into
+            // the wall for the rest of the match, which is what the metre-wide pacing looked like
+            // from the outside.
+            if (_nav.Stuck && IsRoaming(_bb.CurrentAction))
+            {
+                _nav.Clear();
+                _bb.HasPatrolDestination = false;
+                _bb.PatrolDestination = NextPatrolPoint(ctx, now);
+                _bb.HasPatrolDestination = true;
+            }
+
+            // A container it cannot get to is worse than one it has already opened. The cooldown is
+            // set on opening, so a bot grinding at a chest inside a sealed building never trips it
+            // and stays on the loot action indefinitely - which was most of the pacing left after
+            // the chain itself was broken.
+            if (_nav.Stuck && _bb.CurrentAction == BotAction.LootContainer)
+            {
+                _nextLootAt = now + LootCooldown;
+                _nav.Clear();
+                _bb.CurrentAction = BotAction.PatrolTo;
+                _bb.ActionExpiresAt = now + 2f;
+            }
 
             switch (_bb.CurrentAction)
             {
@@ -363,13 +407,17 @@ namespace Unseen.AI
 
                 case BotAction.LootContainer:
                 {
-                    LootContainer container = LootContainer.NearestUnlooted(_agent.Position, 24f);
+                    LootContainer container = LootContainer.NearestUnlooted(_agent.Position, LootReach);
                     if (container != null)
                     {
                         if (math.distance(container.Position, _agent.Position) < 1.9f)
                         {
                             FacePoint(ref intent, container.Position);
                             intent.Interact = true;
+
+                            // Whatever was in it, that is enough looting for now. Without this the
+                            // bot simply turns to the next container and the chain never breaks.
+                            _nextLootAt = now + LootCooldown;
                         }
                         else
                         {
@@ -387,11 +435,23 @@ namespace Unseen.AI
         private void MoveTowards(SimContext ctx, ref MoveIntent intent, float3 destination, float now, bool sprint)
         {
             _nav.SetDestination(_agent.Position, destination, now);
-            float3 steering = _nav.Steering(_agent.Position);
+            float3 steering = _nav.Steering(_agent.Position, now);
+
+            // Somewhere above us. Grapple for it: the eaves and balconies all carry anchors and the
+            // motor does the searching, so this is the whole of what a bot needs to reach a roof.
+            // Without it no bot ever left ground level - measured at zero out of twenty-one gaining
+            // even three metres of height over ninety seconds.
+            float climb = destination.y - _agent.Position.y;
+            float3 flatAway = UnseenMath.Horizontal(destination - _agent.Position);
+
+            bool firing = climb > 2f &&
+                          math.lengthsq(flatAway) < 32f * 32f &&
+                          now >= _nextGrappleAt;
 
             if (math.lengthsq(steering) < 0.0001f)
             {
                 intent.Move = float2.zero;
+                if (firing) AimAndFireGrapple(ref intent, destination, now);
                 return;
             }
 
@@ -399,6 +459,11 @@ namespace Unseen.AI
             intent.Yaw = yaw;
             intent.Move = new float2(0f, 1f);
             intent.Sprint = sprint;
+
+            // Aimed last, so the steering yaw does not overwrite it. The hook fires along the
+            // agent's VIEW direction, and a patrolling bot looks flat ahead - which meant every
+            // attempt at a roof went into the wall underneath it.
+            if (firing) AimAndFireGrapple(ref intent, destination, now);
 
             // Vault or climb when the way ahead is blocked at chest height but open above.
             if (Physics.Raycast(_agent.Position + new float3(0f, 0.6f, 0f), steering, 1f,
@@ -408,6 +473,35 @@ namespace Unseen.AI
             {
                 intent.Jump = true;
             }
+        }
+
+        /// <summary>Points the bot at something above it and pulls the trigger.</summary>
+        private void AimAndFireGrapple(ref MoveIntent intent, float3 destination, float now)
+        {
+            // Aimed a little above the target surface: the anchors sit on the eaves and the ridge,
+            // and a line straight at the middle of a roof passes through the eave in front of it.
+            FacePoint(ref intent, destination + new float3(0f, 1.2f, 0f));
+            intent.Grapple = true;
+
+            // Retried briskly. A grapple that finds no anchor from where the bot happens to be
+            // standing usually finds one a few steps later, and a long cooldown turns a roof into
+            // somewhere the bot walks past the bottom of.
+            _nextGrappleAt = now + 0.9f;
+        }
+
+        /// <summary>How far a bot will detour for a container.</summary>
+        private const float LootReach = 12f;
+
+        /// <summary>Seconds after opening one before another is worth crossing the street for.</summary>
+        private const float LootCooldown = 25f;
+
+        /// <summary>Actions whose destination is a suggestion, and may be swapped for another.</summary>
+        private static bool IsRoaming(BotAction action)
+        {
+            return action == BotAction.PatrolTo ||
+                   action == BotAction.SearchNearby ||
+                   action == BotAction.CreepTo ||
+                   action == BotAction.MoveToNoise;
         }
 
         private void ApproachBehind(SimContext ctx, ref MoveIntent intent, float now)
@@ -488,26 +582,113 @@ namespace Unseen.AI
             _bb.HasPatrolDestination = true;
         }
 
+        /// <summary>
+        /// Somewhere worth going.
+        ///
+        /// This used to be a uniformly random point inside the mist circle, which is a poor way to
+        /// explore a town: most of those points are inside a building or on the far side of one, and
+        /// with no NavMesh baked the bot cannot path to either. It would push at the nearest wall
+        /// until the match ended.
+        ///
+        /// The generator already publishes what is in the town and where - blocks, keeps, pagodas,
+        /// plazas, shrines, bridges, stores, gardens - so the bots read that instead. A landmark is
+        /// a place with a reason to be there, and roughly a third of the time the chosen point is
+        /// its ROOF, which is what sends bots up onto the skyline the town was built for.
+        /// </summary>
         private float3 NextPatrolPoint(SimContext ctx, float now)
         {
             float3 center = ctx.Mist != null ? ctx.Mist.Center : _agent.Position;
-            float radius = ctx.Mist != null ? math.max(20f, ctx.Mist.CurrentRadius * 0.8f) : 60f;
+            float radius = ctx.Mist != null ? math.max(20f, ctx.Mist.CurrentRadius * 0.9f) : 60f;
 
+            if (!_lookedForSketch)
+            {
+                _sketch = MapSketch.Find();
+                _lookedForSketch = true;
+            }
+
+            if (_sketch != null && _sketch.Landmarks.Count > 0)
+            {
+                for (int attempt = 0; attempt < 8; attempt++)
+                {
+                    int index = _rng.Next(_sketch.Landmarks.Count);
+
+                    // Not the one we have just come from, or a bot ping-pongs between two
+                    // neighbours and never sees the rest of the town.
+                    if (index == _lastLandmark) continue;
+
+                    MapSketch.Landmark mark = _sketch.Landmarks[index];
+                    var at = new float3(mark.Center.x, 0f, mark.Center.y);
+
+                    // Inside the circle, and far enough to be a journey rather than a step.
+                    float3 fromCentre = at - center;
+                    fromCentre.y = 0f;
+                    if (math.length(fromCentre) > radius) continue;
+                    if (math.distance(UnseenMath.Horizontal(at), UnseenMath.Horizontal(_agent.Position)) < 12f)
+                        continue;
+
+                    bool wantsRoof = _rng.NextDouble() < 0.5 && CanStandOn(mark.Kind);
+
+                    // Offset off dead centre, so a dozen bots given the same landmark do not all
+                    // converge on one point of it.
+                    float jx = (float)(_rng.NextDouble() * 2.0 - 1.0) * mark.Extents.x * 0.6f;
+                    float jz = (float)(_rng.NextDouble() * 2.0 - 1.0) * mark.Extents.y * 0.6f;
+                    var spot = new float3(at.x + jx, 0f, at.z + jz);
+
+                    if (!Physics.Raycast(spot + new float3(0f, 90f, 0f), Vector3.down,
+                            out RaycastHit surface, 220f, UnseenLayers.WorldGeometry,
+                            QueryTriggerInteraction.Ignore))
+                        continue;
+
+                    _lastLandmark = index;
+
+                    // The first thing under a downward ray over a building IS its roof. If a roof
+                    // was wanted, take it; otherwise aim for the street beside the landmark, which
+                    // is somewhere a walking bot can actually arrive.
+                    if (wantsRoof && surface.point.y > 3f)
+                        return (float3)surface.point + new float3(0f, 0.4f, 0f);
+
+                    float3 outward = math.normalizesafe(new float3(jx, 0f, jz), new float3(1f, 0f, 0f));
+                    float3 street = at + outward * (math.max(mark.Extents.x, mark.Extents.y) + 5f);
+
+                    if (Physics.Raycast(street + new float3(0f, 90f, 0f), Vector3.down,
+                            out RaycastHit ground, 220f, UnseenLayers.WorldGeometry,
+                            QueryTriggerInteraction.Ignore))
+                        return (float3)ground.point + new float3(0f, 0.2f, 0f);
+
+                    return (float3)surface.point + new float3(0f, 0.2f, 0f);
+                }
+            }
+
+            // No sketch published, or nothing in range: fall back to the old scatter, but far
+            // enough away to be a walk.
             for (int attempt = 0; attempt < 4; attempt++)
             {
                 float angle = (float)_rng.NextDouble() * math.PI * 2f;
-                float distance = (float)_rng.NextDouble() * radius;
+                float distance = 25f + (float)_rng.NextDouble() * math.max(25f, radius - 25f);
                 float3 candidate = center + new float3(math.cos(angle) * distance, 0f, math.sin(angle) * distance);
 
                 if (NavMesh.SamplePosition(candidate, out NavMeshHit hit, 8f, NavMesh.AllAreas))
                     return hit.position;
 
-                if (Physics.Raycast(candidate + new float3(0f, 80f, 0f), Vector3.down, out RaycastHit ground, 200f,
+                if (Physics.Raycast(candidate + new float3(0f, 80f, 0f), Vector3.down, out RaycastHit fallback, 200f,
                         UnseenLayers.WorldGeometry, QueryTriggerInteraction.Ignore))
-                    return (float3)ground.point + new float3(0f, 0.1f, 0f);
+                    return (float3)fallback.point + new float3(0f, 0.1f, 0f);
             }
 
-            return ScatterAround(_agent.Position, 20f);
+            return ScatterAround(_agent.Position, 30f);
+        }
+
+        /// <summary>Landmarks with a roof worth being on. Water and plazas do not have one.</summary>
+        private static bool CanStandOn(MapSketch.Feature kind)
+        {
+            switch (kind)
+            {
+                case MapSketch.Feature.Water:
+                case MapSketch.Feature.Plaza:
+                    return false;
+                default:
+                    return true;
+            }
         }
 
         private float3 ScatterAround(float3 anchor, float radius)

@@ -37,6 +37,11 @@ Shader "Unseen/RiverWater"
             Name "WaterForward"
             Tags { "LightMode" = "UniversalForward" }
 
+            // Two-sided. You can stand in this river, and crouching in the deep middle puts your
+            // eyes under the surface - with back faces culled the water disappeared entirely from
+            // down there, which read as the river flickering out as you looked around.
+            Cull Off
+
             HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
@@ -101,7 +106,7 @@ Shader "Unseen/RiverWater"
                 return w;
             }
 
-            half4 frag (Varyings input) : SV_Target
+            half4 frag (Varyings input, bool front : SV_IsFrontFace) : SV_Target
             {
                 float t = _Time.y;
 
@@ -131,6 +136,10 @@ Shader "Unseen/RiverWater"
 
                 float3 normalWS = normalize(input.normalWS + float3(slope.x, 0.0, slope.y) * 0.35);
 
+                // Seen from underneath, the surface is a ceiling. Flipping the normal keeps it lit
+                // rather than rendering as a flat black lid over the player's head.
+                if (!front) normalWS = -normalWS;
+
                 Light mainLight = GetMainLight(input.shadowCoord);
                 float diffuse = saturate(dot(normalWS, mainLight.direction)) * 0.5 + 0.5;
 
@@ -141,6 +150,10 @@ Shader "Unseen/RiverWater"
                 float3 ambient = SampleSH(normalWS);
                 colour *= mainLight.color * mainLight.shadowAttenuation * diffuse + ambient + 0.12;
                 colour += mainLight.color * sparkle * mainLight.shadowAttenuation;
+
+                // Underwater the surface is darker and greener, and the moon glitter belongs on
+                // top of it rather than under it.
+                if (!front) colour = colour * float3(0.45, 0.62, 0.6) + _DeepColor.rgb * 0.35;
 
                 return half4(colour, 1.0);
             }
