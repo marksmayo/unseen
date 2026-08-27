@@ -214,6 +214,7 @@ namespace Unseen.Core
             MistZoneController mist = _sim.Add(new MistZoneController());
             _bamboo = _sim.Add(new BambooGrowthSystem());
             _sim.Add(new Unseen.Perception.CritterStartleSystem());
+            Unseen.Perception.DrowningSystem drowning = _sim.Add(new Unseen.Perception.DrowningSystem());
             _replication = _sim.Add(new ReplicationSystem());
 
             combat.SmokePrefab = SmokePrefab;
@@ -237,6 +238,10 @@ namespace Unseen.Core
             // Birds back on their branches for a new match, or the second match of a session is
             // played in a town where everything has already been frightened off.
             _match.MatchStarted += _ => Unseen.Environment.Critter.ResetAll();
+
+            // Fresh lungs for a new match, or somebody who drowned in the last one starts this one
+            // already out of air.
+            _match.MatchStarted += _ => drowning.Reset();
 
             // Put the forest away when the match ends, or the ring stays standing through the
             // results screen and the next lobby - fourteen metres of bamboo around an empty town.

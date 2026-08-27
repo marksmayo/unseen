@@ -49,6 +49,10 @@ namespace Unseen.Environment
         [Tooltip("Width of the water itself. The towpaths sit either side of it.")]
         public float RiverWidth = 16f;
 
+        [Tooltip("How far the spirit forest must stand above the tallest roof in the town, so " +
+                 "that nothing can be dropped onto it from a pagoda.")]
+        public float BambooClearance = 9f;
+
         [Tooltip("Depth of water above the bed. Most of the channel, so the river looks like one.")]
         public float WaterDepth = 2.6f;
 
@@ -953,6 +957,23 @@ namespace Unseen.Environment
 
             water.gameObject.AddComponent<WaterVolume>().Configure(
                 waterTop, new Vector2(RiverWidth * 0.5f, length * 0.5f), WadeDeep + 0.2f);
+
+            // Tell the water shader the shape of the bed underneath it.
+            //
+            // It colours and thins itself by depth - pale and see-through over the shelves where
+            // the gravel shows, dark and solid down the middle - and it has no other way to know
+            // where the steps are. The generator dug them, so the generator says.
+            //
+            // Set on the shared material rather than through a property block: there is exactly one
+            // river, and a block would cost a separate draw for no benefit.
+            if (_water != null && _water.HasProperty("_ChannelCentre"))
+            {
+                _water.SetFloat("_ChannelCentre", _riverCentreX);
+                _water.SetFloat("_ChannelHalf", RiverWidth * 0.5f);
+                _water.SetFloat("_DeepHalf", RiverWidth * 0.25f);
+                _water.SetFloat("_ShallowDepth", WadeShallow);
+                _water.SetFloat("_DeepDepth", WadeDeep);
+            }
 
             // The bottom you actually walk on: shallow shelves either side and a deeper channel
             // down the middle. A river of one uniform depth is a trench; this one you can cross at
@@ -2284,8 +2305,22 @@ namespace Unseen.Environment
             float wallHeight = bankHeight + parapetHeight;
             float inner = _rampartRing - walkWidth * 0.5f;
 
-            forest.Build(inner, wallHeight * Mathf.Max(1f, MaterialSetBambooHeight()),
-                _bamboo, _bambooMass, _foliage);
+            // Twice the rampart was the original spec, and on its own it is not enough: the
+            // pagodas stand well above that and a fourteen metre wall can be dropped onto from
+            // one. The forest has to top the tallest thing in the town, so it is measured against
+            // what was actually built rather than against a number somebody guessed.
+            float tallest = 0f;
+            var standing = _root.GetComponentsInChildren<Renderer>();
+            for (int i = 0; i < standing.Length; i++)
+                if (standing[i] != null) tallest = Mathf.Max(tallest, standing[i].bounds.max.y);
+
+            float wanted = wallHeight * Mathf.Max(1f, MaterialSetBambooHeight());
+            float clearing = tallest + BambooClearance;
+
+            Debug.Log($"[Unseen] tallest structure {tallest:0.0} m; spirit forest stands " +
+                      $"{Mathf.Max(wanted, clearing):0.0} m");
+
+            forest.Build(inner, Mathf.Max(wanted, clearing), _bamboo, _bambooMass, _foliage);
         }
 
         /// <summary>Height multiple, read from config so the forest and the rules agree.</summary>

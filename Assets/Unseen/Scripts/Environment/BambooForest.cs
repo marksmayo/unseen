@@ -44,6 +44,14 @@ namespace Unseen.Environment
                  "world through it.")]
         public float Thickness = 10f;
 
+        [Tooltip("How far the wall reaches BELOW ground level, in metres. " +
+                 "The town is not flat. The river channel is four and a half metres down and the " +
+                 "sewers are deeper, and a wall that starts at y=0 passes clean over the head of " +
+                 "anyone standing in either - you could sit in the river and watch the forest go " +
+                 "by above you. It has to fill the whole column, not the part of it at street " +
+                 "level.")]
+        public float BaseDepth = 16f;
+
         private readonly List<Transform> _segments = new List<Transform>(96);
         private readonly List<BoxCollider> _colliders = new List<BoxCollider>(96);
         private readonly List<Transform> _culms = new List<Transform>(1024);
@@ -72,6 +80,9 @@ namespace Unseen.Environment
 
         /// <summary>Height of the wall right now, in metres.</summary>
         public float CurrentHeight { get; private set; }
+
+        /// <summary>How tall it stands once fully grown.</summary>
+        public float FullHeight => _height;
 
         public bool IsGrown => _visible && CurrentHeight > 0.5f;
 
@@ -223,9 +234,15 @@ namespace Unseen.Environment
                 // the whole thing ending on one flat line.
                 float wallHeight = CurrentHeight * 0.86f;
 
-                seg.localPosition = outward * mid + new Vector3(0f, wallHeight * 0.5f, 0f);
+                // From below the deepest ground to the top. The visible part still rises out of
+                // the ground on schedule; what changes is that there is no gap underneath it for
+                // somebody lying in the river to shelter in.
+                float span = wallHeight + BaseDepth;
+                float centreY = wallHeight * 0.5f - BaseDepth * 0.5f;
+
+                seg.localPosition = outward * mid + new Vector3(0f, centreY, 0f);
                 seg.localRotation = Quaternion.Euler(0f, angle, 0f);
-                seg.localScale = new Vector3(chord, wallHeight, thickness);
+                seg.localScale = new Vector3(chord, span, thickness);
             }
 
             PlaceCulms(thickness);

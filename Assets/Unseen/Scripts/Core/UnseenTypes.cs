@@ -105,7 +105,10 @@ namespace Unseen.Core
         BirdFlush = 14,
 
         /// <summary>Something small bolting out of the undergrowth.</summary>
-        AnimalScatter = 15
+        AnimalScatter = 15,
+
+        /// <summary>Somebody underwater and out of air.</summary>
+        Choking = 16
     }
 
     public enum DamageKind : byte
@@ -118,7 +121,10 @@ namespace Unseen.Core
 
         /// <summary>Crushed by the spirit forest. Appended, never renumbered: this goes on the
         /// wire as a byte.</summary>
-        SpiritForest = 5
+        SpiritForest = 5,
+
+        /// <summary>Drowned. Held under, or held yourself under too long.</summary>
+        Drowning = 6
     }
 
     /// <summary>One tick of intent produced by a human client or a bot brain. Always validated server-side.</summary>

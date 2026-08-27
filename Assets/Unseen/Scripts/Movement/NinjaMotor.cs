@@ -588,6 +588,20 @@ namespace Unseen.Movement
             float height = cfg.StanceHeight(desired);
             _cc.height = height;
             _cc.center = new Vector3(0f, height * 0.5f, 0f);
+
+            // Move the eye and torso anchors with the stance.
+            //
+            // They were created once at STANDING height and never touched again, so a prone ninja
+            // was seen from - and saw from - a point one and a seventh metres above its own back.
+            // That is not a cosmetic error: EyePosition is what the perception system traces
+            // sightlines from and to, so lying down behind a wall gave no benefit whatsoever, and
+            // the drowning check believed a body on the riverbed still had its head in the air.
+            if (_agent.EyeAnchor != null)
+                _agent.EyeAnchor.localPosition =
+                    new Vector3(0f, height + cfg.Movement.EyeOffset, 0f);
+
+            if (_agent.TorsoAnchor != null)
+                _agent.TorsoAnchor.localPosition = new Vector3(0f, height * 0.55f, 0f);
         }
 
         private void UpdateFlags(in MoveIntent intent)

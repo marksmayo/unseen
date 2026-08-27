@@ -389,6 +389,8 @@ namespace Unseen.EditorTools
             material.SetFloat("_FoamAmount", 0.75f);
             EditorUtility.SetDirty(material);
 
+            material.SetFloat("_ShoreFoam", 0.7f);
+
             Debug.Log("[Unseen] river water material built on Unseen/RiverWater");
             return material;
         }

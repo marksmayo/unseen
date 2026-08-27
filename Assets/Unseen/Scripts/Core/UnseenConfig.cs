@@ -331,6 +331,35 @@ namespace Unseen.Core
         }
 
         [Serializable]
+        public sealed class WaterSection
+        {
+            [Tooltip("Drown people who stay under. Off makes the river a free hiding place.")]
+            public bool Drowning = true;
+
+            [Tooltip("Seconds of air. Nothing happens at all before this.")]
+            public float HoldBreathSeconds = 30f;
+
+            [Tooltip("Seconds under before it starts killing you.\n\n" +
+                     "The gap between this and HoldBreathSeconds is the design. From thirty " +
+                     "seconds the body fights for air and that fight is loud enough to give your " +
+                     "position away; from forty-five it is fatal. You are given time to surface, " +
+                     "but only by announcing where you are.")]
+            public float DrownAfterSeconds = 45f;
+
+            [Tooltip("Damage per second once the air has run out.")]
+            public float DrownDamagePerSecond = 11f;
+
+            [Tooltip("Seconds between choking sounds from one drowning body.")]
+            public float ChokeInterval = 1.9f;
+
+            [Tooltip("Loudness of choking underwater. Muffled by the water it travels through, " +
+                     "but unmistakable from the bank.")]
+            public float ChokeLoudness = 0.9f;
+
+            public float ChokeRadius = 30f;
+        }
+
+        [Serializable]
         public sealed class CritterSection
         {
             [Tooltip("Place birds and animals at all.")]
@@ -396,6 +425,9 @@ namespace Unseen.Core
 
         [Tooltip("Birds and small animals, and how loudly they give you away.")]
         public CritterSection Critters = new CritterSection();
+
+        [Tooltip("Being underwater, and running out of air while you are.")]
+        public WaterSection Water = new WaterSection();
         public BotSection Bots = new BotSection();
 
         private static UnseenConfig _default;

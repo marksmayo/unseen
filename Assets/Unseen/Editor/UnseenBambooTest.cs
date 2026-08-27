@@ -77,18 +77,27 @@ namespace Unseen.EditorTools
 
                 RunTo(boot, matchStart + cfg.FirstGrowth + cfg.FirstBandDuration * 0.15f);
                 float shootHeight = forest.CurrentHeight;
-                bool shoots = forest.IsGrown && shootHeight < 4f;
+                // Relative to how tall it ends up, not an absolute. The full height is no longer a
+                // fixed fourteen metres - it is measured against the tallest roof in the town so
+                // nothing can be dropped onto it - so an absolute threshold here had quietly become
+                // an assertion about the pagodas.
+                bool shoots = forest.IsGrown && shootHeight < forest.FullHeight * 0.3f;
                 Debug.Log($"[bamboo] shortly after it starts: {shootHeight:0.0} m of shoots");
                 Debug.Log($"[bamboo] starts as shoots rather than a wall: {(shoots ? "PASS" : "FAIL")}");
 
                 RunTo(boot, matchStart + cfg.FirstGrowth + cfg.FirstBandDuration + 5f);
                 float fullHeight = forest.CurrentHeight;
 
-                // Twice the rampart, as the spec asks: bank 5.4 plus parapet 1.6, doubled.
-                float expected = 7f * cfg.HeightMultiple;
-                bool tall = Mathf.Abs(fullHeight - expected) < expected * 0.2f;
-                Debug.Log($"[bamboo] a minute later: {fullHeight:0.0} m against {expected:0.0} m expected");
-                Debug.Log($"[bamboo] reaches twice the rampart's height: {(tall ? "PASS" : "FAIL")}");
+                // Twice the rampart was the original spec and is a FLOOR now rather than a
+                // target: the forest also has to stand clear of the tallest roof in the town, or it
+                // can be dropped onto from a pagoda.
+                float twiceRampart = 7f * cfg.HeightMultiple;
+                bool tall = fullHeight >= twiceRampart - 0.5f;
+
+                Debug.Log($"[bamboo] a minute later: {fullHeight:0.0} m " +
+                          $"(at least {twiceRampart:0.0} m, and above the roofs)");
+                Debug.Log($"[bamboo] reaches at least twice the rampart's height: " +
+                          $"{(tall ? "PASS" : "FAIL")}");
 
                 // ---------------------------------------------------------- it follows the boundary
                 //
@@ -237,7 +246,24 @@ namespace Unseen.EditorTools
                 bool held = false;
                 bool controlMoved = false;
 
-                if (subject != null)
+                // A DIFFERENT agent, and a living one.
+                //
+                // The push test above parks its subject outside the face for three seconds, and
+                // the forest is lethal now - so by the time the walk-out ran, its subject was a
+                // corpse being driven at a wall, which nothing pushes back and which reported
+                // travelling straight through. That is the test killing its own subject, not the
+                // wall failing.
+                AgentEntity runner = null;
+                foreach (AgentEntity agent in boot.Context.Entities.All)
+                    if (agent.IsAlive && agent != subject && agent.Vitals.Fraction > 0.9f)
+                    {
+                        runner = agent;
+                        break;
+                    }
+
+                subject = runner ?? subject;
+
+                if (subject != null && subject.IsAlive)
                 {
                     // Control first. An agent that cannot move at all would pass the wall test for
                     // the wrong reason, and the first version of this check did exactly that: it
@@ -287,13 +313,53 @@ namespace Unseen.EditorTools
                     Drive(boot, subject, 180, new Vector2(0f, 1f));
                     float endOut = Radial(subject.Position, centre);
 
-                    held = controlMoved && endOut < forest.InnerEdge + 0.6f;
+                    // Still alive matters: a dead runner proves nothing either way.
+                    held = controlMoved && subject.IsAlive && endOut < forest.InnerEdge + 0.6f;
 
                     Debug.Log($"[bamboo] ran at the wall from {startOut:0.0} m, reached " +
-                              $"{endOut:0.0} m (face {forest.InnerEdge:0.0} m)");
+                              $"{endOut:0.0} m (face {forest.InnerEdge:0.0} m), " +
+                              $"y={subject.Position.y:0.0}, locomotion={subject.Locomotion}, " +
+                              $"alive={subject.IsAlive}");
                 }
 
                 Debug.Log($"[bamboo] a body cannot run out through it: {(held ? "PASS" : "FAIL")}");
+
+                // ------------------------------------- it fills the whole column, not just street level
+                //
+                // Reported from play: sit in the river and the wall passes overhead, because it
+                // started at y=0 and the channel is four and a half metres down. Checked at the
+                // riverbed and above the tallest roof, which are the two ends of the column.
+                bool fillsColumn = true;
+
+                float lowest = float.MaxValue;
+                float highest = 0f;
+
+                foreach (Transform seg in forest.transform)
+                {
+                    if (!seg.name.StartsWith("BambooWall")) continue;
+                    var box = seg.GetComponent<BoxCollider>();
+                    if (box == null) continue;
+
+                    lowest = Mathf.Min(lowest, box.bounds.min.y);
+                    highest = Mathf.Max(highest, box.bounds.max.y);
+                }
+
+                float tallestRoof = 0f;
+                foreach (Renderer r in Object.FindObjectsByType<Renderer>(
+                             FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+                {
+                    if (r == null || r.transform.IsChildOf(forest.transform)) continue;
+                    tallestRoof = Mathf.Max(tallestRoof, r.bounds.max.y);
+                }
+
+                // Below the riverbed at one end, above everything anyone could stand on at the
+                // other.
+                fillsColumn = lowest < -6f && highest > tallestRoof;
+
+                Debug.Log($"[bamboo] wall spans y {lowest:0.0} to {highest:0.0}; " +
+                          $"tallest other thing in the town is {tallestRoof:0.0} m");
+                Debug.Log($"[bamboo] it fills the column from under the river to over the roofs: " +
+                          $"{(fillsColumn ? "PASS" : "FAIL")}");
 
                 // ------------------------------------- and it kills what it cannot move
                 //
@@ -325,7 +391,7 @@ namespace Unseen.EditorTools
                 Debug.Log($"[bamboo] it kills what it closes over: {(crushed ? "PASS" : "FAIL")}");
 
                 if (dormant && shoots && tall && tracks && noGap && solid && solidFarOut && pushed &&
-                    held && crushed)
+                    held && crushed && fillsColumn)
                     Debug.Log("[bamboo] PASSED");
                 else
                     Debug.LogError("[bamboo] FAILED");

@@ -83,6 +83,30 @@ namespace Unseen.Environment
             return 0f;
         }
 
+        /// <summary>
+        /// True if a world point is beneath the surface of some body of water.
+        ///
+        /// Takes the point directly rather than a pair of feet and a height, because the thing the
+        /// drowning clock cares about is one specific point - the eye - and reconstructing it from
+        /// feet plus a stance-dependent offset in two places is how the two drift apart.
+        /// </summary>
+        public static bool IsUnder(float3 point)
+        {
+            for (int i = 0; i < Volumes.Count; i++)
+            {
+                WaterVolume volume = Volumes[i];
+                if (volume == null) continue;
+
+                Vector3 at = volume.transform.position;
+                if (math.abs(point.x - at.x) > volume.HalfSize.x) continue;
+                if (math.abs(point.z - at.z) > volume.HalfSize.y) continue;
+
+                if (point.y < volume.SurfaceY) return true;
+            }
+
+            return false;
+        }
+
         /// <summary>True if the given eye height is under the surface.</summary>
         public static bool IsSubmerged(float3 feet, float eyeHeight)
         {
