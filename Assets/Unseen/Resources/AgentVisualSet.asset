@@ -17,3 +17,5 @@ MonoBehaviour:
   - {fileID: 2100000, guid: 9396a2d79f191094ab6348a0b1422920, type: 2}
   - {fileID: 2100000, guid: 5bd8696be14ef014e850996d1003c718, type: 2}
   VerticalOffset: 0
+  Cloth: {fileID: 2100000, guid: 7031c92b2248761438e33793bf93a27f, type: 2}
+  Garments: 1

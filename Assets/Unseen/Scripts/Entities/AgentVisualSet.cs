@@ -23,6 +23,14 @@ namespace Unseen.Entities
         [Tooltip("Vertical offset applied to the visual inside the agent, in metres.")]
         public float VerticalOffset;
 
+        [Tooltip("Base material for the obi, scarf and limb wraps. Tinted per agent from a dark " +
+                 "palette. Absent, the bodies render bare.")]
+        public Material Cloth;
+
+        [Tooltip("Whether spawned bodies get cloth at all. Off, the figures are bare skinned " +
+                 "meshes - useful for isolating a rendering cost.")]
+        public bool Garments = true;
+
         private static AgentVisualSet _cached;
         private static bool _searched;
 
@@ -62,6 +70,11 @@ namespace Unseen.Entities
             AgentVisual visual = instance.GetComponent<AgentVisual>();
             if (visual == null) visual = instance.AddComponent<AgentVisual>();
             visual.SetSkin(SkinFor(id));
+
+            // Cloth last, so it is cut against a body that already has its skin and its bones in
+            // the pose it was imported in.
+            if (Garments) NinjaGarments.Fit(visual, Cloth, id);
+
             return visual;
         }
     }

@@ -187,6 +187,8 @@ namespace Unseen.EditorTools
 
             set.NinjaVisual = prefab;
             set.Skins = skins;
+            set.Cloth = AssetDatabase.LoadAssetAtPath<Material>(
+                "Assets/Unseen/Art/Materials/Cloth.mat");
             EditorUtility.SetDirty(set);
 
             AssetDatabase.SaveAssets();
