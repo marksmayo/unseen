@@ -148,9 +148,12 @@ namespace Unseen.EditorTools
 
                 AvatarMask mask = BuildMask(root);
                 AvatarMask stanceMask = BuildStanceMask(root);
-                WireController(built, mask);
-                WireStanceLayer(crouch, prone, stanceMask);
-                WireParkourLayer(climb, wallRun, hang);
+                // The idle clip is handed to every masked layer as its resting state. See the
+                // comment on WireController: an override layer with weight and no clip writes the
+                // BIND pose, which is a T-pose.
+                WireController(built, mask, idle);
+                WireStanceLayer(crouch, prone, stanceMask, idle);
+                WireParkourLayer(climb, wallRun, hang, idle);
 
                 built.Add(crouch);
                 built.Add(prone);
@@ -782,7 +785,8 @@ namespace Unseen.EditorTools
         /// <summary>
         /// The stance layer: crouch and prone, chosen by an integer, weight driven from code.
         /// </summary>
-        private static void WireStanceLayer(AnimationClip crouch, AnimationClip prone, AvatarMask mask)
+        private static void WireStanceLayer(AnimationClip crouch, AnimationClip prone, AvatarMask mask,
+            AnimationClip rest)
         {
             AnimatorControllerLayer layer = AddLayer("Stance", mask, out AnimatorController controller);
             if (layer == null) return;
@@ -791,6 +795,7 @@ namespace Unseen.EditorTools
             EnsureIntParameter(controller, parameter);
 
             AnimatorState idle = layer.stateMachine.AddState("Upright");
+            idle.motion = rest;
             layer.stateMachine.defaultState = idle;
 
             AddDrivenState(layer.stateMachine, idle, crouch, "Crouch", parameter, 1);
@@ -806,7 +811,8 @@ namespace Unseen.EditorTools
         /// Full body and unmasked, because none of these are things the legs and the arms can
         /// disagree about - a ninja halfway up a wall is not also idling from the waist down.
         /// </summary>
-        private static void WireParkourLayer(AnimationClip climb, AnimationClip wallRun, AnimationClip hang)
+        private static void WireParkourLayer(AnimationClip climb, AnimationClip wallRun,
+            AnimationClip hang, AnimationClip rest)
         {
             AnimatorControllerLayer layer = AddLayer("Parkour", null, out AnimatorController controller);
             if (layer == null) return;
@@ -815,6 +821,7 @@ namespace Unseen.EditorTools
             EnsureIntParameter(controller, parameter);
 
             AnimatorState idle = layer.stateMachine.AddState("Grounded");
+            idle.motion = rest;
             layer.stateMachine.defaultState = idle;
 
             AddDrivenState(layer.stateMachine, idle, climb, "Climb", parameter, 1);
@@ -886,7 +893,8 @@ namespace Unseen.EditorTools
         /// default pose over the base layer, which reads as the ninja snapping to a T-pose between
         /// swings. Weight zero is unambiguous.
         /// </summary>
-        private static void WireController(List<AnimationClip> clips, AvatarMask mask)
+        private static void WireController(List<AnimationClip> clips, AvatarMask mask,
+            AnimationClip rest)
         {
             var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(ControllerPath);
             if (controller == null)
@@ -903,6 +911,21 @@ namespace Unseen.EditorTools
 
             if (!hasParameter) controller.AddParameter(parameter, AnimatorControllerParameterType.Int);
 
+            // Every masked layer's resting state holds the idle clip, and that is not cosmetic.
+            //
+            // These are OVERRIDE layers. An override layer replaces the pose of every bone in its
+            // mask, and a state with no motion has no pose to replace it with - so it writes the
+            // BIND pose, which on this rig is a T-pose. The weight is raised from code the instant
+            // a stance or an action begins, while the state machine is still in its default state
+            // and for the whole of the transition after it, so any ninja crouching, climbing or
+            // swinging flickered its arms out. Worse, if a clip failed to build there is no state
+            // to transition to at all, and the layer sits at full weight on an empty state for as
+            // long as the parameter is set - a ninja standing in the street with its arms out for
+            // the rest of the match, which is what was reported.
+            //
+            // With the idle clip in the resting state the layer writes the idle pose instead, so
+            // raising its weight on an empty state is a no-op rather than a deformity.
+            //
             // Rebuild the layer from scratch each run, so this tool is idempotent.
             const string layerName = "Combat";
             for (int i = controller.layers.Length - 1; i >= 1; i--)
@@ -933,6 +956,7 @@ namespace Unseen.EditorTools
             };
 
             AnimatorState idle = machine.AddState("None");
+            idle.motion = rest;
             machine.defaultState = idle;
 
             foreach ((int id, string clipName) in actions)
