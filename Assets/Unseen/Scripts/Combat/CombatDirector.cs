@@ -441,8 +441,37 @@ namespace Unseen.Combat
                 return;
             }
 
-            Lantern lantern = Lantern.NearestLit(agent.TorsoPosition + agent.Forward * 1.2f, 1.8f);
-            if (lantern != null) BreakLantern(agent, lantern, frame);
+            // Reaching for a lantern TOGGLES it. Putting one out is half a mechanic: darkness is
+            // the currency here, and a player who can only ever spend it has no way to deny an
+            // approach they have already made, or to bait one.
+            Lantern lantern = Lantern.NearestAny(agent.TorsoPosition + agent.Forward * 1.2f, 1.8f);
+            if (lantern == null) return;
+
+            if (lantern.IsLit)
+            {
+                BreakLantern(agent, lantern, frame);
+                return;
+            }
+
+            RelightLantern(agent, lantern, frame);
+        }
+
+        /// <summary>
+        /// Lights a doused lantern again.
+        ///
+        /// Quieter than breaking one and much slower to matter: the light comes back and everyone
+        /// who was using that shadow has to move. It is deliberately audible - striking a light in
+        /// the dark should not be free.
+        /// </summary>
+        private void RelightLantern(AgentEntity agent, Lantern lantern, in SimFrame frame)
+        {
+            lantern.Relight();
+
+            Ctx.Destructibles.Raise(WorldEventKind.LanternRelit, Ctx.Destructibles.IdOf(lantern),
+                lantern.Position, frame.Tick);
+
+            Ctx.Sound.Emit(agent.Id, lantern.Position, SoundKind.LootContainer,
+                0.45f, 14f, frame.Tick);
         }
 
         private void HandleUtility(AgentEntity agent, in MoveIntent intent, in SimFrame frame)

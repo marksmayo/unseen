@@ -65,6 +65,33 @@ namespace Unseen.Environment
             Source?.SetExtinguished(false);
         }
 
+        /// <summary>
+        /// Nearest lantern of either state.
+        ///
+        /// Separate from NearestLit because reaching for a lantern is a TOGGLE - douse a lit one,
+        /// light a dark one - and a search that only ever returns lit ones can only ever put them
+        /// out. Relight() has existed since the lanterns did and nothing has ever called it.
+        /// </summary>
+        public static Lantern NearestAny(float3 point, float maxDistance)
+        {
+            Lantern best = null;
+            float bestDist = maxDistance * maxDistance;
+
+            for (int i = 0; i < Lanterns.Count; i++)
+            {
+                Lantern l = Lanterns[i];
+                if (l == null) continue;
+
+                float d = math.distancesq(l.Position, point);
+                if (d >= bestDist) continue;
+
+                bestDist = d;
+                best = l;
+            }
+
+            return best;
+        }
+
         public static Lantern NearestLit(float3 point, float maxDistance)
         {
             Lantern best = null;

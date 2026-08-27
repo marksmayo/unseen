@@ -242,7 +242,7 @@ namespace Unseen.EditorTools
                 material.SetTexture("_BaseMap", noiseSource.GetTexture("_BaseMap"));
 
             material.SetColor("_Tint", new Color(0.44f, 0.49f, 0.60f, 1f));
-            material.SetFloat("_Density", 0.15f);
+            material.SetFloat("_Density", 0.2f);
             material.SetFloat("_Speed", 0.02f);
             material.SetFloat("_Scale", 0.055f);
             material.SetFloat("_NearFade", 7f);

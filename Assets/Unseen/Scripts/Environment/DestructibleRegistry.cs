@@ -12,7 +12,10 @@ namespace Unseen.Environment
         ShojiBroken = 1,
         LanternExtinguished = 2,
         SmokeSpawned = 3,
-        ContainerOpened = 4
+        ContainerOpened = 4,
+
+        /// <summary>A lantern lit again. Appended, never renumbered: this travels as a byte.</summary>
+        LanternRelit = 5
     }
 
     /// <summary>A world state change worth telling nearby clients about.</summary>
@@ -127,6 +130,9 @@ namespace Unseen.Environment
                     break;
                 case WorldEventKind.LanternExtinguished:
                     LanternById(e.TargetId)?.Extinguish(999f);
+                    break;
+                case WorldEventKind.LanternRelit:
+                    LanternById(e.TargetId)?.Relight();
                     break;
                 case WorldEventKind.SmokeSpawned:
                     SmokeCloud.Spawn(smokePrefab, e.Position, e.Radius, e.Duration);

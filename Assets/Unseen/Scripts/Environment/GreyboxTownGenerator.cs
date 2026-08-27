@@ -188,6 +188,8 @@ namespace Unseen.Environment
         private Material _bambooMass;
         private BambooForest _forest;
         private int _birds;
+        private int _unhungLanterns;
+        private int _stoodLanterns;
         private int _animals;
 
         /// <summary>The spirit forest, for the growth system to drive.</summary>
@@ -327,6 +329,7 @@ namespace Unseen.Environment
                       $"{_pagodas} pagodas, {_kura} kura, {_nagaya} nagaya, " +
                       $"{_gardens} gardens, {_shrines} shrines, {_trees} trees, {_shrubs} shrubs, " +
                       $"{_birds} birds, {_animals} animals, " +
+                      $"{_stoodLanterns} lanterns stood on posts, {_unhungLanterns} skipped, " +
                       $"river={(_riverColumn >= 0 ? "yes" : "no")}, " +
                       $"{(_sketch != null ? _sketch.Landmarks.Count : 0)} map landmarks");
 
@@ -1646,10 +1649,14 @@ namespace Unseen.Environment
                 // forty-six metre street grid overlap several deep, and alpha compounds: five
                 // layers at 0.3 each is 83% opaque, which is why the first attempt read as spilled
                 // white paint on the river rather than as mist.
-                double chance = nearRiver ? 0.5 : 0.26;
+                // Turned back up. This was thinned hard when overlapping panels were compounding
+                // into white paint, but the fix for that was the density and the falloff, not the
+                // count - and at a quarter of the crossings the town had haze in the distance and
+                // nothing at street level, which is where atmosphere is actually felt.
+                double chance = nearRiver ? 0.9 : 0.55;
                 if (_random.NextDouble() > chance) continue;
 
-                int here = 1;
+                int here = nearRiver ? 2 : 1;
 
                 for (int i = 0; i < here; i++)
                 {
@@ -3098,16 +3105,38 @@ namespace Unseen.Environment
         /// </summary>
         private void HangLantern(Transform parent, Vector3 position, float radius, float intensity)
         {
-            CreateLantern(parent, position, radius, intensity);
-
-            // Traced upward so the cord ends at the beam, not at a guessed length.
-            float drop = 1.2f;
+            // Nothing to hang it FROM means no lantern.
+            //
+            // This traced upward for a beam and, when the trace found nothing, fell back to a
+            // guessed 1.2 m cord - which drew a rope from the lantern up into thin air. Reported
+            // from play as lanterns attached to nothing, and it is exactly that: the fallback was
+            // hiding a failed search instead of reporting it.
             Vector3 world = parent.TransformPoint(position + Vector3.up * 0.32f);
-            if (Physics.Raycast(world, Vector3.up, out RaycastHit hit, 6f,
+
+            if (!Physics.Raycast(world, Vector3.up, out RaycastHit hit, 6f,
                     UnseenLayers.WorldGeometry | (1 << UnseenLayers.Rafter),
                     QueryTriggerInteraction.Ignore))
-                drop = Mathf.Max(0.2f, hit.distance);
+            {
+                // No beam. Stand it on the floor underneath instead of dropping the light
+                // altogether - a pagoda balcony wants a lantern whether or not it has a rafter,
+                // and a hundred and ten of these were being asked for.
+                if (Physics.Raycast(world, Vector3.down, out RaycastHit floor, 4f,
+                        UnseenLayers.WorldGeometry, QueryTriggerInteraction.Ignore) &&
+                    Vector3.Dot(floor.normal, Vector3.up) > 0.6f)
+                {
+                    Vector3 local = parent.InverseTransformPoint(floor.point);
+                    PostLantern(parent, local, 1.9f, radius, intensity);
+                    _stoodLanterns++;
+                    return;
+                }
 
+                _unhungLanterns++;
+                return;
+            }
+
+            CreateLantern(parent, position, radius, intensity);
+
+            float drop = Mathf.Max(0.2f, hit.distance);
             Detail(parent, "Cord", position + Vector3.up * (0.32f + drop * 0.5f),
                 new Vector3(0.04f, drop, 0.04f), _rafter);
         }
