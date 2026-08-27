@@ -30,6 +30,7 @@ MonoBehaviour:
   Vermilion: {fileID: 2100000, guid: 066f5dd7181d38c4e978427003e5a625, type: 2}
   Bamboo: {fileID: 2100000, guid: a8cde544de743364c92accc3cdd0c8ac, type: 2}
   BambooMass: {fileID: 2100000, guid: bb8dd39cf0a67a64fa690ddfe44fa0c5, type: 2}
+  BambooLeaf: {fileID: 2100000, guid: 7121f37f9762b54468443fed81528ba1, type: 2}
   Paper: {fileID: 2100000, guid: 06be09d387baae84383094f93fb8f9fa, type: 2}
   LanternGlow: {fileID: 2100000, guid: 10166b0e67bad1f40a3022c78707c5bf, type: 2}
   ShojiPaper: {fileID: 2100000, guid: db1469f0d849f56458c88be472bb15f7, type: 2}

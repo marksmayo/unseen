@@ -44,6 +44,13 @@ namespace Unseen.Environment
                  "world through it.")]
         public float Thickness = 10f;
 
+        [Tooltip("Tallest a single culm is drawn, in metres, however tall the wall behind it is. " +
+                 "The wall is sized to clear the pagodas so nothing can be dropped onto it, which " +
+                 "puts it near fifty metres. A cane scaled to that is a thread two hundred times " +
+                 "longer than it is wide, and nine hundred of them read as wires. The culms are " +
+                 "the fringe you see at eye level; the wall behind them is what stops you.")]
+        public float MaxCulmHeight = 15f;
+
         [Tooltip("How far the wall reaches BELOW ground level, in metres. " +
                  "The town is not flat. The river channel is four and a half metres down and the " +
                  "sewers are deeper, and a wall that starts at y=0 passes clean over the head of " +
@@ -128,8 +135,10 @@ namespace Unseen.Environment
 
                 // Culms share one mesh; the variation comes from scale and rotation, which costs
                 // nothing and keeps them batched.
+                // A cane is round, and a box with bark on it is still a box. One shared tapered
+                // tube, scaled per culm.
                 stalk.AddComponent<MeshFilter>().sharedMesh =
-                    BoxMeshFactory.Get(new Vector3(0.22f, 1f, 0.22f), 2.5f);
+                    OrganicMeshFactory.Tube(5, 4, 0.8f, 0.05f, 0.08f);
 
                 var stalkRenderer = stalk.AddComponent<MeshRenderer>();
                 if (culm != null) stalkRenderer.sharedMaterial = culm;
@@ -145,7 +154,7 @@ namespace Unseen.Environment
                     var spray = new GameObject($"Leaves_{i}_{f}");
                     spray.transform.SetParent(transform, false);
                     spray.AddComponent<MeshFilter>().sharedMesh =
-                        BoxMeshFactory.Get(new Vector3(0.7f, 2.8f, 0.7f), 2.5f);
+                        OrganicMeshFactory.Blob(5, 8, 0.4f, f);
 
                     var sprayRenderer = spray.AddComponent<MeshRenderer>();
                     if (foliage != null) sprayRenderer.sharedMaterial = foliage;
@@ -280,10 +289,13 @@ namespace Unseen.Environment
                 float radius = InnerEdge - 0.45f - Mathf.Abs(Mathf.Cos(i * 3.77f)) * 0.7f
                                + wobble * 0.35f;
 
-                float height = CurrentHeight * scale;
+                // Capped. A culm is a cane, not a cable - see MaxCulmHeight.
+                float height = Mathf.Min(CurrentHeight, MaxCulmHeight) * scale;
 
-                culm.localPosition = outward * radius + new Vector3(0f, height * 0.5f, 0f);
-                culm.localScale = new Vector3(1f, height, 1f);
+                // The tube stands ON the origin rather than being centred on it, so the culm sits
+                // at ground level rather than half-buried.
+                culm.localPosition = outward * radius;
+                culm.localScale = new Vector3(0.17f, height, 0.17f);
                 culm.localRotation = Quaternion.Euler(lean * 0.4f, angle, lean);
 
                 for (int f = 0; f < fronds; f++)
@@ -296,9 +308,15 @@ namespace Unseen.Environment
                     float drop = f * 0.16f;
                     float splay = (f % 2 == 0 ? 1f : -1f) * (18f + f * 7f);
 
-                    head.localPosition = culm.localPosition + new Vector3(0f, height * (0.42f - drop), 0f);
-                    head.localScale = Vector3.one *
-                                      (0.7f + Mathf.Abs(Mathf.Sin((i + f) * 2.11f)) * 0.45f);
+                    head.localPosition = culm.localPosition +
+                                        new Vector3(0f, height * (0.86f - drop), 0f);
+                    // Narrow and tall, not a ball.
+                    //
+                    // The spray used to be a tall thin slab and I replaced it with a unit-DIAMETER
+                    // blob scaled up, which made every one of them a two-metre sphere. Nine hundred
+                    // of those on thin stalks read as a field of enormous white lilies.
+                    float spread = 0.5f + Mathf.Abs(Mathf.Sin((i + f) * 2.11f)) * 0.28f;
+                    head.localScale = new Vector3(spread, 1.9f, spread);
                     head.localRotation = Quaternion.Euler(
                         splay * 0.5f, angle + f * 61f, lean * 0.5f + splay);
                 }

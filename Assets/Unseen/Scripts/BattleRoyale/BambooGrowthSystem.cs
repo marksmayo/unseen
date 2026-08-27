@@ -94,9 +94,19 @@ namespace Unseen.BattleRoyale
 
             float elapsed = frame.Time - _matchStart;
 
-            // Dormant for the first stretch of the match. The town has to be worth exploring before
-            // anything starts taking it away.
-            if (elapsed < cfg.FirstGrowth)
+            // Dormant only if somebody asks for it, and by default nobody does.
+            //
+            // This used to wait three minutes before the forest appeared at all, which left the
+            // boundary as an invisible line for the first three minutes of every match: a player
+            // could walk straight past it and start taking mist damage with nothing there to stop
+            // them or to warn them. That is the exact complaint the bamboo was built to answer, so
+            // having it arrive late reintroduced the problem for the part of the match when players
+            // are furthest out and most likely to meet the edge.
+            //
+            // The wall now stands from the first second. It costs nothing visually at that point -
+            // the mist starts at the full map radius, so the forest is against the rampart where
+            // there is already a wall - and the boundary is sealed for the whole match.
+            if (cfg.FirstGrowth > 0f && elapsed < cfg.FirstGrowth)
             {
                 _forest.Hide();
                 return;
@@ -104,6 +114,9 @@ namespace Unseen.BattleRoyale
 
             // Shoots for the first minute, rising to a full wall. After that it is simply the
             // boundary, and it goes where the boundary goes.
+            // Rises over the first minute so it grows out of the ground rather than popping in.
+            // That minute is the drop and the scramble, when everybody is in the air or at the map
+            // edge, so a rising wall at the rampart is scenery rather than an obstacle.
             float risen = math.saturate((elapsed - cfg.FirstGrowth) /
                                         math.max(0.01f, cfg.FirstBandDuration));
 

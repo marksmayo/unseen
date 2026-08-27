@@ -284,8 +284,12 @@ namespace Unseen.Core
             [Tooltip("Grow the spirit forest at all.")]
             public bool Enabled = true;
 
-            [Tooltip("Seconds into the match before the first shoots appear.")]
-            public float FirstGrowth = 180f;
+            [Tooltip("Seconds into the match before the forest appears at all. ZERO by default, " +
+                     "and it should stay that way. Any delay here leaves the boundary as an " +
+                     "invisible damaging line for that long, which a player can walk straight past " +
+                     "with nothing to stop or warn them - the exact problem the bamboo exists to " +
+                     "solve. It is kept as a knob only so the mechanic can be staged for testing.")]
+            public float FirstGrowth;
 
             [Tooltip("How far outside the mist line the wall of bamboo stands, in metres.\n\n" +
                      "Zero: the wall IS the boundary. A margin here was a mistake. It left a " +

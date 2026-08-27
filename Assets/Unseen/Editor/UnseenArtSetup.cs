@@ -121,6 +121,12 @@ namespace Unseen.EditorTools
             set.BambooMass = BuildTint(lit, Pick(built, "Leaf"), "BambooMass",
                 new Color(0.34f, 0.40f, 0.30f), 0.15f, bumpScale: 0.5f);
 
+            // Between the wall and open foliage. The tufts on the culms were taking the untinted
+            // leaf material while the wall behind them took a tint that darkens it to a third, so
+            // they came out as pale flowers on dark hedge.
+            set.BambooLeaf = BuildTint(lit, Pick(built, "Leaf"), "BambooLeaf",
+                new Color(0.52f, 0.60f, 0.46f), 0.2f, bumpScale: 0.6f);
+
             set.LanternGlow = BuildLanternGlow(lit, Pick(built, "Paper"));
             // The lattice lives in this map rather than in geometry. There are nearly three
             // thousand shoji in the town and a grid of muntins modelled as boxes would add tens of

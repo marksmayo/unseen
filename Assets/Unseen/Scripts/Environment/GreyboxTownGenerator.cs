@@ -1075,18 +1075,26 @@ namespace Unseen.Environment
                 // the water has been running over for a century.
                 Transform rock = Box(river, $"Rock_{i}",
                     new Vector3(x, waterTop - size * 0.62f, z),
-                    new Vector3(size, size, size * 0.8f), UnseenLayers.Occluder, _riverStone);
+                    new Vector3(size, size, size * 0.8f), UnseenLayers.Occluder, null);
                 rock.localRotation = Quaternion.Euler(
                     (float)_random.NextDouble() * 22f,
                     (float)_random.NextDouble() * 360f,
                     (float)_random.NextDouble() * 22f);
                 Acoustics(rock, 0.9f, 1f, 1f);
 
+                MeshRenderer rockBox = rock.GetComponent<MeshRenderer>();
+                if (rockBox != null) rockBox.enabled = false;
+
+                // A boulder is a lumpy thing. A rotated cube is a rotated cube.
+                Organic(rock, "Stone", OrganicMeshFactory.Blob(6, 10, 0.38f, i % 8),
+                    Vector3.zero, Vector3.one, _riverStone);
+
                 // Two smaller ones alongside, so a rock is an outcrop rather than a single object.
                 for (int c = 0; c < 2; c++)
                 {
                     float small = size * (0.35f + (float)_random.NextDouble() * 0.3f);
-                    Transform chip = Detail(river, $"Rock_{i}_{c}",
+                    Transform chip = Organic(river, $"Rock_{i}_{c}",
+                        OrganicMeshFactory.Blob(5, 8, 0.42f, (i + c) % 8),
                         new Vector3(x + (float)(_random.NextDouble() * 2f - 1f) * size,
                             waterTop - small * 0.55f,
                             z + (float)(_random.NextDouble() * 2f - 1f) * size),
@@ -1159,8 +1167,10 @@ namespace Unseen.Environment
                             waterTop + tall * 0.42f,
                             (float)(_random.NextDouble() * 2f - 1f) * 0.45f);
 
-                        Transform blade = Detail(river, $"Reed_{side}_{i}_{b}", at,
-                            new Vector3(0.09f, tall, 0.09f), _reed);
+                        Transform blade = Organic(river, $"Reed_{side}_{i}_{b}",
+                            OrganicMeshFactory.Blade(4, 0.3f),
+                            at - new Vector3(0f, tall * 0.42f, 0f),
+                            new Vector3(0.09f, tall, 1f), _reed);
                         blade.localRotation = Quaternion.Euler(
                             (float)(_random.NextDouble() * 2f - 1f) * 16f,
                             (float)_random.NextDouble() * 90f,
@@ -1569,6 +1579,32 @@ namespace Unseen.Environment
             }
         }
 
+        // ---------------------------------------------------------------- organic shapes
+
+        /// <summary>
+        /// A renderer-only child carrying an ORGANIC mesh rather than a box.
+        ///
+        /// Same contract as Detail: no collider, no acoustics, nothing the simulation can see. The
+        /// difference is the silhouette. A tree built from stretched cubes is a stack of stretched
+        /// cubes however good the bark on it is, because what identifies a tree at forty metres is
+        /// its outline, and that was the whole of why this town read as Minecraft.
+        /// </summary>
+        private Transform Organic(Transform parent, string name, Mesh mesh, Vector3 position,
+            Vector3 scale, Material material)
+        {
+            var host = new GameObject(name);
+            host.transform.SetParent(parent, false);
+            host.transform.localPosition = position;
+            host.transform.localScale = scale;
+
+            host.AddComponent<MeshFilter>().sharedMesh = mesh;
+
+            var renderer = host.AddComponent<MeshRenderer>();
+            if (material != null) renderer.sharedMaterial = material;
+
+            return host.transform;
+        }
+
         // ---------------------------------------------------------------- mist
 
         /// <summary>
@@ -1959,8 +1995,10 @@ namespace Unseen.Environment
                             (float)(_random.NextDouble() * 2f - 1f) * w * 0.38f, tall * 0.45f,
                             (float)(_random.NextDouble() * 2f - 1f) * d * 0.38f);
 
-                        Transform blade = Detail(verges, $"Tuft_{gx}_{gz}_{i}_{t}", tuftAt,
-                            new Vector3(0.1f, tall, 0.1f), _reed);
+                        Transform blade = Organic(verges, $"Tuft_{gx}_{gz}_{i}_{t}",
+                            OrganicMeshFactory.Blade(3, 0.42f),
+                            tuftAt - new Vector3(0f, tall * 0.45f, 0f),
+                            new Vector3(0.14f, tall, 1f), _reed);
                         blade.localRotation = Quaternion.Euler(
                             (float)(_random.NextDouble() * 2f - 1f) * 24f,
                             (float)_random.NextDouble() * 90f,
@@ -2208,19 +2246,40 @@ namespace Unseen.Environment
             float spread = 2.2f + (float)_random.NextDouble() * 1.6f;
             float lean = (float)(_random.NextDouble() * 2f - 1f) * 4f;
 
-            Transform trunk = Box(tree, "Trunk", new Vector3(0f, height * 0.5f, 0f),
-                new Vector3(0.42f, height, 0.42f), UnseenLayers.Occluder, _darkTimber);
+            // The trunk is a tapered, bent tube. The COLLIDER stays a box - it is what breaks a
+            // sightline down a street and a six-sided mesh collider on two hundred trees is not a
+            // trade worth making for a shape nobody bumps into precisely.
+            Transform trunk = Box(tree, "TrunkCollider", new Vector3(0f, height * 0.5f, 0f),
+                new Vector3(0.42f, height, 0.42f), UnseenLayers.Occluder, null);
             trunk.localRotation = Quaternion.Euler(lean, 0f, lean * 0.6f);
             Acoustics(trunk, 0.6f, 1f, 1f);
 
+            MeshRenderer boxRenderer = trunk.GetComponent<MeshRenderer>();
+            if (boxRenderer != null) boxRenderer.enabled = false;
+
+            float bend = (float)(_random.NextDouble() * 2f - 1f) * 0.12f;
+            Transform bole = Organic(tree, "Trunk",
+                OrganicMeshFactory.Tube(6, 5, 0.55f, bend, 0.35f),
+                Vector3.zero, new Vector3(0.62f, height, 0.62f), _darkTimber);
+            bole.localRotation = Quaternion.Euler(lean * 0.5f, (float)_random.NextDouble() * 360f,
+                lean * 0.4f);
+
             // Roots flaring at the base, so the trunk meets the ground instead of being planted
             // in it like a post.
-            for (int r = 0; r < 4; r++)
+            // Roots flaring at the base: short tubes laid nearly flat, splaying outward.
+            for (int r = 0; r < 5; r++)
             {
-                float angle = r * 90f + 25f;
-                var dir = new Vector3(Mathf.Sin(angle * Mathf.Deg2Rad), 0f, Mathf.Cos(angle * Mathf.Deg2Rad));
-                Detail(tree, $"Root_{r}", dir * 0.36f + new Vector3(0f, 0.16f, 0f),
-                    new Vector3(0.5f, 0.32f, 0.5f), _darkTimber);
+                float angle = r * 72f + 25f;
+                float rad = angle * Mathf.Deg2Rad;
+                var dir = new Vector3(Mathf.Sin(rad), 0f, Mathf.Cos(rad));
+
+                Transform root = Organic(tree, $"Root_{r}",
+                    OrganicMeshFactory.Tube(5, 3, 0.3f, 0.25f, 0.4f),
+                    dir * 0.2f + new Vector3(0f, 0.06f, 0f),
+                    new Vector3(0.34f, 0.85f, 0.34f), _darkTimber);
+
+                // Laid over so it runs along the ground away from the bole.
+                root.localRotation = Quaternion.Euler(72f, -angle, 0f);
             }
 
             switch (species)
@@ -2254,21 +2313,26 @@ namespace Unseen.Environment
                 float y = height * (0.55f + b * 0.13f);
                 var dir = new Vector3(Mathf.Sin(angle * Mathf.Deg2Rad), 0f, Mathf.Cos(angle * Mathf.Deg2Rad));
 
-                Transform branch = Detail(tree, $"Branch_{b}",
-                    dir * spread * 0.32f + new Vector3(0f, y, 0f),
-                    new Vector3(spread * 0.7f, 0.18f, 0.18f), _darkTimber);
-                branch.localRotation = Quaternion.Euler(0f, -angle, 8f);
+                Transform branch = Organic(tree, $"Branch_{b}",
+                    OrganicMeshFactory.Tube(4, 3, 0.35f, 0.3f, 0.3f),
+                    dir * spread * 0.18f + new Vector3(0f, y, 0f),
+                    new Vector3(0.16f, spread * 0.75f, 0.16f), _darkTimber);
+                branch.localRotation = Quaternion.Euler(74f, -angle, 0f);
             }
 
-            for (int tier = 0; tier < 4; tier++)
+            // Tiers of needles as flattened lumpy masses rather than plates. A pine tier is a
+            // ragged disc of foliage; a box reads as a shelf.
+            for (int tier = 0; tier < 5; tier++)
             {
-                float t = tier / 3f;
-                float y = Mathf.Lerp(height * 0.55f, height + 0.8f, t);
-                float size = Mathf.Lerp(spread, spread * 0.28f, t);
+                float t = tier / 4f;
+                float y = Mathf.Lerp(height * 0.5f, height + 0.9f, t);
+                float size = Mathf.Lerp(spread * 1.1f, spread * 0.22f, t);
 
-                Transform plate = Detail(tree, $"Canopy_{tier}", new Vector3(0f, y, 0f),
-                    new Vector3(size, 0.75f, size), _foliage);
-                plate.localRotation = Quaternion.Euler(0f, tier * 24f, 0f);
+                Transform plate = Organic(tree, $"Canopy_{tier}",
+                    OrganicMeshFactory.Blob(6, 10, 0.3f, tier),
+                    new Vector3(0f, y, 0f),
+                    new Vector3(size, size * 0.42f, size), _foliage);
+                plate.localRotation = Quaternion.Euler(0f, tier * 37f, 0f);
             }
         }
 
@@ -2280,10 +2344,11 @@ namespace Unseen.Environment
                 float angle = b * 120f;
                 var dir = new Vector3(Mathf.Sin(angle * Mathf.Deg2Rad), 0f, Mathf.Cos(angle * Mathf.Deg2Rad));
 
-                Transform limb = Detail(tree, $"Limb_{b}",
-                    dir * spread * 0.28f + new Vector3(0f, height * 0.7f, 0f),
-                    new Vector3(0.24f, height * 0.5f, 0.24f), _darkTimber);
-                limb.localRotation = Quaternion.Euler(dir.z * 22f, 0f, -dir.x * 22f);
+                Transform limb = Organic(tree, $"Limb_{b}",
+                    OrganicMeshFactory.Tube(5, 4, 0.3f, 0.35f, 0.3f),
+                    dir * spread * 0.16f + new Vector3(0f, height * 0.5f, 0f),
+                    new Vector3(0.26f, height * 0.55f, 0.26f), _darkTimber);
+                limb.localRotation = Quaternion.Euler(26f, -angle, 0f);
             }
 
             for (int c = 0; c < 5; c++)
@@ -2293,8 +2358,10 @@ namespace Unseen.Environment
                 float y = height * (0.86f + (c % 2) * 0.14f);
                 float size = spread * (0.7f + (c % 3) * 0.14f);
 
-                Transform clump = Detail(tree, $"Crown_{c}", dir * spread * 0.34f + new Vector3(0f, y, 0f),
-                    new Vector3(size, size * 0.72f, size), _foliage);
+                Transform clump = Organic(tree, $"Crown_{c}",
+                    OrganicMeshFactory.Blob(7, 12, 0.34f, c),
+                    dir * spread * 0.34f + new Vector3(0f, y, 0f),
+                    new Vector3(size, size * 0.8f, size), _foliage);
                 clump.localRotation = Quaternion.Euler(0f, angle, 0f);
             }
         }
@@ -2311,13 +2378,15 @@ namespace Unseen.Environment
                 float caneHeight = height * (0.85f + (float)_random.NextDouble() * 0.5f);
                 Vector3 at = dir * spread * 0.3f * (float)_random.NextDouble();
 
-                Transform cane = Detail(tree, $"Cane_{c}",
-                    at + new Vector3(0f, caneHeight * 0.5f, 0f),
-                    new Vector3(0.14f, caneHeight, 0.14f), _bamboo);
+                Transform cane = Organic(tree, $"Cane_{c}",
+                    OrganicMeshFactory.Tube(5, 4, 0.75f, 0.1f, 0.1f),
+                    at, new Vector3(0.16f, caneHeight, 0.16f), _bamboo);
                 cane.localRotation = Quaternion.Euler(dir.z * 7f, 0f, -dir.x * 7f);
 
-                Detail(tree, $"CaneLeaves_{c}", at + new Vector3(0f, caneHeight * 0.92f, 0f),
-                    new Vector3(1.1f, 0.9f, 1.1f), _foliage);
+                Organic(tree, $"CaneLeaves_{c}",
+                    OrganicMeshFactory.Blob(5, 9, 0.4f, c),
+                    at + new Vector3(0f, caneHeight * 0.9f, 0f),
+                    new Vector3(1.2f, 0.85f, 1.2f), _foliage);
             }
         }
 
@@ -2336,12 +2405,30 @@ namespace Unseen.Environment
             host.transform.localPosition = new Vector3(0f, height * 0.5f, 0f);
             host.layer = UnseenLayers.Foliage;
 
+            // The bush is a lumpy mass; the collider stays a box. A shrub is cover you crouch
+            // behind and a box is a perfectly good description of that, whereas a box is not a
+            // remotely good description of what a shrub looks like.
             var size = new Vector3(width, height, width);
-            host.AddComponent<MeshFilter>().sharedMesh = BoxMeshFactory.Get(size, _textureMetres);
+
+            host.AddComponent<MeshFilter>().sharedMesh =
+                OrganicMeshFactory.Blob(6, 10, 0.32f, _random.Next(8));
+            host.transform.localScale = size;
+
             host.AddComponent<MeshRenderer>().sharedMaterial = _foliage;
-            host.AddComponent<BoxCollider>().size = size;
+            host.AddComponent<BoxCollider>().size = Vector3.one;
             host.isStatic = true;
             Acoustics(host.transform, 0.25f, 0.7f, 0.8f);
+
+            // Two smaller masses leaning out of it, so the outline is not one dome.
+            for (int i = 0; i < 2; i++)
+            {
+                float angle = (float)_random.NextDouble() * Mathf.PI * 2f;
+                var off = new Vector3(Mathf.Sin(angle), 0f, Mathf.Cos(angle)) * width * 0.3f;
+
+                Organic(shrub, $"Bush_{i}", OrganicMeshFactory.Blob(5, 8, 0.36f, _random.Next(8)),
+                    off + new Vector3(0f, height * (0.35f + (float)_random.NextDouble() * 0.3f), 0f),
+                    new Vector3(width * 0.62f, height * 0.6f, width * 0.62f), _foliage);
+            }
         }
 
         /// <summary>
@@ -2388,7 +2475,10 @@ namespace Unseen.Environment
             Debug.Log($"[Unseen] tallest structure {tallest:0.0} m; spirit forest stands " +
                       $"{Mathf.Max(wanted, clearing):0.0} m");
 
-            forest.Build(inner, Mathf.Max(wanted, clearing), _bamboo, _bambooMass, _foliage);
+            GreyboxMaterialSet set = MaterialSet != null ? MaterialSet : GreyboxMaterialSet.Load();
+            Material tuft = set != null && set.BambooLeaf != null ? set.BambooLeaf : _foliage;
+
+            forest.Build(inner, Mathf.Max(wanted, clearing), _bamboo, _bambooMass, tuft);
         }
 
         /// <summary>Height multiple, read from config so the forest and the rules agree.</summary>

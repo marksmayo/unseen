@@ -74,6 +74,11 @@ namespace Unseen.Environment
                  "impenetrable rather than as a hedge. Falls back to Foliage.")]
         public Material BambooMass;
 
+        [Tooltip("Leaf tufts on the spirit forest's culms. Between the dark wall behind them and " +
+                 "full-brightness foliage: at full brightness they read as white flowers against " +
+                 "the wall, and at the wall's own tone they vanish into it.")]
+        public Material BambooLeaf;
+
         [Tooltip("Shoji panels and lantern shells.")]
         public Material Paper;
 

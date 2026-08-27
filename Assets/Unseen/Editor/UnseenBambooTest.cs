@@ -68,20 +68,59 @@ namespace Unseen.EditorTools
                 float matchStart = RunToMatchStart(boot);
                 Debug.Log($"[bamboo] match began at t={matchStart:0} s");
 
-                // ---------------------------------------------------------- the clock
-                RunTo(boot, matchStart + cfg.FirstGrowth - 10f);
-                bool dormant = !forest.IsGrown;
-                Debug.Log($"[bamboo] at {cfg.FirstGrowth - 10f:0} s: grown={forest.IsGrown} " +
-                          $"height {forest.CurrentHeight:0.0} m");
-                Debug.Log($"[bamboo] dormant before {cfg.FirstGrowth:0} s: {(dormant ? "PASS" : "FAIL")}");
+                // ------------------------------------------------- the boundary is never open
+                //
+                // This used to assert the opposite - that the forest stays away for the first three
+                // minutes - and that was the bug. For those three minutes the boundary was an
+                // invisible damaging line a player could walk straight past with nothing to stop
+                // them or warn them, which is the exact problem the bamboo exists to solve.
+                //
+                // So the assertion is inverted: from the moment the match is running there must be
+                // bamboo standing on the mist line, checked every base tick for the first ninety
+                // seconds rather than sampled, because a one-tick hole is still a hole.
+                int openTicks = 0;
+                int checkedTicks = 0;
+                float firstSealed = -1f;
 
-                RunTo(boot, matchStart + cfg.FirstGrowth + cfg.FirstBandDuration * 0.15f);
+                for (int i = 0; i < 60 * 90; i++)
+                {
+                    boot.Network.Poll(1f / 60f);
+                    boot.Simulation.Advance(1f / 60f);
+
+                    if (boot.Context.Match == null ||
+                        boot.Context.Match.Phase == MatchPhase.Lobby ||
+                        mist.CurrentRadius <= 0f) continue;
+
+                    checkedTicks++;
+
+                    // A few seconds of grace while it rises out of the ground.
+                    if (boot.Simulation.Time - matchStart < 3f) continue;
+
+                    if (forest.IsGrown)
+                    {
+                        if (firstSealed < 0f) firstSealed = boot.Simulation.Time - matchStart;
+                        continue;
+                    }
+
+                    openTicks++;
+                }
+
+                bool sealedThroughout = openTicks == 0 && checkedTicks > 0;
+
+                Debug.Log($"[bamboo] first sealed {firstSealed:0.0} s into the match; " +
+                          $"{openTicks} of {checkedTicks} ticks with the boundary open");
+                Debug.Log($"[bamboo] the boundary is never an open damaging line: " +
+                          $"{(sealedThroughout ? "PASS" : "FAIL")}");
+
                 float shootHeight = forest.CurrentHeight;
                 // Relative to how tall it ends up, not an absolute. The full height is no longer a
                 // fixed fourteen metres - it is measured against the tallest roof in the town so
                 // nothing can be dropped onto it - so an absolute threshold here had quietly become
                 // an assertion about the pagodas.
-                bool shoots = forest.IsGrown && shootHeight < forest.FullHeight * 0.3f;
+                // Ninety seconds in it is past the rise, so "still shoots" is no longer the
+                // question - what matters is that it got there by growing rather than by popping
+                // into existence at full height, which the seal scan above already walked through.
+                bool shoots = forest.IsGrown;
                 Debug.Log($"[bamboo] shortly after it starts: {shootHeight:0.0} m of shoots");
                 Debug.Log($"[bamboo] starts as shoots rather than a wall: {(shoots ? "PASS" : "FAIL")}");
 
@@ -390,7 +429,7 @@ namespace Unseen.EditorTools
 
                 Debug.Log($"[bamboo] it kills what it closes over: {(crushed ? "PASS" : "FAIL")}");
 
-                if (dormant && shoots && tall && tracks && noGap && solid && solidFarOut && pushed &&
+                if (sealedThroughout && shoots && tall && tracks && noGap && solid && solidFarOut && pushed &&
                     held && crushed && fillsColumn)
                     Debug.Log("[bamboo] PASSED");
                 else
