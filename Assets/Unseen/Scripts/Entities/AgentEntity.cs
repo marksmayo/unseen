@@ -82,6 +82,19 @@ namespace Unseen.Entities
 
         public int Kills { get; internal set; }
 
+        /// <summary>
+        /// What finally did it, and who was holding it.
+        ///
+        /// Kept on the agent rather than derived from the combat event stream, because the results
+        /// table has to be readable by someone who joined late, reconnected, or simply dropped the
+        /// packet a death event travelled in. Only meaningful once <see cref="Placement"/> is
+        /// non-zero and the agent is dead.
+        /// </summary>
+        public DamageKind DeathCause { get; internal set; }
+
+        /// <summary>Who landed the fatal blow, or None for the mist, a fall, or drowning.</summary>
+        public AgentId Killer { get; internal set; }
+
         /// <summary>Targets resolved this tick. Rebuilt by the interest manager every base tick.</summary>
         public readonly List<VisibleTarget> Visible = new List<VisibleTarget>(24);
 
@@ -185,6 +198,8 @@ namespace Unseen.Entities
             StealthIndex = 0f;
             Placement = 0;
             Kills = 0;
+            DeathCause = DamageKind.Melee;
+            Killer = AgentId.None;
             IsHot = false;
             HotUntil = 0f;
             Intent = MoveIntent.Idle;

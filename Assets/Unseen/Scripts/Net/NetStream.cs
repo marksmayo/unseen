@@ -90,6 +90,25 @@ namespace Unseen.Net
         }
 
         /// <summary>Writes a world position quantised to the configured step.</summary>
+        /// <summary>
+        /// A short name, length-prefixed. Truncated at 24 characters and forced to printable
+        /// ASCII, because the only strings this protocol carries are display names and a name is
+        /// not a channel for arbitrary payloads.
+        /// </summary>
+        public void WriteString(string value)
+        {
+            if (string.IsNullOrEmpty(value)) { WriteByte(0); return; }
+
+            int count = value.Length < 24 ? value.Length : 24;
+            WriteByte((byte)count);
+
+            for (int i = 0; i < count; i++)
+            {
+                char c = value[i];
+                WriteByte(c < 32 || c > 126 ? (byte)'?' : (byte)c);
+            }
+        }
+
         public void WritePosition(float3 position, float quantum)
         {
             float inv = 1f / math.max(quantum, 0.0001f);
@@ -155,6 +174,16 @@ namespace Unseen.Net
             float y = ReadInt() * quantum;
             float z = ReadInt() * quantum;
             return new float3(x, y, z);
+        }
+
+        public string ReadString()
+        {
+            int count = ReadByte();
+            if (count == 0) return string.Empty;
+
+            var chars = new char[count];
+            for (int i = 0; i < count; i++) chars[i] = (char)ReadByte();
+            return new string(chars);
         }
 
         public float3 ReadDirection()

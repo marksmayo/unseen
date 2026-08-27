@@ -18,6 +18,32 @@ namespace Unseen.Net
         public float Confidence;
     }
 
+    /// <summary>
+    /// One player's line in the end-of-match table: where they finished, how many they took with
+    /// them, and how they went out.
+    /// </summary>
+    public struct Standing
+    {
+        public AgentId Id;
+        public string Name;
+        public ushort Placement;
+        public ushort Kills;
+
+        /// <summary>A <see cref="DamageKind"/>, or <see cref="Survived"/> if they never died.</summary>
+        public byte Cause;
+
+        /// <summary>Who did it, or None for the mist, a fall, or drowning.</summary>
+        public AgentId Killer;
+
+        /// <summary>
+        /// Sentinel for "still standing when the match ended". Deliberately outside the DamageKind
+        /// range rather than a parallel bool, so a row cannot claim both at once.
+        /// </summary>
+        public const byte Survived = 255;
+
+        public bool Died => Cause != Survived;
+    }
+
     /// <summary>One decoded snapshot. Reused every frame so the client allocates nothing steady-state.</summary>
     public sealed class SnapshotData
     {
@@ -61,12 +87,19 @@ namespace Unseen.Net
         public ushort SelfPlacement;
         public ushort SelfKills;
 
+        /// <summary>
+        /// The whole roster's results. Populated only during PostMatch; empty at every other time.
+        /// Unsorted on the wire - the client orders it for display.
+        /// </summary>
+        public readonly List<Standing> Standings = new List<Standing>(64);
+
         public void Clear()
         {
             Entities.Clear();
             Sounds.Clear();
             Combat.Clear();
             World.Clear();
+            Standings.Clear();
         }
     }
 
@@ -91,7 +124,10 @@ namespace Unseen.Net
 
     public static class SnapshotProtocol
     {
-        public const byte Version = 1;
+        // Bumped when the standings table was appended. A client on the old version reading a new
+        // snapshot would run off the end of the buffer partway through the table and decode
+        // garbage, so the handshake rejects the mismatch instead.
+        public const byte Version = 2;
 
         /// <summary>
         /// The three utility slots and the set of things in reach.
@@ -230,6 +266,53 @@ namespace Unseen.Net
             writer.WriteFloat(ctx.Match != null ? ctx.Match.SecondsToPhaseEnd : 0f);
             writer.WriteUShort((ushort)math.min(self.Placement, ushort.MaxValue));
             writer.WriteUShort((ushort)math.min(self.Kills, ushort.MaxValue));
+
+            EncodeStandings(writer, ctx);
+        }
+
+        /// <summary>
+        /// The full results table, once the match is over.
+        ///
+        /// Repeated in every post-match snapshot rather than sent once when the match ends. It is
+        /// about a kilobyte for a full lobby and it is only on the wire for the twelve seconds
+        /// between matches, which is a cheap price for a table that is still correct for a player
+        /// who reconnected, joined late, or dropped the one packet a single end-of-match message
+        /// would have travelled in.
+        ///
+        /// Sent unsorted. Ordering is presentation, and the client is the thing presenting it.
+        /// </summary>
+        private static void EncodeStandings(NetWriter writer, SimContext ctx)
+        {
+            bool ended = ctx.Match != null && ctx.Match.Phase == BattleRoyale.MatchPhase.PostMatch;
+
+            if (!ended)
+            {
+                writer.WriteByte(0);
+                return;
+            }
+
+            int rows = 0;
+            for (int i = 0; i < ctx.Entities.Count && rows < 255; i++)
+                if (ctx.Entities.BySlot(i) != null) rows++;
+
+            writer.WriteByte((byte)rows);
+
+            int written = 0;
+            for (int i = 0; i < ctx.Entities.Count && written < rows; i++)
+            {
+                AgentEntity agent = ctx.Entities.BySlot(i);
+                if (agent == null) continue;
+                written++;
+
+                bool alive = agent.IsAlive;
+
+                writer.WriteInt(agent.Id.Value);
+                writer.WriteString(agent.DisplayName);
+                writer.WriteUShort((ushort)math.min(agent.Placement, ushort.MaxValue));
+                writer.WriteUShort((ushort)math.min(agent.Kills, ushort.MaxValue));
+                writer.WriteByte(alive ? Standing.Survived : (byte)agent.DeathCause);
+                writer.WriteInt(alive ? AgentId.None.Value : agent.Killer.Value);
+            }
         }
 
         public static bool DecodeSnapshot(NetReader reader, SnapshotData into, float quantum)
@@ -324,6 +407,21 @@ namespace Unseen.Net
             into.PhaseSecondsRemaining = reader.ReadFloat();
             into.SelfPlacement = reader.ReadUShort();
             into.SelfKills = reader.ReadUShort();
+
+            int standings = reader.ReadByte();
+            for (int i = 0; i < standings; i++)
+            {
+                into.Standings.Add(new Standing
+                {
+                    Id = new AgentId(reader.ReadInt()),
+                    Name = reader.ReadString(),
+                    Placement = reader.ReadUShort(),
+                    Kills = reader.ReadUShort(),
+                    Cause = reader.ReadByte(),
+                    Killer = new AgentId(reader.ReadInt())
+                });
+            }
+
             return true;
         }
 

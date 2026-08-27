@@ -612,6 +612,13 @@ namespace Unseen.Combat
             AgentEntity killer = Ctx.Entities.Get(info.Attacker);
             if (killer != null && killer != victim) killer.Kills++;
 
+            // The fatal blow is the only place both facts are known at once. Recorded here rather
+            // than reconstructed afterwards: the results table reports how each player went out,
+            // and "the last damage they took" is not the same thing as "what killed them" once
+            // the mist and a blade are both working on the same body.
+            victim.DeathCause = info.Kind;
+            victim.Killer = killer != null && killer != victim ? killer.Id : AgentId.None;
+
             Ctx.Match?.NotifyDeath(victim, killer);
             Ctx.Sight?.Forget(victim.Id);
         }

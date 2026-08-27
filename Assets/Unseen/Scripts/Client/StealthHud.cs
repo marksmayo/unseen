@@ -272,52 +272,210 @@ namespace Unseen.Client
         /// during the post-match window - would never find out it had won. Result state is cheap
         /// enough to send with every snapshot, so it is.
         /// </summary>
+        /// <summary>
+        /// The end-of-match table: where everyone finished, how many they took with them, and how
+        /// they went out.
+        ///
+        /// Sixty-four rows will not fit on a screen and would not be worth reading if they did, so
+        /// the table shows the top of the board and then guarantees the local player a line -
+        /// finishing forty-first is the result that most needs reporting, and it is exactly the one
+        /// a fixed top-ten would drop.
+        /// </summary>
         private void DrawResults()
         {
             if (_snapshot == null) return;
             if ((BattleRoyale.MatchPhase)_snapshot.MatchPhase != BattleRoyale.MatchPhase.PostMatch) return;
 
             bool won = _snapshot.Winner.IsValid && _snapshot.Winner == _snapshot.SelfId;
-
-            var panel = new Rect(Screen.width * 0.5f - 230f, Screen.height * 0.28f, 460f, 168f);
-            Fill(panel, new Color(0f, 0f, 0f, 0.78f));
-
             var accent = won ? new Color(1f, 0.86f, 0.45f) : new Color(0.78f, 0.79f, 0.84f);
+
+            BuildBoard();
+
+            const float rowHeight = 21f;
+            float width = 620f;
+            float header = 92f;
+            float footer = 54f;
+            float height = header + _board.Count * rowHeight + footer;
+
+            var panel = new Rect(Screen.width * 0.5f - width * 0.5f,
+                Mathf.Max(24f, Screen.height * 0.5f - height * 0.5f), width, height);
+
+            Fill(panel, new Color(0f, 0f, 0f, 0.82f));
             Fill(new Rect(panel.x, panel.y, panel.width, 3f), accent);
 
+            float left = panel.x + 22f;
+            float inner = panel.width - 44f;
+
             GUI.color = accent;
-            GUI.Label(new Rect(panel.x + 24f, panel.y + 16f, panel.width - 48f, 32f),
+            GUI.Label(new Rect(left, panel.y + 14f, inner, 32f),
                 won ? "THE LAST UNSEEN" : "MATCH OVER", _label);
             GUI.color = Color.white;
 
-            // Placement reads better as a rank than a raw number, and zero means the match ended
-            // while this player was still alive but not the winner - which only happens if the
-            // match was cut short, so it is reported honestly rather than shown as "#0".
+            // The player's own line, spelled out above the table. It is the one fact they came to
+            // this screen for and it should not have to be found in a list.
             string placement = _snapshot.SelfPlacement > 0
-                ? $"placed #{_snapshot.SelfPlacement}"
-                : won ? "placed #1" : "still standing";
+                ? $"#{_snapshot.SelfPlacement}"
+                : won ? "#1" : "still standing";
 
-            GUI.Label(new Rect(panel.x + 24f, panel.y + 52f, panel.width - 48f, 22f),
-                $"{placement}    {_snapshot.SelfKills} eliminated", _small);
+            GUI.color = new Color(0.72f, 0.74f, 0.8f);
+            GUI.Label(new Rect(left, panel.y + 40f, inner, 20f),
+                $"you finished {placement} with {_snapshot.SelfKills} " +
+                (_snapshot.SelfKills == 1 ? "elimination" : "eliminations"), _small);
+            GUI.color = Color.white;
 
-            if (_ownDeath != null)
-                GUI.Label(new Rect(panel.x + 24f, panel.y + 76f, panel.width - 48f, 22f),
-                    _ownDeath, _small);
+            // Column heads.
+            float y = panel.y + 66f;
+            GUI.color = new Color(0.55f, 0.57f, 0.63f);
+            GUI.Label(new Rect(left, y, 40f, 18f), "#", _small);
+            GUI.Label(new Rect(left + 44f, y, 180f, 18f), "ninja", _small);
+            GUI.Label(new Rect(left + 232f, y, 60f, 18f), "kills", _small);
+            GUI.Label(new Rect(left + 300f, y, inner - 300f, 18f), "fate", _small);
+            GUI.color = Color.white;
+
+            Fill(new Rect(left, y + 19f, inner, 1f), new Color(1f, 1f, 1f, 0.14f));
+
+            y = panel.y + header;
+
+            for (int i = 0; i < _board.Count; i++)
+            {
+                Standing row = _board[i];
+                bool self = row.Id == _snapshot.SelfId;
+                bool first = row.Placement == 1;
+
+                var line = new Rect(left - 6f, y, inner + 12f, rowHeight);
+
+                if (self) Fill(line, new Color(0.36f, 0.5f, 0.72f, 0.34f));
+                else if (i % 2 == 1) Fill(line, new Color(1f, 1f, 1f, 0.035f));
+
+                GUI.color = first ? new Color(1f, 0.86f, 0.45f)
+                    : self ? Color.white
+                    : new Color(0.82f, 0.83f, 0.87f);
+
+                GUI.Label(new Rect(left, y + 2f, 40f, 18f),
+                    row.Placement > 0 ? $"{row.Placement}" : "-", _small);
+
+                GUI.Label(new Rect(left + 44f, y + 2f, 180f, 18f),
+                    string.IsNullOrEmpty(row.Name) ? "ninja" : row.Name, _small);
+
+                GUI.Label(new Rect(left + 232f, y + 2f, 60f, 18f), $"{row.Kills}", _small);
+
+                GUI.color = first ? new Color(1f, 0.86f, 0.45f) : new Color(0.66f, 0.68f, 0.73f);
+                GUI.Label(new Rect(left + 300f, y + 2f, inner - 300f, 18f), FateText(row), _small);
+
+                GUI.color = Color.white;
+                y += rowHeight;
+            }
 
             float countdown = Mathf.Max(0f, _snapshot.PhaseSecondsRemaining);
-            GUI.Label(new Rect(panel.x + 24f, panel.y + 112f, panel.width - 48f, 22f),
-                countdown > 0f
-                    ? $"next match in {countdown:0}s"
-                    : "next match starting",
-                _small);
+            GUI.color = new Color(0.72f, 0.74f, 0.8f);
+            GUI.Label(new Rect(left, panel.yMax - 44f, inner, 20f),
+                countdown > 0f ? $"next match in {countdown:0}s" : "next match starting", _small);
+            GUI.color = Color.white;
 
-            // A progress bar for the countdown, so the wait has a visible end.
-            var bar = new Rect(panel.x + 24f, panel.y + 138f, panel.width - 48f, 6f);
+            var bar = new Rect(left, panel.yMax - 20f, inner, 5f);
             Fill(bar, new Color(1f, 1f, 1f, 0.12f));
 
             float span = Mathf.Max(1f, PostMatchSpan);
             Fill(new Rect(bar.x, bar.y, bar.width * Mathf.Clamp01(1f - countdown / span), bar.height),
                 accent);
+        }
+
+        private readonly List<Standing> _board = new List<Standing>(24);
+        private readonly List<Standing> _sorted = new List<Standing>(64);
+
+        [Tooltip("Rows of the results table shown from the top of the board, before the local " +
+                 "player's own row is guaranteed a place.")]
+        public int ResultRows = 10;
+
+        /// <summary>
+        /// Orders the roster and picks the rows worth showing. Rebuilt each frame from the snapshot
+        /// because IMGUI has nowhere else to keep it, and both lists are reused so a screen that is
+        /// up for twelve seconds does not allocate seven hundred times.
+        /// </summary>
+        private void BuildBoard()
+        {
+            _sorted.Clear();
+            _sorted.AddRange(_snapshot.Standings);
+
+            // Placement ascending, with anyone still standing treated as the winner - which is what
+            // they are, since the match only ends when one is left. Kills break ties so a lobby cut
+            // short still reads sensibly rather than in slot order.
+            _sorted.Sort((a, b) =>
+            {
+                int pa = a.Placement == 0 ? 1 : a.Placement;
+                int pb = b.Placement == 0 ? 1 : b.Placement;
+                if (pa != pb) return pa.CompareTo(pb);
+                return b.Kills.CompareTo(a.Kills);
+            });
+
+            _board.Clear();
+
+            int take = Mathf.Clamp(ResultRows, 3, 24);
+            bool selfShown = false;
+
+            for (int i = 0; i < _sorted.Count && _board.Count < take; i++)
+            {
+                _board.Add(_sorted[i]);
+                if (_sorted[i].Id == _snapshot.SelfId) selfShown = true;
+            }
+
+            if (selfShown) return;
+
+            // The local player's own row, appended below the cut. Placing forty-first is the result
+            // that most needs reporting and is exactly the one a fixed top-ten would drop.
+            for (int i = take; i < _sorted.Count; i++)
+            {
+                if (_sorted[i].Id != _snapshot.SelfId) continue;
+                _board.Add(_sorted[i]);
+                return;
+            }
+        }
+
+        /// <summary>
+        /// How somebody went out, in words. Named for the thing that did it rather than the damage
+        /// type, because "SpiritForest" is a code identifier and "taken by the forest" is what
+        /// happened.
+        /// </summary>
+        private string FateText(in Standing row)
+        {
+            if (!row.Died) return row.Placement == 1 ? "survived" : "still standing";
+
+            string by = null;
+            if (row.Killer.IsValid)
+            {
+                by = NameOf(row.Killer);
+                if (row.Killer == _snapshot.SelfId) by = "you";
+            }
+
+            switch ((DamageKind)row.Cause)
+            {
+                case DamageKind.Takedown:
+                    return by != null ? $"throat cut by {by}" : "cut down from behind";
+                case DamageKind.Melee:
+                    return by != null ? $"cut down by {by}" : "cut down";
+                case DamageKind.Thrown:
+                    return by != null ? $"shuriken from {by}" : "took a blade";
+                case DamageKind.Fall:
+                    return "fell";
+                case DamageKind.Mist:
+                    return "lost to the mist";
+                case DamageKind.SpiritForest:
+                    return "taken by the forest";
+                case DamageKind.Drowning:
+                    return "drowned";
+                default:
+                    return by != null ? $"eliminated by {by}" : "eliminated";
+            }
+        }
+
+        /// <summary>A name for an id, out of the table itself - the only roster the client has.</summary>
+        private string NameOf(AgentId id)
+        {
+            for (int i = 0; i < _sorted.Count; i++)
+                if (_sorted[i].Id == id)
+                    return string.IsNullOrEmpty(_sorted[i].Name) ? "a ninja" : _sorted[i].Name;
+
+            return "a ninja";
         }
 
         [Tooltip("Expected post-match window, used only to scale the countdown bar.")]
