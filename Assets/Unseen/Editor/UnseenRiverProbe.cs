@@ -98,9 +98,23 @@ namespace Unseen.EditorTools
                           $"{(shelfShallower ? "PASS" : "FAIL")}");
 
                 // ---------------------------------------------------------- it slows you down
-                float dryRun = Traverse(boot, subject, new float3(centreX + 120f, 1f, 40f));
+                //
+                // The dry run needs somewhere genuinely dry, and it used to be written in as
+                // "a hundred and twenty metres east of the channel". The castle lake was then built
+                // across that spot - it spans a hundred and twenty metres of the middle of the map -
+                // so the control run was wading too, both figures came out at exactly 4.8 m, and the
+                // probe reported that wading is no slower than walking. The wade penalty was fine
+                // the whole time; the dry ground had gone.
+                if (!FindDryGround(out Vector3 dry))
+                {
+                    Debug.LogError("[river] found nowhere dry to run the control on");
+                    return;
+                }
+
+                float dryRun = Traverse(boot, subject, new float3(dry.x, dry.y + 1f, dry.z));
                 float wetRun = Traverse(boot, subject, new float3(centreX, surface + 3f, 40f));
 
+                Debug.Log($"[river] control run on dry land at {dry}");
                 Debug.Log($"[river] 3 s of running: {dryRun:0.0} m on the street, {wetRun:0.0} m in the water");
                 bool slower = wetRun < dryRun * 0.75f;
                 Debug.Log($"[river] wading is slower than walking: {(slower ? "PASS" : "FAIL")}");
@@ -152,6 +166,43 @@ namespace Unseen.EditorTools
         /// The idle intent is reapplied after each advance because ServerInputSystem overwrites
         /// Intent from the network every tick, and BotDirector fills it in for bots.
         /// </summary>
+        /// <summary>
+        /// Somewhere flat, open and with no water over it.
+        ///
+        /// Asked of the world rather than written down, so this cannot silently end up underneath
+        /// the next body of water somebody adds to the middle of the map.
+        /// </summary>
+        private static bool FindDryGround(out Vector3 spot)
+        {
+            spot = Vector3.zero;
+
+            for (int i = 0; i < 400; i++)
+            {
+                float angle = i * 41f * Mathf.Deg2Rad;
+                float reach = 40f + i * 1.4f;
+                var above = new Vector3(Mathf.Sin(angle) * reach, 80f, Mathf.Cos(angle) * reach);
+
+                if (!Physics.Raycast(above, Vector3.down, out RaycastHit ground, 140f,
+                        UnseenLayers.WorldGeometry, QueryTriggerInteraction.Ignore))
+                    continue;
+
+                if (ground.normal.y < 0.98f) continue;
+
+                var feet = new float3(ground.point.x, ground.point.y + 0.1f, ground.point.z);
+                if (WaterVolume.DepthAt(feet) > 0.01f) continue;
+
+                // And clear ahead, or the control run measures a wall rather than a stride.
+                if (Physics.Raycast(ground.point + Vector3.up * 1.2f, Vector3.forward, 14f,
+                        UnseenLayers.WorldGeometry, QueryTriggerInteraction.Ignore))
+                    continue;
+
+                spot = ground.point;
+                return true;
+            }
+
+            return false;
+        }
+
         private static void Settle(UnseenBootstrap boot, AgentEntity agent, float3 at)
         {
             const float step = 1f / 60f;

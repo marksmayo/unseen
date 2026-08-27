@@ -25,9 +25,13 @@ Material:
     m_TexEnvs: []
     m_Ints: []
     m_Floats:
-    - _Density: 1.4
-    - _HeightFade: 24
-    - _Speed: 0.35
+    - _Density: 1.5
+    - _GroundFade: 5
+    - _HeightFade: 34
+    - _NearFade: 14
+    - _Scale: 0.035
+    - _Speed: 0.5
+    - _Warp: 3.2
     m_Colors:
     - _FarColor: {r: 0.45, g: 0.2, b: 0.55, a: 0.85}
     - _NearColor: {r: 0.12, g: 0.1, b: 0.2, a: 0.05}

@@ -491,13 +491,13 @@ namespace Unseen.AI
             //
             // Jumping is not a solution so much as an attempt. A bank is usually a step or a kerb,
             // and a bot pressed against one with the jump held will often get up it; the ones that
-            // do not are no worse off than they were. Sprinting too, because the depth penalty on
-            // wading makes the climb out slow enough to matter.
-            if (Environment.WaterVolume.DepthAt(_agent.Position) > 0.9f)
-            {
-                intent.Jump = true;
-                intent.Sprint = true;
-            }
+            // do not are no worse off than they were.
+            //
+            // Jump only. Sprinting was tried alongside it and has to stay out: the wade penalty is
+            // a designed cost - crossing deep water is meant to be slow - and sprinting cancels it
+            // almost exactly. The river probe caught it immediately, reporting 4.8 m of progress in
+            // three seconds both on the street and in the channel, which is the penalty gone.
+            if (Environment.WaterVolume.DepthAt(_agent.Position) > 0.9f) intent.Jump = true;
         }
 
         /// <summary>Points the bot at something above it and pulls the trigger.</summary>

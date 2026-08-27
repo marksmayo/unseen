@@ -87,14 +87,21 @@ namespace Unseen.Client
         {
             if (!GameSettings.Current.ShowHud) return;
 
-            DrawVitals();
+            // Nothing about your own body once you no longer have one. A corpse reporting that it
+            // is 81% hidden with three empty utility slots is three readouts describing something
+            // that is not there, over the top of the match you are now watching.
+            if (_ownDeath == null)
+            {
+                DrawVitals();
+                DrawUtilityBar();
+            }
+
             DrawMatchState();
             DrawGuardZone();
             DrawEliminations();
             DrawResults();
             DrawCrosshair();
             DrawPrompts();
-            DrawUtilityBar();
             DrawPingRing();
 
             if (ShowDebug) DrawDebug();
@@ -151,7 +158,7 @@ namespace Unseen.Client
         {
             if (_snapshot == null) return;
 
-            var panel = new Rect(Screen.width - 246f, 232f, 224f, 74f);
+            var panel = new Rect(Screen.width - 262f, 232f, 240f, 74f);
             UnseenUi.Panel(panel);
 
             float x = panel.x + 16f;
@@ -170,8 +177,11 @@ namespace Unseen.Client
 
             UnseenUi.Fill(new Rect(x, panel.y + 56f, w, 1f), new Color(1f, 1f, 1f, 0.07f));
 
+            // Named for the thing the player can see, not the system behind it. "mist 2" meant
+            // nothing to anybody who had not read the zone controller; the wall closing in on them
+            // is a forest of bamboo, and its radius is the number that matters.
             UnseenUi.Say(new Rect(x, panel.y + 56f, w, 18f),
-                $"mist {_snapshot.ZoneStage}", UnseenUi.Caption, UnseenUi.Faint);
+                "spirit forest radius", UnseenUi.Caption, UnseenUi.Faint);
 
             UnseenUi.Say(new Rect(x, panel.y + 56f, w, 18f),
                 $"{_snapshot.ZoneRadius:0} m", UnseenUi.Number, UnseenUi.Muted);
@@ -288,7 +298,11 @@ namespace Unseen.Client
             if (_ownDeath == null) return;
 
             // Your own death stays up. It is the end of your match, not a feed item.
-            var banner = new Rect(Screen.width * 0.5f - 230f, Screen.height * 0.30f, 460f, 104f);
+            //
+            // Along the bottom rather than across the middle. It used to sit at a third of the way
+            // down, which is exactly where whoever you are spectating is - so the one screen you
+            // are stuck watching for a minute had a box over the middle of it.
+            var banner = new Rect(Screen.width * 0.5f - 230f, Screen.height - 170f, 460f, 104f);
 
             UnseenUi.Panel(banner);
             UnseenUi.Accented(banner, UnseenUi.Blood);

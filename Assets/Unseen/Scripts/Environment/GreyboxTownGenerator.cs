@@ -1165,10 +1165,20 @@ namespace Unseen.Environment
                     float z = Mathf.Lerp(-length * 0.49f, length * 0.49f, i / (float)Mathf.Max(1, bands - 1));
                     float run = length / bands * 0.94f;
 
-                    // Damp stone right at the water, thinning as it dries upward.
+                    // The embankment face only exists between the water and the towpath lip.
+                    // Anything placed above that line is hanging in the air with no wall behind
+                    // it, which is precisely what the course below used to do.
+                    float wallTop = waterTop + TowpathFreeboard;
+
+                    // Damp stone right at the water, thinning as it dries upward - and stopping
+                    // under the lip rather than growing past it.
+                    float mossHeight = Mathf.Min(
+                        0.65f + (float)_random.NextDouble() * 0.4f,
+                        (wallTop - waterTop) * 1.6f);
+
                     Detail(river, $"Moss_{side}_{i}",
-                        new Vector3(face, waterTop + 0.2f, z),
-                        new Vector3(0.16f, 0.65f + (float)_random.NextDouble() * 0.4f, run),
+                        new Vector3(face, waterTop + mossHeight * 0.35f, z),
+                        new Vector3(0.16f, mossHeight, run),
                         _moss);
 
                     // One course of masonry above it, in the bank's OWN stone and barely proud of
@@ -1178,7 +1188,14 @@ namespace Unseen.Environment
                     // black beams bolted to the embankment - that material is now a genuinely dark
                     // wet cobble, and against pale dry masonry it is nearly a silhouette. A course
                     // is a joint line, not a shelf.
-                    float y = waterTop + 1.05f;
+                    // Tucked just under the towpath lip.
+                    //
+                    // This was at waterTop + 1.05, and the wall it was supposed to be a joint in
+                    // stops at waterTop + 0.55 - so a thirteen metre pale bar hung half a metre
+                    // above the bank down both sides of the river, all the way along it, with
+                    // nothing holding it up. Reported as "random planks that go to nowhere", and
+                    // that is exactly what it was.
+                    float y = wallTop - 0.14f;
                     float stagger = i % 2 == 0 ? 0.4f : -0.4f;
 
                     Detail(river, $"Course_{side}_{i}",
@@ -1482,7 +1499,72 @@ namespace Unseen.Environment
                 if (first == null) first = plank;
             }
 
+            BuildDeckSoffit(bridge, z, span, width, baseY, segments);
+
             return first;
+        }
+
+        /// <summary>
+        /// The continuous underside of an arched deck.
+        ///
+        /// The deck is twenty-four stepped boxes, which is the right way to build it - each riser
+        /// stays under the character controller's step offset, so the bridge is walked over rather
+        /// than bumped into, and it needs no bespoke mesh or collider. Seen from underneath at close
+        /// range, though, a staircase is what it looks like: a row of angled boards at different
+        /// heights with the sky between them, which reads as loose planks going nowhere.
+        ///
+        /// So the underside gets closed with segments that each start where the last one ended -
+        /// the same fix the roof eaves needed, and for the same reason. Sampling a curve leaves
+        /// gaps; chaining chords cannot.
+        ///
+        /// Renderer-only. The deck above is what anybody stands on, and adding collidable geometry
+        /// under a bridge would put a lip exactly where people drop off the side of it.
+        /// </summary>
+        private void BuildDeckSoffit(Transform bridge, float z, float span, float width,
+            float baseY, int segments)
+        {
+            float x0 = _riverCentreX - span * 0.5f;
+            float x1 = _riverCentreX + span * 0.5f;
+
+            // Half a metre below the walking surface, which is where the deck boxes bottom out.
+            const float drop = 0.52f;
+
+            Vector3 previous = new Vector3(x0, baseY + ArchHeight(0f) - drop, z);
+
+            for (int i = 1; i <= segments; i++)
+            {
+                float t = i / (float)segments;
+                var point = new Vector3(Mathf.Lerp(x0, x1, t), baseY + ArchHeight(t) - drop, z);
+
+                Vector3 run = point - previous;
+                float length = run.magnitude;
+
+                if (length > 0.001f)
+                {
+                    Transform panel = Detail(bridge, $"Soffit_{i}",
+                        (previous + point) * 0.5f,
+                        new Vector3(length * 1.2f, 0.16f, width * 0.98f),
+                        _darkTimber);
+
+                    panel.localRotation = Quaternion.Euler(0f, 0f,
+                        Mathf.Atan2(run.y, run.x) * Mathf.Rad2Deg);
+                }
+
+                previous = point;
+            }
+
+            // Cross beams under the soffit, which is what an arched timber bridge actually carries
+            // its deck on and what the eye expects to find when it looks up at one.
+            int beams = Mathf.Max(3, segments / 4);
+
+            for (int i = 0; i < beams; i++)
+            {
+                float t = (i + 0.5f) / beams;
+
+                Detail(bridge, $"DeckBeam_{i}",
+                    new Vector3(Mathf.Lerp(x0, x1, t), baseY + ArchHeight(t) - drop - 0.16f, z),
+                    new Vector3(0.3f, 0.22f, width * 1.02f), _darkTimber);
+            }
         }
 
         // ---------------------------------------------------------------- pagoda
