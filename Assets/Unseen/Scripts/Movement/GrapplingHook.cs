@@ -10,8 +10,21 @@ namespace Unseen.Movement
     /// </summary>
     public sealed class GrapplingHook : MonoBehaviour
     {
-        [Tooltip("Rope renderer, enabled while attached.")]
+        [Tooltip("The visible rope, enabled while attached. Built on demand if nothing has " +
+                 "assigned one - see BuildRope.")]
         public LineRenderer Rope;
+
+        [Tooltip("Head on the end of the rope, parked at the anchor while it is attached.")]
+        public Transform HookHead;
+
+        [Tooltip("Thickness of the rope in metres.")]
+        public float RopeWidth = 0.035f;
+
+        /// <summary>Slack in the rope at rest, in metres. A rope under load is straight.</summary>
+        private const float Sag = 0.55f;
+
+        /// <summary>Points along the rope. Two would be a taut line; a rope hangs.</summary>
+        private const int RopeSegments = 12;
 
         public bool Attached { get; private set; }
         public float3 Anchor { get; private set; }
@@ -23,6 +36,11 @@ namespace Unseen.Movement
         private void Awake()
         {
             if (Rope == null) Rope = GetComponentInChildren<LineRenderer>();
+
+            // And if there still is not one, make it. Nothing in the project ever assigned this,
+            // which is why the rope was never once visible - see BuildRope.
+            if (Rope == null) BuildRope();
+
             SetRopeVisible(false);
         }
 
@@ -186,18 +204,135 @@ namespace Unseen.Movement
             if (CooldownRemaining > 0f) CooldownRemaining = math.max(0f, CooldownRemaining - dt);
             JustFired = false;
 
-            if (Attached && Rope != null)
+            if (!Attached || Rope == null) return;
+
+            // Drawn as a hanging curve rather than a straight line between two points.
+            //
+            // Two positions is a taut wire, and a taut wire is what this looked like when it was
+            // visible at all: players appeared to be flying on nothing. A rope under tension is
+            // nearly straight but not quite, and the small sag is most of what makes it read as
+            // rope rather than as a debug line.
+            float3 from = handPosition;
+            float3 to = Anchor;
+
+            for (int i = 0; i < RopeSegments; i++)
             {
-                Rope.SetPosition(0, handPosition);
-                Rope.SetPosition(1, Anchor);
+                float t = i / (float)(RopeSegments - 1);
+                float3 point = math.lerp(from, to, t);
+
+                // A parabola, deepest in the middle, and less of it the more the rope is stretched.
+                point.y -= math.sin(t * math.PI) * Sag;
+                Rope.SetPosition(i, point);
             }
+
+            if (HookHead == null) return;
+
+            HookHead.position = Anchor;
+
+            // Pointed back down the rope, so the head looks buried in what it is holding.
+            float3 along = handPosition - Anchor;
+            if (math.lengthsq(along) > 0.0001f)
+                HookHead.rotation = Quaternion.LookRotation(math.normalize(along), Vector3.up);
+        }
+
+        /// <summary>
+        /// Builds the rope and the hook head if nothing has supplied them.
+        ///
+        /// They were never supplied. The drawing code above has been here from the start and the
+        /// LineRenderer it draws into was always null, so the rope has never once been visible and
+        /// every grapple looked like a player flying on an invisible wire. Nothing assigned it
+        /// because nothing was ever written to.
+        /// </summary>
+        private void BuildRope()
+        {
+            var host = new GameObject("GrappleRope");
+            host.transform.SetParent(transform, false);
+
+            Rope = host.AddComponent<LineRenderer>();
+            Rope.useWorldSpace = true;
+            Rope.positionCount = RopeSegments;
+            Rope.numCapVertices = 2;
+            Rope.alignment = LineAlignment.View;
+            Rope.textureMode = LineTextureMode.Tile;
+            Rope.startWidth = RopeWidth;
+            Rope.endWidth = RopeWidth * 0.8f;
+            Rope.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            Rope.receiveShadows = false;
+            Rope.enabled = false;
+
+            Rope.material = RopeMaterial();
+
+            // The head: a small dark wedge and two flukes, so there is something at the far end
+            // rather than a line stopping in mid-air.
+            var head = new GameObject("GrappleHead");
+            head.transform.SetParent(transform, false);
+            HookHead = head.transform;
+
+            AddHeadPart(head.transform, "Shank", new Vector3(0f, 0f, 0.09f),
+                new Vector3(0.05f, 0.05f, 0.18f));
+
+            for (int i = -1; i <= 1; i += 2)
+            {
+                Transform fluke = AddHeadPart(head.transform, $"Fluke_{i}",
+                    new Vector3(i * 0.055f, 0.02f, -0.03f), new Vector3(0.035f, 0.035f, 0.14f));
+                fluke.localRotation = Quaternion.Euler(28f, i * 24f, 0f);
+            }
+
+            head.SetActive(false);
+        }
+
+        private Transform AddHeadPart(Transform parent, string name, Vector3 at, Vector3 size)
+        {
+            var part = new GameObject(name);
+            part.transform.SetParent(parent, false);
+            part.transform.localPosition = at;
+            part.transform.localScale = size;
+
+            part.AddComponent<MeshFilter>().sharedMesh = Unseen.Environment.BoxMeshFactory.Get(Vector3.one, 1f);
+
+            var renderer = part.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = RopeMaterial();
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+
+            return part.transform;
+        }
+
+        private static Material _ropeMaterial;
+
+        /// <summary>
+        /// One shared unlit dark material for every rope in the match.
+        ///
+        /// Unlit on purpose: a lit line one centimetre wide, on a rope that swings through a dozen
+        /// lantern pools a second, flickers between black and white. What a rope needs to be is
+        /// consistently visible against both a night sky and a pale wall.
+        /// </summary>
+        private static Material RopeMaterial()
+        {
+            if (_ropeMaterial != null) return _ropeMaterial;
+
+            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+            if (shader == null) shader = Shader.Find("Sprites/Default");
+
+            _ropeMaterial = new Material(shader) { name = "GrappleRope" };
+
+            if (_ropeMaterial.HasProperty("_BaseColor"))
+                _ropeMaterial.SetColor("_BaseColor", new Color(0.13f, 0.11f, 0.09f));
+            if (_ropeMaterial.HasProperty("_Color"))
+                _ropeMaterial.SetColor("_Color", new Color(0.13f, 0.11f, 0.09f));
+
+            return _ropeMaterial;
         }
 
         private void SetRopeVisible(bool visible)
         {
-            if (Rope == null) return;
-            Rope.positionCount = 2;
-            Rope.enabled = visible;
+            if (Rope != null)
+            {
+                Rope.positionCount = RopeSegments;
+                Rope.enabled = visible;
+            }
+
+            if (HookHead != null) HookHead.gameObject.SetActive(visible);
         }
     }
 }

@@ -185,8 +185,24 @@ Shader "Unseen/ShojiSilhouette"
                 alpha = lerp(alpha, min(1.0, alpha + 0.35), saturate(shade));
 
                 // A sliced panel fades out around the cut so the opening reads as a hole.
-                float cut = saturate(_SliceAmount - length(input.uv - 0.5) * 1.2);
-                alpha *= 1.0 - saturate(cut * 2.0);
+                // A torn hole rather than a clean fade.
+                //
+                // The slice used to be a radial gradient, which reads as the panel becoming
+                // gradually transparent - paper cut with a blade tears, and the edge of the tear is
+                // ragged and slightly brighter where the fibres have pulled. The noise is derived
+                // from the UV so it is stable per panel and costs nothing.
+                float2 p = input.uv * 9.0;
+                float ragged = frac(sin(dot(floor(p), float2(12.9898, 78.233))) * 43758.5453);
+                ragged = lerp(0.82, 1.18, ragged);
+
+                float cut = saturate(_SliceAmount * ragged - length(input.uv - 0.5) * 1.2);
+                float hole = saturate(cut * 3.2);
+
+                // The rim of the tear: pulled fibres catch the light.
+                float rim = saturate(1.0 - abs(hole - 0.45) * 6.0) * step(0.02, _SliceAmount);
+                colour += rim * 0.22;
+
+                alpha *= 1.0 - hole;
 
                 return half4(colour, alpha);
             }
@@ -243,5 +259,9 @@ Shader "Unseen/ShojiSilhouette"
         }
     }
 
-    Fallback "Universal Render Pipeline/Unlit"
+    // No fallback. This shader's own comments warn twice that a Fallback silently substitutes an
+    // unlit shader when the subshader fails to compile, and that "is how a broken paper wall passes
+    // for a working one" - and then it kept the Fallback anyway. A magenta wall is a bug report; a
+    // quietly unlit one is a feature that looks fine and does nothing.
+    Fallback Off
 }

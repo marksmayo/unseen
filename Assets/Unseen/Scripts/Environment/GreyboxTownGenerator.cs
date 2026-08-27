@@ -2763,12 +2763,44 @@ namespace Unseen.Environment
             }
         }
 
-        /// <summary>A run of shoji panels along one axis, each an independent destructible.</summary>        /// <summary>A run of shoji panels along one axis, each an independent destructible.</summary>
+        /// <summary>
+        /// A run of shoji panels along one axis, each an independent destructible.
+        ///
+        /// The kumiko lattice is in the paper texture rather than modelled, for the reason given
+        /// where that material is built: three thousand panels times a dozen muntins is not a trade
+        /// worth making for flat regular detail. What IS worth modelling is the joinery that has
+        /// depth and catches light - the head and sill tracks the panels slide in, and a rail at the
+        /// top as well as the bottom, which is two boxes per run and one per panel.
+        /// </summary>
         private void BuildShojiRun(Transform parent, Vector3 centre, float length, bool alongX, float height)
         {
             const float panelWidth = 2.6f;
             int panels = Mathf.Max(1, Mathf.RoundToInt(length / panelWidth));
             float actual = length / panels;
+
+            // Kamoi and shikii: the grooved head and sill the panels run in. One of each for the
+            // whole run rather than one per panel, because that is what they are.
+            for (int rail = 0; rail < 2; rail++)
+            {
+                float y = rail == 0 ? -height * 0.5f + 0.09f : height * 0.44f;
+                float thick = rail == 0 ? 0.22f : 0.18f;
+
+                Vector3 railSize = alongX
+                    ? new Vector3(length, thick, 0.26f)
+                    : new Vector3(0.26f, thick, length);
+
+                Transform track = Detail(parent, $"ShojiTrack_{(alongX ? "X" : "Z")}_{rail}",
+                    centre + new Vector3(0f, y, 0f), railSize, _darkTimber);
+
+                // A shallow lip on the outer face, so the track reads as grooved rather than as a
+                // plain beam.
+                Vector3 lipSize = alongX
+                    ? new Vector3(length, thick * 0.35f, 0.3f)
+                    : new Vector3(0.3f, thick * 0.35f, length);
+
+                Detail(parent, $"ShojiLip_{(alongX ? "X" : "Z")}_{rail}",
+                    centre + new Vector3(0f, y + thick * 0.32f, 0f), lipSize, _timber);
+            }
 
             for (int i = 0; i < panels; i++)
             {
@@ -2790,6 +2822,15 @@ namespace Unseen.Environment
                     new Vector3(0f, -height * 0.43f, 0f),
                     new Vector3(actual, 0.18f, 0.16f), UnseenLayers.Default, _timber);
                 Acoustics(frame, 0.4f, 1f, 1f);
+
+                // A top rail to match the bottom one, and a pull recessed into the leading stile.
+                // One box each; the stiles either side are drawn by the paper texture's frame band.
+                Detail(panelHost, "TopRail", new Vector3(0f, height * 0.43f, 0f),
+                    new Vector3(actual, 0.14f, 0.14f), _timber);
+
+                Detail(panelHost, "Pull",
+                    new Vector3(actual * 0.42f, height * 0.06f, 0.055f),
+                    new Vector3(0.1f, 0.28f, 0.03f), _darkTimber);
 
                 ShojiPanel panel = panelHost.gameObject.AddComponent<ShojiPanel>();
                 panel.PaperCollider = paper.GetComponent<Collider>();

@@ -122,7 +122,10 @@ namespace Unseen.EditorTools
                 new Color(0.34f, 0.40f, 0.30f), 0.15f, bumpScale: 0.5f);
 
             set.LanternGlow = BuildLanternGlow(lit, Pick(built, "Paper"));
-            set.ShojiPaper = BuildShojiPaper(Pick(built, "Paper"));
+            // The lattice lives in this map rather than in geometry. There are nearly three
+            // thousand shoji in the town and a grid of muntins modelled as boxes would add tens of
+            // thousands of renderers for flat, regular detail nobody sees the parallax of.
+            set.ShojiPaper = BuildShojiPaper(Pick(built, "Shoji"));
             set.Mist = BuildMistMaterial();
             set.GroundMist = BuildGroundMist(Pick(built, "Paper"));
 

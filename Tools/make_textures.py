@@ -375,6 +375,65 @@ def cloth():
     save('Cloth', albedo, height, strength=1.6)
 
 
+
+def shoji():
+    """Paper over a kumiko lattice.
+
+    The lattice goes in the TEXTURE, not the geometry, and that is a deliberate call rather than a
+    shortcut. There are nearly three thousand shoji panels in the town; a grid of muntins modelled
+    as boxes would add something like thirty-five thousand renderers to a scene that already has
+    fifty thousand, for detail that is flat, regular, and never seen from an angle where the
+    parallax would matter. Drawing it costs nothing and reads correctly from both sides.
+
+    The paper itself is deliberately uneven. Washi is fibrous and blotchy and the light coming
+    through it is what a player is reading when they look for a silhouette, so a perfectly even
+    sheet would make every panel a uniform lightbox.
+    """
+    y = np.linspace(0, 1, SIZE, endpoint=False)[:, None]
+    x = np.linspace(0, 1, SIZE, endpoint=False)[None, :]
+
+    # Washi: long fibres in the sheet, plus cloudy variation in thickness.
+    fibres = normalise01(smear(fbm(SIZE, 220, 2, RNG), 8, 20))
+    cloud = fbm(SIZE, 14, 4, RNG)
+    paper = np.clip(0.72 + 0.20 * cloud + 0.10 * fibres, 0, 1)
+
+    # The lattice. Three bays across and five up, which is a common arrangement, plus a heavier
+    # frame around the outside.
+    def bars(coord, count, width):
+        # Distance to the nearest gridline, in texture units.
+        lines = np.abs(np.mod(coord * count + 0.5, 1.0) - 0.5) / count
+        return np.clip(1.0 - lines / width, 0, 1)
+
+    vertical = bars(x, 4, 0.006)
+    horizontal = bars(y, 6, 0.006)
+
+    # Broadcast to the full square before combining: the x terms are 1xN and the y terms Nx1, and
+    # maximum.reduce will not mix those shapes.
+    ones = np.ones((SIZE, SIZE))
+    edges = [
+        np.clip(1.0 - x / 0.022, 0, 1) * ones,
+        np.clip(1.0 - (1.0 - x) / 0.022, 0, 1) * ones,
+        np.clip(1.0 - y / 0.030, 0, 1) * ones,
+        np.clip(1.0 - (1.0 - y) / 0.030, 0, 1) * ones,
+    ]
+    frame = np.maximum.reduce(edges)
+
+    lattice = np.clip(np.maximum(vertical * ones, horizontal * ones) + frame, 0, 1)
+
+    # Timber over paper. The wood is warmer and much darker than the sheet, and it has its own
+    # grain running along whichever way the bar does.
+    grain = normalise01(smear(fbm(SIZE, 180, 2, RNG), 0, 14))
+    timber = tint(grain, (0.20, 0.14, 0.09), (0.38, 0.28, 0.18))
+
+    sheet = tint(paper, (0.66, 0.63, 0.55), (0.94, 0.92, 0.84))
+
+    albedo = sheet + (timber - sheet) * lattice[:, :, None]
+
+    # The lattice stands proud of the paper; the paper itself is nearly flat.
+    height = lattice * 0.85 + paper * 0.15
+    save('Shoji', albedo, height, strength=2.6)
+
+
 if __name__ == '__main__':
     grass()
     moss()
@@ -383,3 +442,4 @@ if __name__ == '__main__':
     bamboo()
     river_stone()
     cloth()
+    shoji()
