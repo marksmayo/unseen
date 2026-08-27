@@ -58,6 +58,9 @@ namespace Unseen.Environment
         [Tooltip("Wet river stone, darker than the dry masonry of the banks.")]
         public Material RiverStone;
 
+        [Tooltip("Moss, for the waterline on the embankments and the shaded feet of walls.")]
+        public Material Moss;
+
         [Tooltip("Tree canopies and shrubs. Falls back to Timber.")]
         public Material Foliage;
 

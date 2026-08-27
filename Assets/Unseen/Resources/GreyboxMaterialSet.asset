@@ -25,7 +25,8 @@ MonoBehaviour:
   Dirt: {fileID: 2100000, guid: 0215cb6651568f34082e61d2b7bc7949, type: 2}
   Reed: {fileID: 2100000, guid: 8ad623d2636d0714f831ab7109cae416, type: 2}
   RiverStone: {fileID: 2100000, guid: bbece67108108c6489d3f339eb73d90f, type: 2}
-  Foliage: {fileID: 2100000, guid: ef358505901b7884d95b67b0f6afe054, type: 2}
+  Moss: {fileID: 2100000, guid: 42fe128d995880b4699e61055f21ccd8, type: 2}
+  Foliage: {fileID: 2100000, guid: f5993e2c8858e24458fb79f92f00b0b6, type: 2}
   Vermilion: {fileID: 2100000, guid: 066f5dd7181d38c4e978427003e5a625, type: 2}
   Bamboo: {fileID: 2100000, guid: a8cde544de743364c92accc3cdd0c8ac, type: 2}
   BambooMass: {fileID: 2100000, guid: bb8dd39cf0a67a64fa690ddfe44fa0c5, type: 2}

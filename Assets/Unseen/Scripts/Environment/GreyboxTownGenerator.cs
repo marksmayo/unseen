@@ -184,6 +184,7 @@ namespace Unseen.Environment
         private Material _reed;
         private Material _riverStone;
         private Material _groundMist;
+        private Material _moss;
         private Material _bambooMass;
         private BambooForest _forest;
         private int _birds;
@@ -1094,6 +1095,44 @@ namespace Unseen.Environment
                 }
             }
 
+            // The embankment face: courses of stone, and a band of moss along the waterline.
+            //
+            // A four-hundred-metre wall of one flat texture is the single least convincing thing in
+            // a river, and the waterline is where the eye goes to judge whether water is real. Moss
+            // grows exactly where the stone is permanently damp and nowhere else, so a band of it
+            // at that height does more than any amount of surface detail higher up.
+            for (int side = -1; side <= 1; side += 2)
+            {
+                float face = _riverCentreX + side * (RiverWidth * 0.5f + 0.05f);
+
+                int bands = Mathf.RoundToInt(length / 14f);
+                for (int i = 0; i < bands; i++)
+                {
+                    float z = Mathf.Lerp(-length * 0.49f, length * 0.49f, i / (float)Mathf.Max(1, bands - 1));
+                    float run = length / bands * 0.94f;
+
+                    // Damp stone right at the water, thinning as it dries upward.
+                    Detail(river, $"Moss_{side}_{i}",
+                        new Vector3(face, waterTop + 0.2f, z),
+                        new Vector3(0.16f, 0.65f + (float)_random.NextDouble() * 0.4f, run),
+                        _moss);
+
+                    // One course of masonry above it, in the bank's OWN stone and barely proud of
+                    // the face.
+                    //
+                    // Two courses of the wet river-stone map projecting six centimetres out read as
+                    // black beams bolted to the embankment - that material is now a genuinely dark
+                    // wet cobble, and against pale dry masonry it is nearly a silhouette. A course
+                    // is a joint line, not a shelf.
+                    float y = waterTop + 1.05f;
+                    float stagger = i % 2 == 0 ? 0.4f : -0.4f;
+
+                    Detail(river, $"Course_{side}_{i}",
+                        new Vector3(face + side * 0.02f, y, z + stagger),
+                        new Vector3(0.07f, 0.16f, run * 0.9f), _stone);
+                }
+            }
+
             for (int side = -1; side <= 1; side += 2)
             {
                 float margin = _riverCentreX + side * (RiverWidth * 0.5f - 0.4f);
@@ -1809,10 +1848,30 @@ namespace Unseen.Environment
 
             Detail(animal, "Body", new Vector3(0f, 0.22f, 0f),
                 new Vector3(0.2f, 0.18f, 0.46f), _darkTimber);
+            Detail(animal, "Rump", new Vector3(0f, 0.24f, -0.19f),
+                new Vector3(0.22f, 0.2f, 0.16f), _darkTimber);
             Detail(animal, "Head", new Vector3(0f, 0.3f, 0.29f),
                 new Vector3(0.16f, 0.15f, 0.16f), _darkTimber);
-            Detail(animal, "Tail", new Vector3(0f, 0.28f, -0.32f),
-                new Vector3(0.07f, 0.07f, 0.26f), _darkTimber);
+
+            // A snout and two ears. Three small boxes, and the difference between a cat and a loaf.
+            Detail(animal, "Snout", new Vector3(0f, 0.27f, 0.39f),
+                new Vector3(0.09f, 0.08f, 0.09f), _darkTimber);
+
+            for (int e = -1; e <= 1; e += 2)
+            {
+                Transform ear = Detail(animal, $"Ear_{e}", new Vector3(e * 0.055f, 0.39f, 0.27f),
+                    new Vector3(0.05f, 0.09f, 0.03f), _darkTimber);
+                ear.localRotation = Quaternion.Euler(-12f, 0f, e * 16f);
+            }
+
+            // The tail in two segments, tapering and lifted, rather than one straight peg.
+            Transform tailBase = Detail(animal, "Tail", new Vector3(0f, 0.28f, -0.34f),
+                new Vector3(0.07f, 0.07f, 0.2f), _darkTimber);
+            tailBase.localRotation = Quaternion.Euler(-18f, 0f, 0f);
+
+            Transform tailTip = Detail(animal, "TailTip", new Vector3(0f, 0.36f, -0.48f),
+                new Vector3(0.05f, 0.05f, 0.16f), _darkTimber);
+            tailTip.localRotation = Quaternion.Euler(-42f, 0f, 0f);
 
             for (int i = 0; i < 4; i++)
             {
@@ -1878,6 +1937,15 @@ namespace Unseen.Environment
                         at, new Vector3(w, 0.06f, d), grass ? _grass : _dirt);
                     patch.localRotation = Quaternion.Euler(0f, (float)_random.NextDouble() * 90f, 0f);
                     patches++;
+
+                    // Moss on the damp side of some patches, which is what ground looks like where
+                    // a wall keeps the sun off it.
+                    if (grass && _random.NextDouble() < 0.35)
+                        Detail(verges, $"Moss_{gx}_{gz}_{i}",
+                            at + new Vector3((float)(_random.NextDouble() * 2f - 1f) * w * 0.3f,
+                                0.015f,
+                                (float)(_random.NextDouble() * 2f - 1f) * d * 0.3f),
+                            new Vector3(w * 0.55f, 0.05f, d * 0.55f), _moss);
 
                     // A few blades standing up out of the patch, so it is not a flat decal. Thin
                     // and leaning, for the same reason the reeds are: a cube of foliage on the
@@ -3115,6 +3183,7 @@ namespace Unseen.Environment
                 _reed = set.Reed != null ? set.Reed : set.Foliage;
                 _riverStone = set.RiverStone != null ? set.RiverStone : set.Stone;
                 _groundMist = set.GroundMist;
+                _moss = set.Moss != null ? set.Moss : set.Foliage;
                 _bambooMass = set.BambooMass != null ? set.BambooMass : set.Foliage;
                 _textureMetres = set.TextureMetres;
                 _textured = true;
@@ -3146,6 +3215,7 @@ namespace Unseen.Environment
             _dirt = MakeMaterial(shader, "GreyboxDirt", new Color(0.32f, 0.25f, 0.18f));
             _reed = MakeMaterial(shader, "GreyboxReed", new Color(0.3f, 0.36f, 0.18f));
             _riverStone = MakeMaterial(shader, "GreyboxRiverStone", new Color(0.24f, 0.25f, 0.24f));
+            _moss = MakeMaterial(shader, "GreyboxMoss", new Color(0.14f, 0.22f, 0.10f));
             _bambooMass = MakeMaterial(shader, "GreyboxBambooMass", new Color(0.12f, 0.17f, 0.10f));
             _textured = false;
         }

@@ -31,3 +31,7 @@ sysinfo.txt
 .idea/
 .DS_Store
 crashlytics-build.properties
+
+# Written by Unity's performance testing package on every batch run. Machine state, not source.
+/Assets/Resources/PerformanceTestRunInfo.json*
+/Assets/Resources/PerformanceTestRunSettings.json*

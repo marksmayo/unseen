@@ -18,6 +18,7 @@ namespace Unseen.EditorTools
     {
         private const string TextureRoot = "Assets/Unseen/Art/Textures";
         private const string MaterialRoot = "Assets/Unseen/Art/Materials";
+        private const string CharacterRoot = "Assets/Unseen/Art/Characters";
         private const string SkyHdri = "Assets/Unseen/Art/Sky/MoonlitNight.hdr";
         private const string SkyMaterial = "Assets/Unseen/Art/Materials/MoonlitSky.mat";
         private const string SetPath = "Assets/Unseen/Resources/GreyboxMaterialSet.asset";
@@ -92,25 +93,33 @@ namespace Unseen.EditorTools
                 new Color(0.30f, 0.22f, 0.16f), 0.28f);
 
             set.Water = BuildWater(Pick(built, "Ground"));
-            set.Grass = BuildTint(lit, Pick(built, "Tatami"), "Grass",
-                new Color(0.20f, 0.28f, 0.14f), 0.18f, bumpScale: 0.8f);
-            set.Dirt = BuildTint(lit, Pick(built, "Ground"), "Dirt",
-                new Color(0.32f, 0.25f, 0.18f), 0.12f, bumpScale: 0.9f);
 
-            set.Reed = BuildTint(lit, Pick(built, "Tatami"), "Reed",
-                new Color(0.34f, 0.40f, 0.19f), 0.30f, bumpScale: 0.4f);
-            set.RiverStone = BuildTint(lit, Pick(built, "Stone"), "RiverStone",
-                new Color(0.22f, 0.24f, 0.23f), 0.45f, bumpScale: 1.1f);
+            // The living half of the town, on its own maps at last.
+            //
+            // Every one of these used to be a colour tint over a photograph of something else -
+            // grass and foliage over WICKER, dirt over gravel, the riverbed over paving stones.
+            // That is why every plant in the town looked like green matting: it was green matting.
+            // Tools/make_textures.py synthesises proper albedo and normal maps for them, which the
+            // folder loop above has already turned into materials.
+            set.Grass = Pick(built, "Grass");
+            set.Dirt = Pick(built, "Dirt");
+            set.Foliage = Pick(built, "Leaf");
+            set.RiverStone = Pick(built, "RiverStone");
+            set.Moss = Pick(built, "Moss");
 
-            set.Foliage = BuildTint(lit, Pick(built, "Tatami"), "Foliage",
-                new Color(0.13f, 0.20f, 0.13f), 0.2f, bumpScale: 0.7f);
+            // Reeds are blades rather than leaves, so they take the grass maps, tinted drier and
+            // yellower than a lawn.
+            set.Reed = BuildTint(lit, Pick(built, "Grass"), "Reed",
+                new Color(0.82f, 0.86f, 0.55f), 0.30f, bumpScale: 0.6f);
 
             set.Vermilion = BuildTint(lit, Pick(built, "Timber"), "Vermilion",
                 new Color(0.62f, 0.17f, 0.12f), 0.35f, bumpScale: 0.5f);
-            set.Bamboo = BuildTint(lit, Pick(built, "Tatami"), "Bamboo",
-                new Color(0.42f, 0.48f, 0.24f), 0.3f, bumpScale: 0.6f);
-            set.BambooMass = BuildTint(lit, Pick(built, "Tatami"), "BambooMass",
-                new Color(0.11f, 0.16f, 0.09f), 0.15f, bumpScale: 0.4f);
+            // Culms get the cane map, with its nodes and its vertical fibre. The mass behind them
+            // is a grove seen as bulk, so it takes the leaf map darkened right down - what you see
+            // of a dense thicket is shadow with foliage in it.
+            set.Bamboo = Pick(built, "Bamboo");
+            set.BambooMass = BuildTint(lit, Pick(built, "Leaf"), "BambooMass",
+                new Color(0.34f, 0.40f, 0.30f), 0.15f, bumpScale: 0.5f);
 
             set.LanternGlow = BuildLanternGlow(lit, Pick(built, "Paper"));
             set.ShojiPaper = BuildShojiPaper(Pick(built, "Paper"));
@@ -134,6 +143,8 @@ namespace Unseen.EditorTools
             // erasing the skyline.
             set.FogColor = new Color(0.075f, 0.09f, 0.145f);
             set.Sky = BuildSky();
+
+            DressNinja(Pick(built, "Cloth"));
             EditorUtility.SetDirty(set);
 
             AssetDatabase.SaveAssets();
@@ -357,6 +368,50 @@ namespace Unseen.EditorTools
         /// dedicated shader carries two scrolled layers, a wave field, foam on the crests and a
         /// moon glint, which is what a river needs to read as one.
         /// </summary>
+        /// <summary>
+        /// Gives the ninja's clothing surface relief.
+        ///
+        /// The skin textures are authored to the model's UV layout, so they cannot be replaced with
+        /// a tiling fabric without ruining where everything sits. What CAN be added is the normal
+        /// map: the albedo keeps saying where the wraps and the sash are, and the cloth map makes
+        /// the whole of it catch light like woven fabric rather than like painted plastic.
+        /// </summary>
+        private static void DressNinja(Material cloth)
+        {
+            if (cloth == null)
+            {
+                Debug.LogWarning("[Unseen] no Cloth material; ninja clothing will stay smooth");
+                return;
+            }
+
+            Texture normal = cloth.GetTexture("_BumpMap");
+            if (normal == null) return;
+
+            int dressed = 0;
+
+            foreach (string guid in AssetDatabase.FindAssets("t:Material", new[] { CharacterRoot }))
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                var material = AssetDatabase.LoadAssetAtPath<Material>(path);
+                if (material == null || !material.HasProperty("_BumpMap")) continue;
+
+                material.SetTexture("_BumpMap", normal);
+
+                // Low. At full strength a 1024 fabric weave tiled over a body reads as chainmail.
+                material.SetFloat("_BumpScale", 0.35f);
+                material.EnableKeyword("_NORMALMAP");
+
+                // The weave tiles many times across a limb; once across the UV would be invisible.
+                if (material.HasProperty("_BaseMap"))
+                    material.SetTextureScale("_BumpMap", new Vector2(6f, 6f));
+
+                EditorUtility.SetDirty(material);
+                dressed++;
+            }
+
+            Debug.Log($"[Unseen] ninja clothing: fabric relief on {dressed} material(s)");
+        }
+
         private static Material BuildWater(Material ground)
         {
             Shader shader = Shader.Find("Unseen/RiverWater");
