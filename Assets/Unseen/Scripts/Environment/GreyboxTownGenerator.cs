@@ -328,6 +328,11 @@ namespace Unseen.Environment
 
             if (_riverColumn >= 0) BuildRiverChannel(extent, pitch);
             if (BuildSewers) BuildSewerNetwork(extent, pitch);
+            // Everything scattered from here on asks the world what is underneath it, and in
+            // edit mode Unity does not push new colliders into the physics scene on its own - so
+            // without this the ground the town was just built out of is not there to be found yet.
+            Physics.SyncTransforms();
+
             BuildStreetLanterns(extent, pitch);
             BuildStreetFurniture(extent, pitch);
             BuildVerges(extent, pitch);
@@ -1908,6 +1913,51 @@ namespace Unseen.Environment
         /// its outline, and that was the whole of why this town read as Minecraft.
         /// </summary>
         /// <summary>Overload taking the mesh last, for calls where the placement is the point.</summary>
+        /// <summary>
+        /// Height of the solid ground under a scattered decoration, and whether anything should be
+        /// put there at all.
+        ///
+        /// Everything scattered across this town - verges, hedges, potted plants, animals - was
+        /// laid out on the street grid at y = 0 and never asked what was underneath. The river
+        /// channel is cut four metres down and the bridges span it, so anything whose jitter
+        /// carried it over the water was left hanging in mid-air at street level: sheets of grass
+        /// floating under bridges, a hedge run crossing the river on nothing, cats standing on the
+        /// air above a towpath.
+        ///
+        /// Each of those had its own hand-tuned "skip if within N metres of the river centre"
+        /// test, and each of them tested the GRID position rather than the jittered one - which is
+        /// why they all leaked. Asking the world is both simpler and correct for holes nobody has
+        /// thought of yet.
+        /// </summary>
+        private bool GroundUnder(Vector3 at, out float groundY, float maxDrop = 2.5f,
+            float maxWater = 0.25f, float maxRise = 1.5f)
+        {
+            groundY = at.y;
+
+            if (!Physics.Raycast(at + Vector3.up * 50f, Vector3.down, out RaycastHit hit, 100f,
+                    UnseenLayers.WorldGeometry, QueryTriggerInteraction.Ignore))
+                return false;
+
+            // A long way below where it was meant to sit means it is over the channel, a stairwell
+            // or a sewer mouth. Dropping the decoration down to meet it would be worse than leaving
+            // it out: grass at the bottom of a river is not an improvement on grass in the sky.
+            if (hit.point.y < at.y - maxDrop) return false;
+
+            // And a long way ABOVE it means the ray came down on a roof. This is street dressing:
+            // a verge eight metres up is a lawn on somebody's tiles, and its tufts then hang off
+            // the eaves over the road. Caught by the floating-scenery probe, which found 238 of
+            // them at heights between five and nineteen metres.
+            if (hit.point.y > at.y + maxRise) return false;
+
+            // And nothing dry belongs in the water.
+            if (WaterVolume.DepthAt(
+                    new Unity.Mathematics.float3(hit.point.x, hit.point.y, hit.point.z)) > maxWater)
+                return false;
+
+            groundY = hit.point.y;
+            return true;
+        }
+
         private Transform Organic(Transform parent, Vector3 position, Vector3 scale,
             Material material, Mesh mesh)
             => Organic(parent, "Mass", mesh, position, scale, material);
@@ -2153,6 +2203,19 @@ namespace Unseen.Environment
                         ? new Vector3(baseX, height * 0.5f, baseZ + side * offset)
                         : new Vector3(baseX + side * offset, height * 0.5f, baseZ);
 
+                    // A hedge is thirteen to twenty-seven metres long, so both ends are checked as
+                    // well as the middle. One that begins on the towpath and finishes over the
+                    // water is exactly the case the old grid-position test let through.
+                    Vector3 half = alongX
+                        ? new Vector3(length * 0.5f, 0f, 0f)
+                        : new Vector3(0f, 0f, length * 0.5f);
+
+                    if (!GroundUnder(at, out float hedgeY)) continue;
+                    if (!GroundUnder(at - half, out float _)) continue;
+                    if (!GroundUnder(at + half, out float _)) continue;
+
+                    at.y = hedgeY + height * 0.5f;
+
                     var size = alongX
                         ? new Vector3(length, height, 0.9f)
                         : new Vector3(0.9f, height, length);
@@ -2180,6 +2243,9 @@ namespace Unseen.Environment
                             0f,
                             baseZ + (float)(_random.NextDouble() * 2f - 1f) * 4f);
 
+                        if (!GroundUnder(at, out float potY)) continue;
+                        at.y = potY;
+
                         Detail(green, $"Pot_{gx}_{gz}_{i}",
                             at + new Vector3(0f, 0.22f, 0f),
                             new Vector3(0.5f, 0.44f, 0.5f), _stone);
@@ -2193,9 +2259,30 @@ namespace Unseen.Environment
 
                 // Something small living in the gap between the hedge and the wall.
                 if (_random.NextDouble() < 0.3)
-                    BuildAnimal(green, new Vector3(
-                        baseX + (float)(_random.NextDouble() * 2f - 1f) * 6f, 0f,
-                        baseZ + (float)(_random.NextDouble() * 2f - 1f) * 6f));
+                {
+                    // Several throws before giving up, rather than one.
+                    //
+                    // Grounding the placement correctly costs population - a third of the animals
+                    // in the town were being dropped, because one unlucky jitter over the river or
+                    // onto a roof used to be placed anyway and is now skipped. Critters are not
+                    // scenery: they are how a sprinting player gives themselves away, so it is
+                    // worth a few more attempts to find them somewhere real to stand.
+                    for (int attempt = 0; attempt < 5; attempt++)
+                    {
+                        var den = new Vector3(
+                            baseX + (float)(_random.NextDouble() * 2f - 1f) * 6f, 0f,
+                            baseZ + (float)(_random.NextDouble() * 2f - 1f) * 6f);
+
+                        // On the ground it will actually be standing on. A cat hovering under a
+                        // bridge is the same bug as a hedge crossing the river, and it was the
+                        // same cause.
+                        if (!GroundUnder(den, out float denY)) continue;
+
+                        den.y = denY;
+                        BuildAnimal(green, den);
+                        break;
+                    }
+                }
             }
 
             UnseenLog.Info($"[Unseen] greenery: {hedges} hedges, {pots} potted plants");
@@ -2433,7 +2520,9 @@ namespace Unseen.Environment
                         baseZ + (float)(_random.NextDouble() * 2f - 1f) * pitch * 0.42f);
 
                     if (Mathf.Abs(at.x) > extent || Mathf.Abs(at.z) > extent) continue;
-                    if (_riverColumn >= 0 && Mathf.Abs(at.x - _riverCentreX) < RiverWidth * 0.8f) continue;
+                    if (!GroundUnder(at, out float vergeY)) continue;
+
+                    at.y = vergeY + 0.03f;
 
                     bool grass = _random.NextDouble() < 0.55;
                     float w = 2.5f + (float)_random.NextDouble() * 5f;
