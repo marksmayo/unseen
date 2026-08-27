@@ -86,6 +86,11 @@ namespace Unseen.Environment
                  "shader only reached via Shader.Find is stripped and renders magenta.")]
         public Material Mist;
 
+        [Tooltip("Low-lying mist that sits in the streets. Grey-blue and thin, deliberately not " +
+                 "the purple of the boundary wall: the one thing a player must never misread is " +
+                 "which haze is the one that kills them.")]
+        public Material GroundMist;
+
         [Header("Sky")]
         [Tooltip("Panoramic skybox material. Applied at runtime along with ambient and fog.")]
         public Material Sky;

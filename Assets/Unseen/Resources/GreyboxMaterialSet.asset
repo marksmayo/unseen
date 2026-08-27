@@ -33,8 +33,9 @@ MonoBehaviour:
   LanternGlow: {fileID: 2100000, guid: 10166b0e67bad1f40a3022c78707c5bf, type: 2}
   ShojiPaper: {fileID: 2100000, guid: db1469f0d849f56458c88be472bb15f7, type: 2}
   Mist: {fileID: 2100000, guid: 72f2b9fb93dcf7e48b102def352c1398, type: 2}
+  GroundMist: {fileID: 2100000, guid: 10ff12ad76035444b83f3471ea26a888, type: 2}
   Sky: {fileID: 2100000, guid: cae5632238b3aab49b3e4da8e652a29d, type: 2}
-  AmbientIntensity: 0.8
-  FogDensity: 0.0032
-  FogColor: {r: 0.05, g: 0.06, b: 0.11, a: 1}
+  AmbientIntensity: 0.62
+  FogDensity: 0.005
+  FogColor: {r: 0.075, g: 0.09, b: 0.145, a: 1}
   TextureMetres: 2.5

@@ -115,15 +115,24 @@ namespace Unseen.EditorTools
             set.LanternGlow = BuildLanternGlow(lit, Pick(built, "Paper"));
             set.ShojiPaper = BuildShojiPaper(Pick(built, "Paper"));
             set.Mist = BuildMistMaterial();
+            set.GroundMist = BuildGroundMist(Pick(built, "Paper"));
 
-            // Playability: the first pass was atmospheric but unreadable in a street away from a
-            // lantern. Lift ambient and thin the fog; relative darkness still drives stealth.
-            set.AmbientIntensity = 0.8f;
+            // Playability against atmosphere. The first pass was atmospheric and unreadable in a
+            // street away from a lantern, so ambient was lifted to 0.8; this brings it back down
+            // now that the town has far more lantern light in it than it did then.
+            set.AmbientIntensity = 0.62f;
 
-            // Thinned for the 750 m town. At 0.008 the exponential-squared falloff was total by
-            // 400 m, so the far half of the map rendered as flat black from any roof.
-            set.FogDensity = 0.0032f;
-            set.FogColor = new Color(0.05f, 0.06f, 0.11f);
+            // Thicker than it was, because the ask was for more mist - but not much thicker. At
+            // 0.008 the exponential-squared falloff was total by 400 m and the far half of the map
+            // rendered as flat black from any roof.
+            set.FogDensity = 0.005f;
+
+            // And LIFTED rather than darkened, which is the counter-intuitive half. Distance fades
+            // toward the fog colour, so a darker fog on a darker night makes the far half of the
+            // town read as a void; a paler, bluer fog reads as haze you cannot see through. The
+            // darkening belongs in the ambient term, where it makes nearby surfaces dim without
+            // erasing the skyline.
+            set.FogColor = new Color(0.075f, 0.09f, 0.145f);
             set.Sky = BuildSky();
             EditorUtility.SetDirty(set);
 
@@ -186,6 +195,43 @@ namespace Unseen.EditorTools
         /// The mist wall material. It has to exist as an asset: a shader reached only through
         /// Shader.Find at runtime is stripped from player builds and renders magenta.
         /// </summary>
+        /// <summary>
+        /// The material for the low mist in the streets. Reuses the paper noise as its density map -
+        /// it is a soft, cloudy grey pattern, which is exactly what is wanted and is already built.
+        /// </summary>
+        private static Material BuildGroundMist(Material noiseSource)
+        {
+            Shader shader = Shader.Find("Unseen/GroundMist");
+            if (shader == null)
+            {
+                Debug.LogError("[Unseen] Unseen/GroundMist not found; the town will have no mist");
+                return null;
+            }
+
+            const string path = MaterialRoot + "/GroundMist.mat";
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (material == null)
+            {
+                material = new Material(shader);
+                AssetDatabase.CreateAsset(material, path);
+            }
+
+            material.shader = shader;
+
+            if (noiseSource != null && noiseSource.HasProperty("_BaseMap"))
+                material.SetTexture("_BaseMap", noiseSource.GetTexture("_BaseMap"));
+
+            material.SetColor("_Tint", new Color(0.44f, 0.49f, 0.60f, 1f));
+            material.SetFloat("_Density", 0.15f);
+            material.SetFloat("_Speed", 0.02f);
+            material.SetFloat("_Scale", 0.055f);
+            material.SetFloat("_NearFade", 7f);
+
+            EditorUtility.SetDirty(material);
+            Debug.Log("[Unseen] ground mist material built on Unseen/GroundMist");
+            return material;
+        }
+
         private static Material BuildMistMaterial()
         {
             Shader shader = Shader.Find("Unseen/MistWall");

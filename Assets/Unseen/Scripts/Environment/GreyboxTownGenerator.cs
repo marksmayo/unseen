@@ -179,6 +179,7 @@ namespace Unseen.Environment
         private Material _dirt;
         private Material _reed;
         private Material _riverStone;
+        private Material _groundMist;
         private Material _bambooMass;
         private BambooForest _forest;
         private int _birds;
@@ -288,6 +289,7 @@ namespace Unseen.Environment
             BuildStreetFurniture(extent, pitch);
             BuildVerges(extent, pitch);
             BuildHedges(extent, pitch);
+            BuildTownMist(extent, pitch);
             BuildFoliage(extent, pitch);
             BuildRampart(extent);
             BuildSpiritForest();
@@ -1125,7 +1127,7 @@ namespace Unseen.Environment
             }
         }
 
-        /// <summary>Steps down to the towpath, so the river is a route rather than a trap.</summary>        /// <summary>Steps down to the towpath, so the river is a route rather than a trap.</summary>
+        /// <summary>Steps down to the towpath, so the river is a route rather than a trap.</summary>
         private void BuildRiverStairs(Transform river, float extent, float pitch,
             float channelHalf, float bedY)
         {
@@ -1199,13 +1201,38 @@ namespace Unseen.Environment
                 Transform deck = BuildArchedDeck(bridge, z, span, deckWidth, deckY);
                 Acoustics(deck, 0.55f, 1.4f, 1.5f);
 
-                // Piers, standing in the water. They also break the sightline along the channel.
+                // Piers, standing in the water and reaching the deck above them.
+                //
+                // Their height used to be RiverDepth, which was right when the deck was flat and
+                // wrong the moment it arched: the crown rises 2.9 m and the piers stopped where the
+                // old flat deck used to be, leaving them hanging in the water under a bridge they
+                // were supposed to be holding up. Each one is measured against the arch directly
+                // above it now.
                 for (int p = -1; p <= 1; p += 2)
                 {
+                    float pierX = _riverCentreX + p * RiverWidth * 0.28f;
+
+                    // Where this pier meets the span, as a fraction along it.
+                    float t = Mathf.InverseLerp(_riverCentreX - span * 0.5f,
+                        _riverCentreX + span * 0.5f, pierX);
+
+                    // Up to the underside of the deck: the planks hang about half a metre below
+                    // the walking surface, and the pier should meet timber rather than poke
+                    // through it.
+                    float underside = deckY + ArchHeight(t) - 0.45f;
+                    float bottom = bedY - 0.3f;
+                    float height = Mathf.Max(1f, underside - bottom);
+
                     Transform pier = Box(bridge, $"Pier_{p}",
-                        new Vector3(_riverCentreX + p * RiverWidth * 0.28f, bedY * 0.5f + 0.2f, z),
-                        new Vector3(1.1f, RiverDepth, 1.4f), UnseenLayers.Occluder, _stone);
+                        new Vector3(pierX, bottom + height * 0.5f, z),
+                        new Vector3(1.1f, height, 1.4f), UnseenLayers.Occluder, _stone);
                     Acoustics(pier, 0.9f, 1f, 1f);
+
+                    // A capital where it meets the beam, so the join is a join and not two boxes
+                    // ending at the same height.
+                    Detail(bridge, $"PierCap_{p}",
+                        new Vector3(pierX, underside + 0.12f, z),
+                        new Vector3(1.5f, 0.24f, 1.8f), _darkTimber);
                 }
 
                 for (int r = -1; r <= 1; r += 2)
@@ -1480,6 +1507,134 @@ namespace Unseen.Environment
                     new Vector3(0.9f, 0.6f, 0.9f), UnseenLayers.GrappleAnchor, _darkTimber);
                 Acoustics(hook, 0.4f, 1f, 1f);
             }
+        }
+
+        // ---------------------------------------------------------------- mist
+
+        /// <summary>
+        /// Mist lying in the streets.
+        ///
+        /// Global fog gives distance haze but nothing in the near field: a street twenty metres long
+        /// is as crisp as a lit room. This scatters flat panels a metre or two off the ground so
+        /// there is something between you and the far end of an alley, which is both atmosphere and
+        /// stealth - a body at forty metres is a suggestion rather than a target.
+        ///
+        /// Thickest along the river and in the open plazas, because that is where mist collects and
+        /// because those are the places with the longest sightlines to soften.
+        ///
+        /// No colliders, no lights, no particles. Panels are cheap and the movement is in the
+        /// shader.
+        /// </summary>
+        private void BuildTownMist(float extent, float pitch)
+        {
+            if (_groundMist == null) return;
+
+            var host = new GameObject("TownMist").transform;
+            host.SetParent(_root, false);
+
+            int patches = 0;
+
+            for (int gx = 0; gx <= GridSize; gx++)
+            for (int gz = 0; gz <= GridSize; gz++)
+            {
+                float baseX = (gx - GridSize * 0.5f) * pitch;
+                float baseZ = (gz - GridSize * 0.5f) * pitch;
+
+                if (Mathf.Abs(baseX) > extent || Mathf.Abs(baseZ) > extent) continue;
+
+                // Denser near the water. A river valley holds mist; a dry crossing holds less.
+                bool nearRiver = _riverColumn >= 0 &&
+                                 Mathf.Abs(baseX - _riverCentreX) < RiverWidth * 3f;
+
+                // Thinned right back from the first pass. Panels of forty-odd metres on a
+                // forty-six metre street grid overlap several deep, and alpha compounds: five
+                // layers at 0.3 each is 83% opaque, which is why the first attempt read as spilled
+                // white paint on the river rather than as mist.
+                double chance = nearRiver ? 0.5 : 0.26;
+                if (_random.NextDouble() > chance) continue;
+
+                int here = 1;
+
+                for (int i = 0; i < here; i++)
+                {
+                    var at = new Vector3(
+                        baseX + (float)(_random.NextDouble() * 2f - 1f) * pitch * 0.5f,
+                        0f,
+                        baseZ + (float)(_random.NextDouble() * 2f - 1f) * pitch * 0.5f);
+
+                    // Sit it just above whatever is underneath, so mist in a street lies on the
+                    // street and mist over the river lies on the water.
+                    float y = 1.1f + (float)_random.NextDouble() * 1.6f;
+                    bool overChannel = _riverColumn >= 0 &&
+                                       Mathf.Abs(at.x - _riverCentreX) < RiverWidth * 0.5f;
+
+                    if (overChannel)
+                    {
+                        // The water surface has no collider - that is the whole point of it - so a
+                        // downward ray goes straight through to the riverbed and the panel ends up
+                        // at or below the waterline, half-swallowed by an opaque surface. Over the
+                        // channel the height comes from the water itself.
+                        y = (-RiverDepth + WaterDepth) + 0.8f + (float)_random.NextDouble() * 1.4f;
+                    }
+                    else if (Physics.Raycast(at + Vector3.up * 60f, Vector3.down, out RaycastHit ground,
+                                 140f, UnseenLayers.WorldGeometry, QueryTriggerInteraction.Ignore))
+                    {
+                        // Only ground-level surfaces. Mist on a rooftop is a different weather.
+                        if (ground.point.y > 3f) continue;
+                        y += ground.point.y;
+                    }
+
+                    float size = 34f + (float)_random.NextDouble() * 40f;
+
+                    var panel = new GameObject($"Mist_{gx}_{gz}_{i}");
+                    panel.transform.SetParent(host, false);
+                    panel.transform.localPosition = new Vector3(at.x, y, at.z);
+
+                    // Laid flat, with a little tilt so the layer is not a single plane the eye can
+                    // find the height of.
+                    panel.transform.localRotation = Quaternion.Euler(
+                        90f + (float)(_random.NextDouble() * 2f - 1f) * 6f,
+                        (float)_random.NextDouble() * 360f,
+                        0f);
+
+                    panel.transform.localScale = new Vector3(size, size, 1f);
+
+                    panel.AddComponent<MeshFilter>().sharedMesh = MistQuad();
+                    var renderer = panel.AddComponent<MeshRenderer>();
+                    renderer.sharedMaterial = _groundMist;
+                    renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                    renderer.receiveShadows = false;
+
+                    patches++;
+                }
+            }
+
+            Debug.Log($"[Unseen] town mist: {patches} panels lying in the streets");
+        }
+
+        private static Mesh _mistQuad;
+
+        /// <summary>A unit quad with UVs, shared by every mist panel.</summary>
+        private static Mesh MistQuad()
+        {
+            if (_mistQuad != null) return _mistQuad;
+
+            _mistQuad = new Mesh { name = "MistQuad" };
+            _mistQuad.SetVertices(new System.Collections.Generic.List<Vector3>
+            {
+                new Vector3(-0.5f, -0.5f, 0f),
+                new Vector3(0.5f, -0.5f, 0f),
+                new Vector3(0.5f, 0.5f, 0f),
+                new Vector3(-0.5f, 0.5f, 0f)
+            });
+            _mistQuad.SetUVs(0, new System.Collections.Generic.List<Vector2>
+            {
+                new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(1f, 1f), new Vector2(0f, 1f)
+            });
+            _mistQuad.SetTriangles(new[] { 0, 1, 2, 0, 2, 3 }, 0);
+            _mistQuad.RecalculateNormals();
+            _mistQuad.RecalculateBounds();
+            return _mistQuad;
         }
 
         // ---------------------------------------------------------------- greenery and wildlife
@@ -2924,6 +3079,7 @@ namespace Unseen.Environment
                 _dirt = set.Dirt != null ? set.Dirt : set.Ground;
                 _reed = set.Reed != null ? set.Reed : set.Foliage;
                 _riverStone = set.RiverStone != null ? set.RiverStone : set.Stone;
+                _groundMist = set.GroundMist;
                 _bambooMass = set.BambooMass != null ? set.BambooMass : set.Foliage;
                 _textureMetres = set.TextureMetres;
                 _textured = true;
