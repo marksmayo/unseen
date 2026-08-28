@@ -232,21 +232,101 @@ probe counted bodies away from their start, which is a number about the sampling
 stroll target is picked relative to home, so twenty outings look like one - and it read 149 one day
 and 68 the next with nothing changed.
 
+## Session of 2026-08-28
+
+A long play-test pass. Most of it was reported from play rather than found by a test, which is
+itself worth noting: the probes are good at the things they were written for and blind to
+everything else.
+
+**Fixed and measured.** The shuriken went left of the crosshair because the camera sits half a
+metre right of the ninja and the blade left the body's centre line - two parallel rays, half a
+metre apart, all the way out. It launches from the camera's lateral line now. Shuriken are
+unlimited on a five second cooldown, fly flat (they sagged 1.35 m at 24 m, now 0.22), are drawn at
+twice life size, and can be heard: every one of their sounds had been credited to the thrower, and
+the acoustic model refuses to deliver a sound to its own source, so the one person who could not
+hear the blade was the person who threw it. Bots throw them now - there was no throw action in the
+HTN domain at all. There is a throw animation, mirrored onto the replicated flags so other players
+see it.
+
+Nothing stands on air any more. Verges, hedges, pots and animals were laid out on the street grid
+at y = 0 and never asked what was underneath, so anything jittered over the river channel hung at
+street level. Each had its own hand-tuned river-exclusion radius and every one of them tested the
+GRID position rather than the jittered one. One grounding rule replaced six of them, and the probe
+written for it immediately found a second bug: the rule rejected ground far below the intended
+height and happily accepted a roof eight metres above, so verges were being laid on rooftops with
+their tufts hanging over the road.
+
+Trees no longer grow through walls, nudged along the verge rather than dropped - deleting the ones
+that did not fit cost a third of the trees, and trees are cover: the share of bot ticks spent in
+combat went from nine per cent to thirty without them.
+
+The castle could not be grappled: its only anchors were on the hip roof, and on a five storey keep
+whose lowest eave overhangs twenty-two metres those sit behind the building from anywhere you can
+stand. Every storey's eave corners carry a bracket now.
+
+The mist wall read as frosted glass because its noise was four octaves of sin times cos - a smooth
+periodic ripple, not turbulence - sampled from mesh UVs, so the tessellation showed straight
+through it. Real value noise in world space, domain warped, two layers against each other. Bodies
+evaporate into mist ten seconds after death instead of sinking through the floor. Critters look
+about, dip, wag and flick their ears while resting, driven on the head and tail rather than the
+whole body.
+
+**The interface** has one visual language now rather than default IMGUI, and the runtime log is
+quiet in a player build - about thirty-five unconditional Debug.Log calls of generation statistics
+are gated behind a flag that defaults on in the editor and off in a player, with `-unseen-verbose`
+for a dedicated server. Verified in the shipped build: zero lines by default, twenty-seven with the
+flag.
+
+**A performance pass**, measured with a new `Unseen ▸ Probe Cost`. Shadow casters went from 92,610
+of 93,445 renderers to 10,222: every renderer-only piece of trim was casting, along with 996 lit
+paper lanterns and 2,772 shoji panels casting as TRANSPARENT, which is the most expensive kind.
+Trim moved to its own layer and stops being drawn past eighty-five metres - 78,485 renderers, 84%
+of the town, averaging a dozen triangles. Ground mist coverage halved, from 978,000 square metres
+of alpha over a 562,000 square metre map to 379,000.
+
+That probe's own first run claimed 1.3 billion triangles, because `StaticBatchingUtility.Combine`
+repoints every renderer's shared mesh at one combined mesh and asking a renderer for its triangle
+count afterwards returns the whole batch. Generation can be told to skip combining now, which is
+the only way to measure the real geometry.
+
+**Corrections to things asserted earlier in this project.** "Bake occlusion culling" was wrong: the
+town is generated at runtime and there is no scene geometry for a bake to have been computed from.
+Per-layer cull distances are the runtime equivalent. And "bots drown in the lake", from the session
+before, came from a single uninvestigated death in a test warm-up; measured properly it is nought
+to one per match.
+
+**Six tests were measuring the wrong thing** and were fixed before they could fail honestly. The
+pattern is now clear enough to name: fixed time windows and fixed map positions, quietly
+invalidated as the game around them changed. The river probe's dry control run was pinned a hundred
+and twenty metres east of the channel and the castle lake was later built across it, so both its
+figures came out at 4.8 m and it reported that wading is no slower than walking. The critter
+probe's six second window grew longer than the rest interval it was sampling. The shuriken test
+stood its target in front of the body, which stopped being the line the blade travels the moment
+the aim was fixed. Two more measured a bot's stance machine rather than the thing under test.
+
 ## Immediate next steps, in order
 
-1. **Wire a real transport.** Install Fish-Net, define `UNSEEN_FISHNET`, add a `NetworkManager`, and
-   test a second client joining and taking over a bot slot. This is now the largest structural gap:
-   the shipped playtest build is single-player only.
-2. **Fix `UnseenZoneCollapseTest`.** It has never observed the final collapse: the match ends at
-   t=20 s, before the final phase produces a single sample, so it reports zero live samples and
-   fails. It is currently testing nothing.
-3. **Find out why bots are in deep water at all.** One bot-second in seven, unchanged by making the
-   water unwalkable. The recovery steering fires and does not clear it.
-4. **Profile a full lobby.** Watch the status line: `sim` milliseconds per tick, `hot` count, `rays`,
-   `dropped`. If `dropped` is non-zero, raise `Interest.LosRaycastBudget` or lower the replication
-   radius, and re-measure. This is the number that decides how many entities a core can carry.
-5. **Then** animation and audio middleware — both are additive layers over stable contracts, and both
-   are much easier to judge once the fight itself feels right at 60 Hz.
+1. **The bot roaming regression.** `UnseenBotRoamProbe` has declined all session - mean path walked
+   per bot has gone 184 m, 158, 131, 103 - and now fails both "cover ground" and "not pacing on the
+   spot", with some bots at a net-to-path ratio of zero. Bots are sixty-three of the sixty-four
+   entities in every match, so this is most of what a player sees. The town has grown a great deal
+   denser over the same period, including a hundred and twenty metre unwalkable lake through the
+   middle of it, and the guess is that they are winding around obstruction rather than travelling.
+   That is a guess. Measure where they actually stop.
+2. **Wire a real transport.** Install Fish-Net, define `UNSEEN_FISHNET`, add a `NetworkManager`, and
+   test a second client joining and taking over a bot slot. Still the largest structural gap: the
+   shipped playtest build is single-player only.
+3. **Get a GPU frame capture.** The whole performance pass was counts - renderers, triangles,
+   casters, coverage - chosen because they are unambiguous waste. Not one of them is a timing, so
+   which of them actually dominated a frame is still unknown, and the next round cannot be aimed
+   without one.
+4. **Bots in the castle lake.** Sharper than it was: river wading is now zero, because they were
+   being SPAWNED in the river and no longer are. What remains is all lake, with ninety-two samples
+   of bots stuck in it. One body of water, one cause left to find.
+5. **Fix `UnseenZoneCollapseTest`.** It has never observed the final collapse: the match ends at
+   t = 20 s, before the final phase produces a single sample. It is currently testing nothing.
+6. **Then** animation and audio middleware - both additive layers over stable contracts, and both
+   much easier to judge once the fight feels right at 60 Hz.
 
 ## Known gaps and rough edges
 
