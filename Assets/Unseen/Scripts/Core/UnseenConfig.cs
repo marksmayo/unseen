@@ -364,6 +364,34 @@ namespace Unseen.Core
         }
 
         [Serializable]
+        public sealed class GravelSection
+        {
+            public bool Enabled = true;
+
+            [Tooltip("Metres between footprints. A stride, so a line of them reads as walking.")]
+            public float StrideLength = 0.85f;
+
+            [Tooltip("Metres between marks left by a crawling body. Much closer than a stride: " +
+                     "somebody dragging themselves along is in continuous contact and leaves a " +
+                     "trough rather than steps.")]
+            public float CrawlSpacing = 0.55f;
+
+            [Tooltip("How far to either side of the line of travel a footprint sits, in metres.")]
+            public float FootSpacing = 0.14f;
+
+            [Tooltip("Seconds a footprint takes to fill back in.\n\n" +
+                     "This is a stealth timer, not a decoration one. It decides how long after " +
+                     "somebody crossed a garden the fact is still readable, so it is roughly the " +
+                     "length of a fight plus the walk to it.")]
+            public float PrintLife = 45f;
+
+            [Tooltip("Seconds a crawl trough takes to fill in. Longer, because far more gravel " +
+                     "was moved - going prone across a garden hides you from eyes and tells " +
+                     "anybody who arrives later exactly what you did.")]
+            public float CrawlLife = 70f;
+        }
+
+        [Serializable]
         public sealed class ShurikenSection
         {
             public bool Enabled = true;
@@ -518,6 +546,9 @@ namespace Unseen.Core
 
         [Tooltip("Thrown steel: how far, how hard, and how often.")]
         public ShurikenSection Shuriken = new ShurikenSection();
+
+        [Tooltip("Marks left in raked gravel by anybody crossing a garden.")]
+        public GravelSection Gravel = new GravelSection();
         public BotSection Bots = new BotSection();
 
         private static UnseenConfig _default;

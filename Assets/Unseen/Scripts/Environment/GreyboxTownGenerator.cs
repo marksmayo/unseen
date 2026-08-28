@@ -4260,6 +4260,12 @@ namespace Unseen.Environment
                 new Vector3(half * 2f, 0.12f, half * 2f), UnseenLayers.Default, _riverStone);
             Acoustics(bed, 0.6f, 1.6f, 1.5f);
 
+            // Raked gravel remembers. Anybody who crosses this leaves a line of prints pointing
+            // the way they went, which turns the garden from open ground you avoid into open
+            // ground you check.
+            bed.gameObject.AddComponent<GravelBed>()
+                .Configure(new Vector2(half, half), origin.y + 0.12f);
+
             // The wall. Low enough to see over standing, high enough to hide behind crouched,
             // which is the only wall height that matters in this game.
             for (int side = 0; side < 4; side++)

@@ -240,6 +240,7 @@ namespace Unseen.Core
             _sim.Add(new Unseen.Perception.CritterStartleSystem());
             Unseen.Perception.DrowningSystem drowning = _sim.Add(new Unseen.Perception.DrowningSystem());
             Unseen.Combat.ShurikenSystem shuriken = _sim.Add(new Unseen.Combat.ShurikenSystem());
+            _sim.Add(new Unseen.Perception.FootprintSystem());
             _replication = _sim.Add(new ReplicationSystem());
 
             combat.SmokePrefab = SmokePrefab;
