@@ -54,7 +54,10 @@ namespace Unseen.Client
         /// <summary>Set by the bootstrap each frame from the local agent's stance.</summary>
         public bool Crouched;
 
-        [Tooltip("Sideways offset so the ninja does not sit dead centre.")]
+        [Tooltip("Sideways offset so the ninja does not sit dead centre.\n\n" +
+                 "Taken from UnseenConfig at startup so the shuriken launch point cannot drift " +
+                 "away from it: the blade is fired along this same lateral line, and the moment " +
+                 "the two numbers disagree every throw lands off the crosshair by the difference.")]
         public float ShoulderOffset = 0.5f;
 
         [Header("Collision")]
@@ -85,6 +88,12 @@ namespace Unseen.Client
             _camera.farClipPlane = 600f;
             _camera.fieldOfView = 62f;
             _currentDistance = Distance;
+
+            // One source of truth for the shoulder offset. The shuriken launches along this same
+            // lateral line so that a throw goes where the crosshair points, and two independently
+            // edited copies of the number would put every blade off by the difference.
+            Core.UnseenConfig config = Core.UnseenConfig.Default;
+            if (config != null) ShoulderOffset = config.Shuriken.LaunchOffsetRight;
         }
 
         private float _pivotDrop;

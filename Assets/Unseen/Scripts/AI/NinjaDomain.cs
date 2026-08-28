@@ -25,6 +25,8 @@ namespace Unseen.AI
                 f => f.EnemyIsSwinging, 0.3f);
             var approach = new PrimitiveTask("approach", BotAction.Approach,
                 f => f.TargetVisible || f.TargetIsSilhouette, 0.6f);
+            var throwBlade = new PrimitiveTask("throw-shuriken", BotAction.ThrowShuriken,
+                f => f.TargetVisible && f.TargetInThrowRange && f.CanThrow, 0.5f);
             var creepToTarget = new PrimitiveTask("creep-to-target", BotAction.CreepTo,
                 f => f.HasTarget, 0.8f);
             var holdAmbush = new PrimitiveTask("hold-ambush", BotAction.HoldAmbush, duration: 1.6f);
@@ -45,6 +47,15 @@ namespace Unseen.AI
                 .With(new HtnMethod("parry-the-swing", f => f.EnemyIsSwinging, parry))
                 .With(new HtnMethod("execute", f => f.TargetInMeleeRange && f.TargetUnaware, takedown))
                 .With(new HtnMethod("trade", f => f.TargetInMeleeRange, strike))
+
+                // A blade before the sprint. Ordered above closing the gap deliberately: crossing
+                // open ground toward somebody who has seen you is the worst thing a ninja can do,
+                // and having a ranged option that the AI never used made the shuriken a purely
+                // human weapon. Throwing is also loud, so a bot that opens with one has committed
+                // to a fight it started from cover.
+                .With(new HtnMethod("open-with-steel",
+                    f => f.TargetVisible && f.TargetInThrowRange && f.CanThrow, throwBlade))
+
                 .With(new HtnMethod("close-the-gap", f => f.TargetInApproachRange, approach))
                 .With(new HtnMethod("stalk", null, creepToTarget));
 

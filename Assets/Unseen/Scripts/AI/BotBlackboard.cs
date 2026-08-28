@@ -36,7 +36,10 @@ namespace Unseen.AI
         BreakLantern = 11,
         LootContainer = 12,
         MoveIntoZone = 13,
-        TakeDownTarget = 14
+        TakeDownTarget = 14,
+
+        /// <summary>Sling a blade at something too far away to reach. Appended, never renumbered.</summary>
+        ThrowShuriken = 15
     }
 
     /// <summary>
@@ -62,6 +65,14 @@ namespace Unseen.AI
         public bool LootNearby;
         public bool LanternNearby;
         public bool EnemyIsSwinging;
+
+        /// <summary>
+        /// Far enough away that closing is a bad idea, near enough that a blade will arrive.
+        /// </summary>
+        public bool TargetInThrowRange;
+
+        /// <summary>Off cooldown, so planning a throw is not planning to stand still.</summary>
+        public bool CanThrow;
     }
 
     /// <summary>Working memory for one bot. Persists between thinks; cleared between matches.</summary>
@@ -94,6 +105,16 @@ namespace Unseen.AI
 
         public BotAction CurrentAction = BotAction.Idle;
         public float ActionExpiresAt;
+
+        /// <summary>
+        /// When this bot may throw again.
+        ///
+        /// Kept here rather than read off the shuriken system, which owns the authoritative
+        /// cooldown. A bot that could not tell whether it was ready would plan a throw, be refused,
+        /// and stand there having committed to an action that does nothing - so it tracks its own
+        /// copy off the same configured interval.
+        /// </summary>
+        public float NextThrowAt;
 
         /// <summary>Per-bot skill jitter so a lobby of bots does not behave like one mind.</summary>
         public float SkillOffset;

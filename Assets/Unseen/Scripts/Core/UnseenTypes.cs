@@ -78,7 +78,16 @@ namespace Unseen.Core
         Staggered = 1 << 8,
         Deployed = 1 << 9,
         Bot = 1 << 10,
-        Smoked = 1 << 11
+        Smoked = 1 << 11,
+
+        /// <summary>
+        /// Mid-throw. Appended, never renumbered: this goes over the wire.
+        ///
+        /// Needed because a proxy has none of the thrower's combat state - it sees flags and
+        /// nothing else - and without this everybody else's throws would be invisible while the
+        /// blade sailed out of an idle body.
+        /// </summary>
+        Throwing = 1 << 12
     }
 
     public enum SoundKind : byte

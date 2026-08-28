@@ -1,6 +1,7 @@
 using UnityEditor;
 using Unity.Mathematics;
 using UnityEngine;
+using Unseen.AI;
 using Unseen.Combat;
 using Unseen.Core;
 using Unseen.Entities;
@@ -79,7 +80,19 @@ namespace Unseen.EditorTools
                 }
 
                 var from = new float3(spot.x, spot.y, spot.z);
-                var to = from + new float3(0f, 0f, 8f);
+
+                // The target goes on the line the blade is actually thrown along, which is offset
+                // to the right of the body by the same half metre the camera is.
+                //
+                // That offset IS the fix for "the shuriken always goes slightly left of centre":
+                // the crosshair is rendered from half a metre right of the ninja, so a blade
+                // leaving the body's centre line flew parallel to the aim ray and half a metre
+                // left of it. Launching from the camera's lateral line makes the two coincide - so
+                // a test that stands its target directly in front of the BODY is now testing the
+                // wrong line, and it duly reported a miss.
+                float aimRight = cfg.LaunchOffsetRight;
+
+                var to = from + new float3(aimRight, 0f, 8f);
 
                 int heldBefore = thrower.Shuriken;
                 float targetHealth = target.Vitals.Fraction;
@@ -147,7 +160,7 @@ namespace Unseen.EditorTools
                 // reasonably concluded the throw was broken rather than ballistic.
                 ShurikenPickup.ClearAll();
 
-                var farTo = from + new float3(0f, 0f, 24f);
+                var farTo = from + new float3(aimRight, 0f, 24f);
                 float farHealth = target.Vitals.Fraction;
 
                 for (int i = 0; i < settle; i++) Drive(boot, thrower, from, throwing: false);
@@ -211,8 +224,94 @@ namespace Unseen.EditorTools
                 Debug.Log($"[shuriken] a landed blade is scenery, not ammunition: " +
                           $"{(notAmmunition ? "PASS" : "FAIL")}");
 
+                // ---------------------------------------------------------- the throw is visible
+                //
+                // A proxy has none of the thrower's combat state - it sees replicated flags and
+                // nothing else - so the animation reads a flag rather than the timer. If the server
+                // stops mirroring it, everybody else's throws become invisible and the blade sails
+                // out of an idle body, which is the sort of thing that survives a long time.
+                for (int i = 0; i < settle; i++) Drive(boot, thrower, from, throwing: false);
+
+                bool flaggedDuring = false;
+
+                for (int i = 0; i < 20; i++)
+                {
+                    Drive(boot, thrower, from, throwing: i == 2);
+                    if ((thrower.Flags & AgentFlags.Throwing) != 0) flaggedDuring = true;
+                }
+
+                for (int i = 0; i < 60; i++) Drive(boot, thrower, from, throwing: false);
+
+                bool flagCleared = (thrower.Flags & AgentFlags.Throwing) == 0;
+                bool animates = flaggedDuring && flagCleared;
+
+                Debug.Log($"[shuriken] throwing flag raised during the throw: {flaggedDuring}, " +
+                          $"cleared afterwards: {flagCleared}");
+                Debug.Log($"[shuriken] the throw is visible to other players: " +
+                          $"{(animates ? "PASS" : "FAIL")}");
+
+                // ---------------------------------------------------------- and bots use it
+                //
+                // They never had. There was no throw action in the HTN domain at all, so the
+                // shuriken was a purely human weapon for as long as it has existed - which nothing
+                // reported, because nothing was looking.
+                //
+                // Asked of the PLANNER rather than of a staged fight. Two attempts at the latter
+                // proved only how hard it is to stage: five bots loose on a seven hundred metre map
+                // do not meet inside a minute, and two held fifteen metres apart simply patrolled
+                // past each other, never facing one another, and acquired a target on nought of
+                // fifteen hundred ticks. Neither run told me anything about whether a bot that CAN
+                // see somebody will throw - which is the thing that changed.
+                //
+                // The domain is a pure function of facts, so it can just be asked.
+                var domain = NinjaDomain.Build();
+                var planner = new HtnPlanner();
+                var plan = new System.Collections.Generic.List<PrimitiveTask>(8);
+
+                var canThrow = new BotFacts
+                {
+                    HasTarget = true,
+                    TargetVisible = true,
+                    TargetInApproachRange = true,
+                    TargetInThrowRange = true,
+                    CanThrow = true
+                };
+
+                bool planned = planner.Plan(domain, canThrow, plan) &&
+                               plan.Count > 0 && plan[0].Action == BotAction.ThrowShuriken;
+
+                Debug.Log($"[shuriken] with a visible target in range, the plan opens with " +
+                          $"{(plan.Count > 0 ? plan[0].Action.ToString() : "nothing")}");
+                Debug.Log($"[shuriken] bots throw when they can: {(planned ? "PASS" : "FAIL")}");
+
+                // The counterfactual, twice over: on cooldown it must close instead, and in melee
+                // it must swing. A plan that answered "throw" to everything would pass the check
+                // above and be worse than no throw at all.
+                var onCooldown = canThrow;
+                onCooldown.CanThrow = false;
+
+                plan.Clear();
+                planner.Plan(domain, onCooldown, plan);
+                BotAction cooling = plan.Count > 0 ? plan[0].Action : BotAction.Idle;
+
+                var inMelee = canThrow;
+                inMelee.TargetInMeleeRange = true;
+
+                plan.Clear();
+                planner.Plan(domain, inMelee, plan);
+                BotAction close = plan.Count > 0 ? plan[0].Action : BotAction.Idle;
+
+                bool discriminates = cooling != BotAction.ThrowShuriken &&
+                                     close != BotAction.ThrowShuriken;
+
+                Debug.Log($"[shuriken] on cooldown it plans {cooling}; in melee it plans {close}");
+                Debug.Log($"[shuriken] and only when it should: " +
+                          $"{(discriminates ? "PASS" : "FAIL")}");
+
+                bool botsThrow = planned && discriminates;
+
                 if (startsArmed && hit && unlimited && whistles > 0 && paced && recovers &&
-                    straight && drops && notAmmunition)
+                    straight && drops && notAmmunition && animates && botsThrow)
                     Debug.Log("[shuriken] PASSED");
                 else
                     Debug.LogError("[shuriken] FAILED");

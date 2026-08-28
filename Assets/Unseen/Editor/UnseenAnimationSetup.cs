@@ -137,6 +137,7 @@ namespace Unseen.EditorTools
                 built.Add(Write(root, "ninja_guard", Guard(), loop: true));
                 built.Add(Write(root, "ninja_attack_light", AttackLight(), loop: false));
                 built.Add(Write(root, "ninja_attack_heavy", AttackHeavy(), loop: false));
+                built.Add(Write(root, "ninja_throw", Throw(), loop: false));
                 built.Add(Write(root, "ninja_stagger", Stagger(), loop: false));
                 built.Add(Write(root, "ninja_takedown_attacker", TakedownAttacker(), loop: false));
                 built.Add(Write(root, "ninja_takedown_victim", TakedownVictim(), loop: false));
@@ -210,6 +211,60 @@ namespace Unseen.EditorTools
         }
 
         /// <summary>A fast diagonal cut: coil, snap through, recover.</summary>
+        /// <summary>
+        /// Slinging a shuriken: a cross-body wind-up and a hard snap through.
+        ///
+        /// Deliberately unlike the sword swing. A cut comes over the shoulder and follows through
+        /// downward; a shuriken is thrown sidearm across the body, so the wind-up takes the right
+        /// hand across to the left hip and the release whips it out and slightly down. The hips and
+        /// shoulders counter-rotate through it, which is where a throw gets its power and is most of
+        /// what makes it read as a throw rather than a wave.
+        ///
+        /// Half a second end to end, with the release at 0.18 - early, because the blade leaves the
+        /// hand the moment the server says it does and an animation that releases late looks like
+        /// the ninja is throwing a second one.
+        /// </summary>
+        private static Key[] Throw()
+        {
+            return new[]
+            {
+                new Key(0f),
+
+                // Wind up: right hand across to the left hip, shoulders closed, weight back.
+                new Key(0.12f,
+                    new Pose(Spine, Up, 34f),
+                    new Pose(Chest, Up, 20f),
+                    new Pose(RightArm, Up, 26f),
+                    new Pose(RightArm, Right, -52f),
+                    new Pose(RightForeArm, Right, -84f),
+                    new Pose(LeftArm, Up, -22f),
+                    new Pose(LeftArm, Right, -34f),
+                    new Pose(Head, Up, 12f)),
+
+                // Release: everything unwinds the other way and the arm snaps out level.
+                new Key(0.18f,
+                    new Pose(Spine, Up, -38f),
+                    new Pose(Chest, Up, -24f),
+                    new Pose(RightArm, Up, -52f),
+                    new Pose(RightArm, Right, -18f),
+                    new Pose(RightForeArm, Right, -8f),
+                    new Pose(LeftArm, Up, 30f),
+                    new Pose(LeftArm, Right, -16f),
+                    new Pose(Head, Up, -8f)),
+
+                // Follow through, past the release and open.
+                new Key(0.30f,
+                    new Pose(Spine, Up, -20f),
+                    new Pose(Chest, Up, -12f),
+                    new Pose(RightArm, Up, -34f),
+                    new Pose(RightArm, Right, -34f),
+                    new Pose(RightForeArm, Right, -26f),
+                    new Pose(LeftArm, Up, 14f)),
+
+                new Key(0.50f)
+            };
+        }
+
         private static Key[] AttackLight()
         {
             return new[]
@@ -952,7 +1007,8 @@ namespace Unseen.EditorTools
                 (3, "ninja_attack_heavy"),
                 (4, "ninja_stagger"),
                 (5, "ninja_takedown_attacker"),
-                (6, "ninja_takedown_victim")
+                (6, "ninja_takedown_victim"),
+                (7, "ninja_throw")
             };
 
             AnimatorState idle = machine.AddState("None");

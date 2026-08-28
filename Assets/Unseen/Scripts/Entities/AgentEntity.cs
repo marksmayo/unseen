@@ -95,6 +95,15 @@ namespace Unseen.Entities
         /// <summary>Who landed the fatal blow, or None for the mist, a fall, or drowning.</summary>
         public AgentId Killer { get; internal set; }
 
+        /// <summary>
+        /// Simulation time until which this agent is mid-throw.
+        ///
+        /// Set by the shuriken system when a blade leaves the hand, and read by the animation. It
+        /// is a timestamp rather than a flag because the throw is authored as a half second clip
+        /// and nothing else in the loop would know when to clear a flag.
+        /// </summary>
+        public float ThrowingUntil { get; internal set; }
+
         /// <summary>Targets resolved this tick. Rebuilt by the interest manager every base tick.</summary>
         public readonly List<VisibleTarget> Visible = new List<VisibleTarget>(24);
 
@@ -200,6 +209,7 @@ namespace Unseen.Entities
             Kills = 0;
             DeathCause = DamageKind.Melee;
             Killer = AgentId.None;
+            ThrowingUntil = 0f;
             IsHot = false;
             HotUntil = 0f;
             Intent = MoveIntent.Idle;

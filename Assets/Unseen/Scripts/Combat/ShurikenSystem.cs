@@ -55,9 +55,33 @@ namespace Unseen.Combat
             UnseenConfig.ShurikenSection cfg = Ctx.Config.Shuriken;
             if (!cfg.Enabled) return;
 
+            MirrorThrowingFlag(frame);
+
             CollectThrows(cfg, frame);
             Advance(cfg, frame);
             Collect(cfg, frame);
+        }
+
+        /// <summary>
+        /// Mirrors the throw timer onto the replicated flags.
+        ///
+        /// The timer itself is simulation state that proxies never see. Everything else the
+        /// animation needs - guarding, staggered, taken down - is already mirrored onto flags for
+        /// exactly this reason, and a throw nobody else can see would be the one attack in the game
+        /// that plays only for the person making it.
+        /// </summary>
+        private void MirrorThrowingFlag(in SimFrame frame)
+        {
+            EntityRegistry registry = Ctx.Entities;
+
+            for (int i = 0; i < registry.Count; i++)
+            {
+                AgentEntity agent = registry.BySlot(i);
+                if (agent == null) continue;
+
+                if (frame.Time < agent.ThrowingUntil) agent.Flags |= AgentFlags.Throwing;
+                else agent.Flags &= ~AgentFlags.Throwing;
+            }
         }
 
         /// <summary>Clears every blade and cooldown. Called when a match restarts.</summary>
@@ -100,10 +124,24 @@ namespace Unseen.Combat
                 if (!cfg.Unlimited) agent.Shuriken--;
                 Thrown++;
 
+                // Launched from the camera's own lateral line, not the body's centre.
+                //
+                // The crosshair is the middle of the screen, and the screen is rendered from half
+                // a metre right of the ninja. A blade leaving the body's centre line therefore
+                // travelled parallel to the aim ray and half a metre left of it, all the way -
+                // which is exactly the "always slightly left of centre" that was reported.
+                float3 up = new float3(0f, 1f, 0f);
+                float3 right = math.normalizesafe(math.cross(up, agent.ViewDirection),
+                    new float3(1f, 0f, 0f));
+
+                float3 muzzle = agent.EyePosition
+                                + right * cfg.LaunchOffsetRight
+                                + agent.ViewDirection * 0.4f;
+
                 var blade = new Blade
                 {
                     Owner = agent.Id,
-                    Position = agent.EyePosition + agent.ViewDirection * 0.4f,
+                    Position = muzzle,
                     Velocity = agent.ViewDirection * cfg.Speed,
                     Age = 0f,
                     NextWhistle = 0f,
@@ -111,6 +149,10 @@ namespace Unseen.Combat
                 };
 
                 _blades.Add(blade);
+
+                // Long enough for the throw animation to play out. The clip is half a second and
+                // the visual reads this to decide whether to be throwing.
+                agent.ThrowingUntil = frame.Time + 0.5f;
 
                 // The throw itself is heard, separately from the whistle: a body moving hard enough
                 // to sling steel is not quiet. This one IS the thrower's - everyone else should be

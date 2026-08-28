@@ -398,6 +398,10 @@ namespace Unseen.Core
 
             public float Damage = 34f;
 
+            [Tooltip("How far a bot will throw. Beyond this it closes instead: a blade that has " +
+                     "to be lobbed is a blade that misses, and it announces the thrower.")]
+            public float ThrowRangeMetres = 26f;
+
             [Tooltip("How near the body the blade has to pass to count as a hit, in metres.")]
             public float HitRadiusMetres = 0.42f;
 
@@ -429,6 +433,17 @@ namespace Unseen.Core
 
             [Tooltip("Visual only: how fast the star turns over in the air.")]
             public float SpinDegreesPerSecond = 1400f;
+
+            [Tooltip("How far right of the body a blade is launched from, in metres.\n\n" +
+                     "This is not a stylistic choice, it is the fix for a real aiming error. The " +
+                     "third-person camera sits half a metre right of the ninja, so the crosshair " +
+                     "ray starts there while the blade started from the body's centre line - two " +
+                     "parallel rays half a metre apart, and every throw landed that far LEFT of " +
+                     "the crosshair. Launching from the same lateral line the camera looks along " +
+                     "makes the two coincide. It also happens to be where a right-handed throw " +
+                     "comes from.\n\n" +
+                     "Must match ThirdPersonCameraRig.ShoulderOffset, which reads this value.")]
+            public float LaunchOffsetRight = 0.5f;
         }
 
         [Serializable]

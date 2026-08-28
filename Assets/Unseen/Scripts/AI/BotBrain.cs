@@ -236,6 +236,14 @@ namespace Unseen.AI
             _facts.TargetIsSilhouette = visibleNow && _bb.TargetIsSilhouetteOnly;
             _facts.TargetInMeleeRange = ready && distance <= cfg.Combat.MeleeRange * 0.95f;
             _facts.TargetInApproachRange = distance <= cfg.Bots.ActiveRange;
+
+            // Beyond arm's reach and inside the distance a blade actually carries. The near edge is
+            // melee range: at three metres a bot should be swinging, not throwing.
+            _facts.TargetInThrowRange = ready &&
+                                        distance > cfg.Combat.MeleeRange * 1.2f &&
+                                        distance <= cfg.Shuriken.ThrowRangeMetres;
+
+            _facts.CanThrow = cfg.Shuriken.Enabled && now >= _bb.NextThrowAt;
             _facts.UnderAttack = now - _agent.Vitals.LastDamageTime < 2f;
             _facts.Injured = _agent.Vitals.Fraction < cfg.Bots.FleeHealthFraction;
             _facts.Concealed = _agent.StealthIndex >= cfg.Stealth.ConcealedThreshold;
@@ -398,6 +406,32 @@ namespace Unseen.AI
                     intent.UseUtility = FindUtilitySlot(UtilityEffect.SmokeBomb);
                     intent.Pitch = 0f;
                     break;
+
+                case BotAction.ThrowShuriken:
+                {
+                    // Aimed at the body rather than the feet, and led slightly: a blade takes about
+                    // a fifth of a second to cross a courtyard and a walking target is half a metre
+                    // along by the time it arrives.
+                    float3 aim = _bb.TargetLastSeen + new float3(0f, 0.9f, 0f);
+
+                    if (ctx.Entities.TryGet(_bb.Target, out AgentEntity mark) && mark != null)
+                    {
+                        float flight = math.distance(_agent.EyePosition, mark.TorsoPosition) /
+                                       math.max(1f, ctx.Config.Shuriken.Speed);
+
+                        aim = mark.TorsoPosition + mark.Motor.Velocity * flight;
+                    }
+
+                    FacePoint(ref intent, aim);
+
+                    intent.Throw = true;
+                    intent.Sprint = false;
+
+                    // Its own record of the cooldown, so the planner stops choosing this the
+                    // instant it has thrown rather than after being refused for five seconds.
+                    _bb.NextThrowAt = now + ctx.Config.Shuriken.Cooldown;
+                    break;
+                }
 
                 case BotAction.BreakLantern:
                 {

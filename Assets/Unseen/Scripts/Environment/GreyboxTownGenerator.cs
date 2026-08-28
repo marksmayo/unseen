@@ -1929,6 +1929,29 @@ namespace Unseen.Environment
         /// why they all leaked. Asking the world is both simpler and correct for holes nobody has
         /// thought of yet.
         /// </summary>
+        /// <summary>
+        /// Whether a plant of a given size would fit here without growing through anything.
+        ///
+        /// A capsule standing on the spot, tested against the world. The trunk's own footprint is
+        /// usually clear - it is the canopy a few metres up that ends up inside somebody's first
+        /// floor - so the test has to cover the height, not just the base.
+        ///
+        /// Other trees count too. Their trunk colliders sit on the Occluder layer, which is part of
+        /// WorldGeometry, so this rejects a tree planted inside another one as readily as one
+        /// planted inside a wall. That is not a special case worth carving out: planting points are
+        /// spaced a quarter of a street apart, which is eleven metres against a two metre test
+        /// radius, so it almost never fires - and when it does, two trunks in the same hole was not
+        /// the look anybody wanted either.
+        /// </summary>
+        private bool HasRoomToGrow(Vector3 at, float radius, float height)
+        {
+            Vector3 bottom = at + Vector3.up * (radius + 0.15f);
+            Vector3 top = at + Vector3.up * Mathf.Max(height - radius, radius + 0.2f);
+
+            return !Physics.CheckCapsule(bottom, top, radius,
+                UnseenLayers.WorldGeometry, QueryTriggerInteraction.Ignore);
+        }
+
         private bool GroundUnder(Vector3 at, out float groundY, float maxDrop = 2.5f,
             float maxWater = 0.25f, float maxRise = 1.5f)
         {
@@ -2765,9 +2788,48 @@ namespace Unseen.Environment
                         alongZ ? streetZ + slide : streetZ + (float)(_random.NextDouble() - 0.5) * 3f);
 
                     if (Mathf.Abs(spot.x) > extent || Mathf.Abs(spot.z) > extent) continue;
-                    if (_riverColumn >= 0 && Mathf.Abs(spot.x - _riverCentreX) < RiverWidth * 0.75f) continue;
 
-                    if (_random.NextDouble() < 0.62)
+                    bool tree = _random.NextDouble() < 0.62;
+                    float radius = tree ? 2.2f : 0.9f;
+                    float clearance = tree ? 7f : 1.4f;
+
+                    // Room to grow. A tree planted against a wall grows straight through it and
+                    // out the other side, which was reported against the castle and is the same
+                    // everywhere else: nothing here ever asked whether the space was occupied.
+                    //
+                    // Checked as a capsule up the trunk rather than a sphere at the base, because
+                    // the base is usually in a clear gutter and it is the canopy at four metres
+                    // that ends up inside a first-floor wall.
+                    //
+                    // Nudged rather than abandoned. Simply dropping the ones that did not fit cost
+                    // a third of the trees in the town, and trees are cover: with sixty-six of them
+                    // gone the bots could see each other across streets that used to be screened,
+                    // and the share of ticks spent in combat went from nine per cent to thirty.
+                    // A metre or two along the verge is almost always enough.
+                    bool planted = false;
+                    Vector3 spotY = spot;
+
+                    for (int nudge = 0; nudge < 6 && !planted; nudge++)
+                    {
+                        Vector3 candidate = spot + (nudge == 0
+                            ? Vector3.zero
+                            : new Vector3(Mathf.Cos(nudge * 1.7f), 0f, Mathf.Sin(nudge * 1.7f))
+                              * (1.2f + nudge * 0.9f));
+
+                        if (!GroundUnder(candidate, out float plantY)) continue;
+
+                        candidate.y = plantY;
+                        if (!HasRoomToGrow(candidate, radius, clearance)) continue;
+
+                        spotY = candidate;
+                        planted = true;
+                    }
+
+                    if (!planted) continue;
+
+                    spot = spotY;
+
+                    if (tree)
                     {
                         BuildTree(grove, spot);
                         trees++;
@@ -3552,6 +3614,27 @@ namespace Unseen.Environment
                     new Vector3(0f, y + storeyHeight, 0f),
                     new Vector3(size + 3f, 0.4f, size + 3f), UnseenLayers.Default, _tile);
                 Acoustics(eave, 0.85f, 1.3f, 1.4f);
+
+                // A grapple bracket on each corner of every storey's eave.
+                //
+                // The keep had exactly two anchor points, both from the hip roof on top of it: a
+                // ridge anchor and four hooks set well inside the topmost storey. On a five storey
+                // castle whose lowest eave overhangs by twenty-two metres, every one of those sits
+                // behind its own building from anywhere you could stand - so the rope-path check
+                // refused every shot and the castle read as the one building in the town you
+                // cannot grapple. This is the same lesson the compound roofs already carry in a
+                // comment: the anchor has to be on the outermost thing you can actually see.
+                float bracket = (size + 3f) * 0.5f - 0.6f;
+
+                for (int cx = -1; cx <= 1; cx += 2)
+                for (int cz = -1; cz <= 1; cz += 2)
+                {
+                    Transform hook = Box(keep, $"KeepEaveHook_{s}_{cx}_{cz}",
+                        new Vector3(cx * bracket, y + storeyHeight - 0.5f, cz * bracket),
+                        new Vector3(1.1f, 0.7f, 1.1f), UnseenLayers.GrappleAnchor, _darkTimber);
+
+                    Acoustics(hook, 0.6f, 1.2f, 1.2f);
+                }
 
                 DressKeepStorey(keep, y, storeyHeight, size);
                 PlaceLanterns(keep, size * 0.5f, y + storeyHeight * 0.6f);

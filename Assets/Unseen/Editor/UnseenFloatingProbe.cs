@@ -142,7 +142,60 @@ namespace Unseen.EditorTools
                 Debug.Log($"[floating] nothing is left standing in the river: " +
                           $"{(dry ? "PASS" : "FAIL")}");
 
-                if (dressingSits && animalsStand && dry)
+                // ---------------------------------------------------------- nothing grows through
+                //
+                // A tree planted against a wall grows straight through it and out the other side.
+                // Tested as a capsule up each trunk, ignoring the tree's own colliders - which is
+                // the whole reason this cannot simply reuse the generator's own check.
+                int trunks = 0;
+                int embedded = 0;
+                string worstTree = "none";
+
+                Transform foliage = Find(host.transform, "Foliage");
+
+                if (foliage != null)
+                {
+                    foreach (Transform trunk in foliage.GetComponentsInChildren<Transform>(true))
+                    {
+                        if (trunk.name != "TrunkCollider") continue;
+
+                        var box = trunk.GetComponent<BoxCollider>();
+                        if (box == null) continue;
+
+                        trunks++;
+
+                        Vector3 at = trunk.position;
+                        float height = box.size.y * trunk.lossyScale.y;
+
+                        Collider[] hits = Physics.OverlapCapsule(
+                            at + Vector3.down * (height * 0.5f - 1.2f),
+                            at + Vector3.up * (height * 0.35f),
+                            1.1f, UnseenLayers.WorldGeometry, QueryTriggerInteraction.Ignore);
+
+                        bool clash = false;
+
+                        foreach (Collider hit in hits)
+                        {
+                            // Its own trunk, and anything else belonging to the same tree.
+                            if (hit.transform.IsChildOf(trunk.parent)) continue;
+                            clash = true;
+                            break;
+                        }
+
+                        if (!clash) continue;
+
+                        embedded++;
+                        if (worstTree == "none") worstTree = $"{trunk.parent.name} at {at}";
+                    }
+                }
+
+                Debug.Log($"[floating] {trunks} trees; {embedded} growing through something " +
+                          $"(first: {worstTree})");
+
+                bool rooted = trunks > 0 && embedded == 0;
+                Debug.Log($"[floating] trees have room to grow: {(rooted ? "PASS" : "FAIL")}");
+
+                if (dressingSits && animalsStand && dry && rooted)
                     Debug.Log("[floating] PASSED");
                 else
                     Debug.LogError("[floating] FAILED");

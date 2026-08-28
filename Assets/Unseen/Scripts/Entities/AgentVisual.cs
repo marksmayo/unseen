@@ -26,6 +26,7 @@ namespace Unseen.Entities
         private const int ActionStagger = 4;
         private const int ActionTakedownAttacker = 5;
         private const int ActionTakedownVictim = 6;
+        private const int ActionThrow = 7;
 
         private const int CombatLayer = 1;
         private const int StanceLayer = 2;
@@ -285,6 +286,10 @@ namespace Unseen.Entities
             if (melee.IsTakedownVictim) return ActionTakedownVictim;
             if (melee.TakedownTarget.IsValid) return ActionTakedownAttacker;
 
+            // Above the swing, because a throw and a swing can both be live in the same frame and
+            // the throw is the one that just happened.
+            if ((_agent.Flags & AgentFlags.Throwing) != 0) return ActionThrow;
+
             // Stagger is read from the flags rather than the timer: the timer is in simulation
             // time, which the visual has no honest access to, and the server mirrors it onto the
             // flags for exactly this reason.
@@ -300,6 +305,7 @@ namespace Unseen.Entities
         {
             var flags = (AgentFlags)raw;
             if ((flags & AgentFlags.Takedown) != 0) return ActionTakedownVictim;
+            if ((flags & AgentFlags.Throwing) != 0) return ActionThrow;
             if ((flags & AgentFlags.Staggered) != 0) return ActionStagger;
             if ((flags & AgentFlags.Guarding) != 0) return ActionGuard;
             return ActionNone;
