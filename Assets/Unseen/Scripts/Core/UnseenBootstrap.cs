@@ -120,6 +120,10 @@ namespace Unseen.Core
             Application.targetFrameRate = Mode == LaunchMode.DedicatedServer ? Config.Network.CombatTickRate : -1;
             QualitySettings.vSyncCount = Mode == LaunchMode.DedicatedServer ? 0 : 1;
 
+            // A dedicated server still simulates smoke - agents inside a cloud really are harder
+            // to see, and that has to be decided server side - but it has nobody to draw it for.
+            Environment.SmokeCloud.BuildVisuals = Mode != LaunchMode.DedicatedServer;
+
             _net = CreateNetworkService();
             _ctx = new SimContext(Config, transform, _net, Seed);
             _ctx.Sound = new SoundEventBus();

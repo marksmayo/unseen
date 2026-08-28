@@ -138,6 +138,11 @@ namespace Unseen.BattleRoyale
                 agents[i].ResetForMatch();
                 agents[i].Brain?.ResetBrain();
 
+                // And hand the starting kit back. ResetForMatch empties the inventory, so without
+                // this the one smoke bomb everybody is issued at spawn existed only until the
+                // first match began - which is every match anybody actually plays.
+                _spawner?.GiveStartingKit(agents[i]);
+
                 // Bodies come back too. ResetForMatch restores the simulation state; the death
                 // scene owns the transform and the renderer, and it had nobody telling it a new
                 // match had started.

@@ -81,7 +81,14 @@ namespace Unseen.BattleRoyale
         /// first chest, which reads as broken rather than as an empty inventory. One item is enough
         /// to teach the slot exists without deciding the fight.
         /// </summary>
-        private void GiveStartingKit(AgentEntity agent)
+        /// <summary>
+        /// Public because a new match has to re-issue it.
+        ///
+        /// ResetForMatch clears the inventory, and MatchDirector calls it on every agent when a
+        /// match begins - so the kit handed out at spawn survived only until the first round
+        /// started, and from then on nobody in the game had a smoke bomb they had not looted.
+        /// </summary>
+        public void GiveStartingKit(AgentEntity agent)
         {
             if (agent.Inventory == null) return;
             if (_startingSmoke == null) _startingSmoke = BuildStartingSmoke();
