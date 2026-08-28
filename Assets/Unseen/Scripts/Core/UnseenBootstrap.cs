@@ -359,13 +359,56 @@ namespace Unseen.Core
 
             var profile = ScriptableObject.CreateInstance<UnityEngine.Rendering.VolumeProfile>();
 
+            // ACES rather than Neutral.
+            //
+            // Neutral is a straight-through curve and it is the right default for a game that wants
+            // to show you what it drew. This one wants a deep toe and a rolled shoulder: shadows
+            // that crush toward black and lantern flames that bloom out rather than clipping flat.
+            // That is most of the difference between "a dark scene" and "a night scene".
             var tonemapping = profile.Add<UnityEngine.Rendering.Universal.Tonemapping>(true);
-            tonemapping.mode.Override(UnityEngine.Rendering.Universal.TonemappingMode.Neutral);
+            tonemapping.mode.Override(UnityEngine.Rendering.Universal.TonemappingMode.ACES);
 
             var colour = profile.Add<UnityEngine.Rendering.Universal.ColorAdjustments>(true);
-            colour.postExposure.Override(1.35f);
-            colour.contrast.Override(16f);
-            colour.saturation.Override(-8f);
+            colour.postExposure.Override(1.15f);
+            colour.contrast.Override(26f);
+            colour.saturation.Override(-4f);
+
+            // Cold shadows, warm lights. This is the whole palette in one effect: everything unlit
+            // falls toward indigo and everything a lantern touches goes amber, which is what makes
+            // a single paper lamp read as fire from across a courtyard.
+            var split = profile.Add<UnityEngine.Rendering.Universal.SplitToning>(true);
+            split.shadows.Override(new Color(0.24f, 0.34f, 0.62f));
+            split.highlights.Override(new Color(0.92f, 0.66f, 0.34f));
+            split.balance.Override(-18f);
+
+            // Bloom, thresholded above everything except flame.
+            //
+            // Nothing in this town is bright except the lanterns, so a threshold just under their
+            // output makes them the only thing that blooms - and a lantern with a halo is the
+            // difference between a lit texture and a light source.
+            var bloom = profile.Add<UnityEngine.Rendering.Universal.Bloom>(true);
+            // Above anything a moonlit surface can reach. At 0.85 the lit side of a hedge was
+            // blooming as hard as the lamp lighting it, which is how a row of shrubs came out
+            // acid green.
+            bloom.threshold.Override(1.15f);
+            bloom.intensity.Override(1.15f);
+            bloom.scatter.Override(0.72f);
+            bloom.tint.Override(new Color(1f, 0.86f, 0.66f));
+
+            // A vignette, because both reference images have a heavy one and because it does the
+            // same job as a shadowed proscenium: it pushes the eye to the middle of the frame and
+            // makes the edges feel like somewhere you cannot see into.
+            var vignette = profile.Add<UnityEngine.Rendering.Universal.Vignette>(true);
+            vignette.intensity.Override(0.34f);
+            vignette.smoothness.Override(0.42f);
+            vignette.color.Override(new Color(0.02f, 0.03f, 0.06f));
+
+            // Just enough grain to stop a very dark, very smooth night from banding, which it will
+            // at these exposures on an eight bit display.
+            var grain = profile.Add<UnityEngine.Rendering.Universal.FilmGrain>(true);
+            grain.type.Override(UnityEngine.Rendering.Universal.FilmGrainLookup.Thin1);
+            grain.intensity.Override(0.22f);
+            grain.response.Override(0.85f);
 
             volume.profile = profile;
 

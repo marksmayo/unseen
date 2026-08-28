@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 using Unseen.Audio;
 using Unseen.Core;
 using Unseen.Items;
@@ -133,14 +134,14 @@ namespace Unseen.Environment
         [Header("Lighting")]
         [Tooltip("Moonlight brightness. A stealth game still has to be legible: darkness should " +
                  "mean 'hard to be seen', not 'cannot see'.")]
-        public float MoonlightIntensity = 0.85f;
+        public float MoonlightIntensity = 1.15f;
 
         [Tooltip("Moonlight elevation and heading, degrees.")]
-        public Vector2 MoonlightAngles = new Vector2(38f, 145f);
+        public Vector2 MoonlightAngles = new Vector2(22f, 152f);
 
         [Tooltip("Multiplier on lantern brightness. Visual only - the stealth index reads " +
                  "StealthLightSource.Intensity, which is deliberately separate.")]
-        public float LanternVisualIntensity = 34f;
+        public float LanternVisualIntensity = 15f;
 
         [Header("Art")]
         [Tooltip("Textured materials. Falls back to Resources, then to flat greybox colours.")]
@@ -445,9 +446,18 @@ namespace Unseen.Environment
 
             Light light = lightHost.AddComponent<Light>();
             light.type = LightType.Directional;
-            light.color = new Color(0.62f, 0.72f, 1f);
+
+            // Colder and bluer than before, and raking in at twenty-two degrees rather than
+            // thirty-eight.
+            //
+            // Both are about silhouette. A low moon throws long shadows and puts the lit faces of
+            // buildings almost edge-on to it, so a roofline reads as a shape against the sky rather
+            // than as a lit surface - which is the single strongest thing in the reference art. The
+            // colder tint is what makes a lantern look warm; warmth is a relationship, not a value.
+            light.color = new Color(0.55f, 0.66f, 1f);
             light.intensity = MoonlightIntensity;
             light.shadows = LightShadows.Soft;
+            light.shadowStrength = 0.92f;
         }
 
         /// <summary>
@@ -466,6 +476,40 @@ namespace Unseen.Environment
             RenderSettings.fogMode = FogMode.ExponentialSquared;
             RenderSettings.fogDensity = _set.FogDensity;
             RenderSettings.fogColor = _set.FogColor;
+
+            PlaceMoon();
+        }
+
+        /// <summary>
+        /// Puts the moon disc where the moonlight is actually coming from.
+        ///
+        /// The sky material could carry a hand-set direction, but then the two would drift apart the
+        /// moment anybody touched <see cref="MoonlightAngles"/> - and a scene lit from the left with
+        /// its moon on the right is the sort of thing nobody can name but everybody can feel. Taking
+        /// the direction from the light means there is only one number to get right.
+        ///
+        /// Negated because a directional light's forward vector is the way the light *travels*, and
+        /// the moon is at the other end of that.
+        ///
+        /// On an instance rather than the shared asset: writing to _set.Sky would edit the material
+        /// on disk and leave whatever the last generated town used committed into the project.
+        /// </summary>
+        private void PlaceMoon()
+        {
+            Material sky = RenderSettings.skybox;
+            if (sky == null || !sky.HasProperty("_MoonDir")) return;
+
+            if (sky == _set.Sky)
+            {
+                sky = new Material(_set.Sky) { name = "MoonlitSky (instance)" };
+                RenderSettings.skybox = sky;
+                _skyInstance = sky;
+            }
+
+            Vector3 travel = Quaternion.Euler(MoonlightAngles.x, MoonlightAngles.y, 0f)
+                             * Vector3.forward;
+
+            sky.SetVector("_MoonDir", -travel);
         }
 
         /// <summary>One walled compound: outer wall, paper-divided interior, walkable roof, rafters.</summary>
@@ -478,6 +522,7 @@ namespace Unseen.Environment
             // Everything below is built in the compound's local space, so turning the parent turns
             // the walls, the shoji, the rafters, the roof and the colliders together.
             compound.localRotation = Quaternion.Euler(0f, turn, 0f);
+            _lanternSalt = salt;
 
             // Plot sizes vary, which is what actually widens one street and pinches the next -
             // but only across a few discrete sizes.
@@ -3263,8 +3308,12 @@ namespace Unseen.Environment
                 float centre = Mathf.Lerp(-length * 0.5f, length * 0.5f, (bay + 0.5f) / bays);
                 float sill = height * 0.72f;
 
+                // Most of them lit, not all. A town where every window burns reads as a hotel;
+                // the dark ones are what make the lit ones mean somebody is in.
+                bool lit = ((bay * 7 + side * 3 + _lanternSalt) % 5) < 3;
+
                 Detail(compound, $"Window_{side}_{bay}", Along(centre, sill),
-                    Size(2.1f, 1.15f, 0.14f), _darkTimber);
+                    Size(2.1f, 1.15f, 0.14f), lit ? LitWindow() : _darkTimber);
 
                 // The bars themselves, so the opening has depth at close range.
                 for (int bar = 0; bar < 5; bar++)
@@ -3675,6 +3724,35 @@ namespace Unseen.Environment
                 }
 
                 DressKeepStorey(keep, y, storeyHeight, size);
+
+                // Lit windows up the castle. It is the tallest thing on the map and the thing every
+                // sightline ends at, and unlit it was a pale grey block rather than a silhouette
+                // with people in it.
+                int lights = Mathf.Max(2, Mathf.RoundToInt(size / 7f));
+
+                for (int face = 0; face < 4; face++)
+                {
+                    bool horizontal = face % 2 == 0;
+                    float sign = face < 2 ? 1f : -1f;
+                    float reach = size * 0.5f + 0.08f;
+
+                    for (int w = 0; w < lights; w++)
+                    {
+                        if ((w + face + s) % 3 == 0) continue;
+
+                        float along = Mathf.Lerp(-size * 0.34f, size * 0.34f,
+                            lights == 1 ? 0.5f : w / (float)(lights - 1));
+
+                        Detail(keep, $"KeepWindow_{s}_{face}_{w}",
+                            horizontal
+                                ? new Vector3(along, y + storeyHeight * 0.55f, reach * sign)
+                                : new Vector3(reach * sign, y + storeyHeight * 0.55f, along),
+                            horizontal
+                                ? new Vector3(1.5f, 1.1f, 0.12f)
+                                : new Vector3(0.12f, 1.1f, 1.5f),
+                            LitWindow());
+                    }
+                }
                 PlaceLanterns(keep, size * 0.5f, y + storeyHeight * 0.6f);
             }
 
@@ -3761,6 +3839,52 @@ namespace Unseen.Environment
 
         private Material _lakeWater;
         private Material _wetStone;
+
+        /// <summary>The per-town sky copy, so the shared asset is never written to.</summary>
+        private Material _skyInstance;
+        private Material _litWindow;
+
+        /// <summary>Varies which windows are lit from building to building.</summary>
+        private int _lanternSalt;
+
+        /// <summary>
+        /// A window with a lamp behind it.
+        ///
+        /// The single most recognisable thing in the reference art is not the moon or the roofs -
+        /// it is the warm rectangles. A dark town with amber windows in it reads as inhabited and
+        /// as somewhere with people to avoid; the same town with dark windows reads as an
+        /// architectural model.
+        ///
+        /// Emissive rather than lit by a real lamp. Nine hundred and ninety-six lanterns already
+        /// exhaust the light budget, and a window does not need to cast light into the street to
+        /// do its job here - it needs to BE a bright warm shape. Above the bloom threshold on
+        /// purpose, so each one carries a halo.
+        /// </summary>
+        private Material LitWindow()
+        {
+            if (_litWindow != null) return _litWindow;
+
+            Material source = _paper != null ? _paper : _plaster;
+            if (source == null) return _darkTimber;
+
+            _litWindow = new Material(source) { name = "LitWindow" };
+
+            var glow = new Color(1f, 0.66f, 0.28f);
+
+            if (_litWindow.HasProperty("_BaseColor"))
+                _litWindow.SetColor("_BaseColor", glow * 0.5f);
+
+            if (_litWindow.HasProperty("_EmissionColor"))
+            {
+                _litWindow.EnableKeyword("_EMISSION");
+                _litWindow.SetColor("_EmissionColor", glow * 2.4f);
+                // Realtime only. These are created at generation time and there is no lightmap
+                // for them to contribute to.
+                _litWindow.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
+            }
+
+            return _litWindow;
+        }
 
 
         /// <summary>

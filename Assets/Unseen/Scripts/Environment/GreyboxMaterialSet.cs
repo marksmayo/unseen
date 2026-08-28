@@ -104,12 +104,12 @@ namespace Unseen.Environment
         public Material Sky;
 
         [Tooltip("Ambient light from the sky. Moonlight should read as faint, not absent.")]
-        [Range(0f, 2f)] public float AmbientIntensity = 0.45f;
+        [Range(0f, 2f)] public float AmbientIntensity = 0.14f;
 
         [Tooltip("Night fog. Also hides the HDRI's own horizon scenery beyond the map edge.")]
-        [Range(0f, 0.05f)] public float FogDensity = 0.012f;
+        [Range(0f, 0.05f)] public float FogDensity = 0.019f;
 
-        public Color FogColor = new Color(0.06f, 0.07f, 0.12f);
+        public Color FogColor = new Color(0.055f, 0.075f, 0.145f);
 
         [Header("Scale")]
         [Tooltip("World metres covered by one texture repeat. Lower means finer detail.")]
