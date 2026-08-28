@@ -60,6 +60,13 @@ namespace Unseen.Client
                  "the two numbers disagree every throw lands off the crosshair by the difference.")]
         public float ShoulderOffset = 0.5f;
 
+        [Tooltip("Metres beyond which renderer-only trim is not drawn at all.\n\n" +
+                 "Rafter ends, balusters, eave sweeps and foliage blades: over half the renderers " +
+                 "in the town, averaging a dozen triangles each, and sub-pixel well before this " +
+                 "distance. Nothing on that layer has a collider, so this changes what is drawn " +
+                 "and nothing else.")]
+        public float DecorationCullDistance = 85f;
+
         [Header("Collision")]
         [Tooltip("Radius of the probe that looks for geometry between pivot and camera.")]
         public float ProbeRadius = 0.25f;
@@ -79,6 +86,33 @@ namespace Unseen.Client
         private Transform _visualOwner;
         private bool _visualHidden;
 
+        /// <summary>
+        /// Stops drawing renderer-only trim past DecorationCullDistance.
+        ///
+        /// Unity culls per layer per camera, which is the whole mechanism - no bake, which matters
+        /// here because the town is generated at runtime and there is no scene geometry for baked
+        /// occlusion culling to have been computed from. That was my first suggestion for this and
+        /// it was wrong for exactly that reason.
+        /// </summary>
+        private void ApplyCullDistances()
+        {
+            if (_camera == null) return;
+
+            var distances = new float[32];
+
+            // Zero means "use the camera's far plane", which is what every other layer wants.
+            for (int i = 0; i < distances.Length; i++) distances[i] = 0f;
+
+            distances[UnseenLayers.Decoration] = Mathf.Max(10f, DecorationCullDistance);
+
+            _camera.layerCullDistances = distances;
+
+            // Spherical, so the trim does not pop as you turn on the spot - the default is a
+            // per-axis box test, which culls at different distances depending on which way you
+            // are looking.
+            _camera.layerCullSpherical = true;
+        }
+
         private void Awake()
         {
             _camera = GetComponent<Camera>();
@@ -94,6 +128,8 @@ namespace Unseen.Client
             // edited copies of the number would put every blade off by the difference.
             Core.UnseenConfig config = Core.UnseenConfig.Default;
             if (config != null) ShoulderOffset = config.Shuriken.LaunchOffsetRight;
+
+            ApplyCullDistances();
         }
 
         private float _pivotDrop;

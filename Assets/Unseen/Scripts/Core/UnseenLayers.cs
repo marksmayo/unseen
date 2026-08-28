@@ -20,10 +20,22 @@ namespace Unseen.Core
         public const int LootContainer = 16;
         public const int Foliage = 17;
 
+        /// <summary>
+        /// Renderer-only trim: rafter ends, eave sweeps, balusters, ridge caps, rake lines.
+        ///
+        /// Nothing on this layer has a collider, so it is invisible to every raycast in the game
+        /// and the layer exists purely so the camera can stop drawing it at a distance. It is a
+        /// little over half of everything in the town by renderer count and about a quarter of a
+        /// triangle each, which is exactly the profile that should not be drawn from four hundred
+        /// metres away.
+        /// </summary>
+        public const int Decoration = 18;
+
         public static readonly string[] CustomLayerNames =
         {
             "Occluder", "ShojiPaper", "Ninja", "Interactable", "Rafter",
-            "Climbable", "GrappleAnchor", "MistVolume", "LootContainer", "Foliage"
+            "Climbable", "GrappleAnchor", "MistVolume", "LootContainer", "Foliage",
+            "Decoration"
         };
 
         /// <summary>Geometry that fully breaks line of sight.</summary>

@@ -120,7 +120,30 @@ namespace Unseen.EditorTools
                 Debug.Log($"[cost] mean {(renderers > 0 ? triangles / (float)renderers : 0f):0} " +
                           $"triangles per renderer");
                 Debug.Log($"[cost] {colliders.Length} colliders, {lights.Length} lights " +
-                          $"({realtime} enabled)");
+                          $"({realtime} enabled in edit mode; LanternLightBudget caps this at " +
+                          $"runtime)");
+
+                // Split by layer, because the whole point of the Decoration layer is that the
+                // camera can stop drawing it - so how much of the town lives there is the number
+                // that says whether that was worth doing.
+                int decoration = 0;
+                int decorationCasters = 0;
+
+                foreach (Renderer renderer in host.GetComponentsInChildren<Renderer>(true))
+                {
+                    if (!renderer.gameObject.activeInHierarchy || !renderer.enabled) continue;
+                    if (renderer.gameObject.layer != UnseenLayers.Decoration) continue;
+
+                    decoration++;
+
+                    if (renderer.shadowCastingMode !=
+                        UnityEngine.Rendering.ShadowCastingMode.Off)
+                        decorationCasters++;
+                }
+
+                Debug.Log($"[cost] {decoration} of them are renderer-only trim on the Decoration " +
+                          $"layer ({(renderers > 0 ? decoration * 100f / renderers : 0f):0}%), " +
+                          $"of which {decorationCasters} still cast shadows");
 
                 Debug.Log("[cost] top 20 by renderer count - each material is one SRP batch, so " +
                           "this column is roughly draw calls:");

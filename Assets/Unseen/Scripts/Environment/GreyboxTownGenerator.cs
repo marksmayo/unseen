@@ -1992,11 +1992,17 @@ namespace Unseen.Environment
             host.transform.SetParent(parent, false);
             host.transform.localPosition = position;
             host.transform.localScale = scale;
+            host.layer = UnseenLayers.Decoration;
 
             host.AddComponent<MeshFilter>().sharedMesh = mesh;
 
             var renderer = host.AddComponent<MeshRenderer>();
             if (material != null) renderer.sharedMaterial = material;
+
+            // Foliage masses, rocks and blades. The same argument as Detail: these are 149 triangle
+            // leaves hung on a trunk that casts its own shadow, and a million triangles of them
+            // were being drawn a second time for the shadow map.
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
 
             return host.transform;
         }
@@ -2046,10 +2052,19 @@ namespace Unseen.Environment
                 // into white paint, but the fix for that was the density and the falloff, not the
                 // count - and at a quarter of the crossings the town had haze in the distance and
                 // nothing at street level, which is where atmosphere is actually felt.
-                double chance = nearRiver ? 1.0 : 0.9;
+                // Thinned back on measured overdraw, not on taste.
+                //
+                // The cost probe put 835 mist quads across 978,000 square metres of ground - on a
+                // map of 562,000. Every one of them is alpha blended, so that is 1.7 layers of
+                // full-screen-rate fill on average and considerably more where they stack, paid
+                // every frame whether anything is behind them or not. It was comfortably the most
+                // expensive thing in the town per unit of visual benefit.
+                //
+                // Roughly halved. The flat panels are the ones that stack, so they take the cut.
+                double chance = nearRiver ? 0.85 : 0.55;
                 if (_random.NextDouble() > chance) continue;
 
-                int here = nearRiver ? 5 : 4;
+                int here = nearRiver ? 4 : 3;
 
 
                 for (int i = 0; i < here; i++)
@@ -2113,9 +2128,12 @@ namespace Unseen.Environment
                     // A spread of sizes rather than one big one. A few wide sheets give the
                     // distance its haze; the smaller ones are what drift between your legs, and
                     // one size cannot do both.
+                    // The wide flat sheets are where the area goes: one at 74 m across covers
+                    // 5,500 square metres on its own. Smaller, and the upright ones - which are
+                    // seen edge-on from above and cost almost nothing in fill - carry more of it.
                     float size = i == 0
-                        ? 34f + (float)_random.NextDouble() * 40f
-                        : 11f + (float)_random.NextDouble() * 18f;
+                        ? 26f + (float)_random.NextDouble() * 26f
+                        : 10f + (float)_random.NextDouble() * 15f;
 
                     var panel = new GameObject($"Mist_{gx}_{gz}_{i}");
                     panel.transform.SetParent(host, false);
@@ -3543,6 +3561,18 @@ namespace Unseen.Environment
 
                 Transform paper = Box(panelHost, "Paper", Vector3.zero, size, UnseenLayers.ShojiPaper,
                     _shojiPaper);
+
+                // Paper screens cast nothing.
+                //
+                // Transparent shadow casters are the most expensive kind - the shadow pass has to
+                // run the alpha clip - and 2,772 of them were doing it for a translucent panel
+                // whose whole purpose is that light comes THROUGH it. The frame behind each one is
+                // solid timber and still casts, so the opening keeps its shape in shadow.
+                var paperRenderer = paper.GetComponent<MeshRenderer>();
+
+                if (paperRenderer != null)
+                    paperRenderer.shadowCastingMode =
+                        UnityEngine.Rendering.ShadowCastingMode.Off;
                 Acoustics(paper, 0.12f, 1f, 1f);
 
                 Transform frame = Box(panelHost, "Frame",
@@ -4738,6 +4768,12 @@ namespace Unseen.Environment
             var shellRenderer = shellHost.AddComponent<MeshRenderer>();
             shellRenderer.sharedMaterial = _lanternGlow != null ? _lanternGlow : _paper;
 
+            // A lit paper lantern does not cast a shadow, and 996 of them were: the largest single
+            // group of shadow casters left in the town after the trim stopped, and a lathe-turned
+            // shell at 307 triangles apiece is not cheap to draw twice. The lamp inside is already
+            // configured to cast nothing for the same reason.
+            shellRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+
             // The collider stays a simple box: it is what a shuriken has to hit, and a lathe mesh
             // collider would cost far more than the accuracy is worth.
             var shellCollider = shellHost.AddComponent<BoxCollider>();
@@ -4806,19 +4842,35 @@ namespace Unseen.Environment
         /// find, and add a second surface for the sound and light raycasts to hit - all so the
         /// building could look better. The wall behind it already does every one of those jobs.
         /// </summary>
+        /// <summary>
+        /// A renderer-only piece of trim: no collider, nothing the simulation can see.
+        ///
+        /// This helper builds most of the town by count. Measured, 93,445 renderers came out of
+        /// generation and 92,610 of them cast shadows, which meant the shadow pass was re-drawing
+        /// nearly the whole town inside the ninety metre shadow distance - for objects averaging
+        /// twelve triangles that are trim on the side of something that already casts a shadow of
+        /// its own.
+        ///
+        /// So trim casts nothing, and goes on its own layer so the camera can stop drawing it
+        /// entirely past a set distance. Neither is visible to the simulation: there is no collider
+        /// here, so no raycast in the game can tell the difference.
+        /// </summary>
         private Transform Detail(Transform parent, string name, Vector3 localPosition, Vector3 size,
             Material material)
         {
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
             go.transform.localPosition = localPosition;
-            go.layer = UnseenLayers.Default;
+            go.layer = UnseenLayers.Decoration;
 
             var filter = go.AddComponent<MeshFilter>();
             filter.sharedMesh = BoxMeshFactory.Get(size, _textureMetres);
 
             var renderer = go.AddComponent<MeshRenderer>();
             if (material != null) renderer.sharedMaterial = material;
+
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = true;
 
             go.isStatic = true;
             return go.transform;
