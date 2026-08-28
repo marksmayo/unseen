@@ -24,10 +24,10 @@ namespace Unseen.Environment
 
         [Tooltip("Compounds per side. 16 gives a 16x16 town, about ten times the area of the " +
                  "original 5x5. Drop it back if generation or frame time becomes a problem.")]
-        [Range(1, 24)] public int GridSize = 16;
+        [Range(1, 24)] public int GridSize = 21;
 
-        public float BlockSize = 34f;
-        public float StreetWidth = 12f;
+        public float BlockSize = 28f;
+        public float StreetWidth = 7f;
         public float WallHeight = 4.2f;
         public float SecondStoreyHeight = 3.6f;
 
@@ -82,25 +82,25 @@ namespace Unseen.Environment
         [Header("Street layout")]
         [Tooltip("How far a block may wander from its cell centre, in metres. Breaks the ruled " +
                  "line of a grid without letting neighbours touch.")]
-        [Range(0f, 6f)] public float BlockJitter = 2.2f;
+        [Range(0f, 6f)] public float BlockJitter = 4.2f;
 
         [Tooltip("How far a block may turn off square, in degrees. The single strongest cue that " +
                  "a town grew rather than being set out.")]
-        [Range(0f, 12f)] public float BlockRotation = 5f;
+        [Range(0f, 20f)] public float BlockRotation = 14f;
 
         [Tooltip("Smallest a block may shrink to, as a fraction of BlockSize. Uneven plot sizes " +
                  "widen some streets and pinch others.")]
-        [Range(0.6f, 1f)] public float MinBlockScale = 0.82f;
+        [Range(0.55f, 1f)] public float MinBlockScale = 0.64f;
 
         [Tooltip("How many discrete plot sizes exist between MinBlockScale and full size. Kept " +
                  "small on purpose: the box mesh cache is keyed on dimensions, so every extra " +
                  "size multiplies the number of meshes the town holds.")]
-        [Range(1, 6)] public int BlockSizeSteps = 3;
+        [Range(1, 6)] public int BlockSizeSteps = 4;
 
         [Tooltip("How far alternate rows slide along the street, as a fraction of the block pitch. " +
                  "This is the dog-leg a castle town used deliberately: a cross-street that does " +
                  "not run straight cannot be charged down.")]
-        [Range(0f, 0.5f)] public float RowStagger = 0.28f;
+        [Range(0f, 0.5f)] public float RowStagger = 0.36f;
 
         [Tooltip("Fraction of cells left as open ground - a market square, a shrine yard, a gap.")]
         [Range(0f, 0.3f)] public float PlazaChance = 0.07f;
@@ -610,7 +610,7 @@ namespace Unseen.Environment
                 Acoustics(beam, 0.3f, 0.4f, 0.5f);
             }
 
-            float roofTop = BuildHipRoof(compound, blockSize + EaveOverhang * 2f, height);
+            float roofTop = BuildHipRoof(compound, blockSize + EaveOverhang * 2f, height, salt);
 
             Transform ridge = Box(compound, "Ridge",
                 new Vector3(0f, roofTop + 0.5f, 0f),
@@ -760,7 +760,7 @@ namespace Unseen.Environment
                 new Vector3(size - 1f, 0.2f, size - 1f), UnseenLayers.Default, _woodFloor);
             Acoustics(floor, 0.6f, 0.7f, 0.8f);
 
-            float roofTop = BuildHipRoof(kura, size + EaveOverhang * 1.4f, 0.7f + height);
+            float roofTop = BuildHipRoof(kura, size + EaveOverhang * 1.4f, 0.7f + height, salt);
 
             Transform crest = Box(kura, "Ridge", new Vector3(0f, roofTop + 0.5f, 0f),
                 new Vector3(size * 0.5f, 0.9f, 1f), UnseenLayers.GrappleAnchor, _tile);
@@ -839,7 +839,7 @@ namespace Unseen.Environment
             Acoustics(floor, 0.6f, 0.55f, 0.6f);
 
             BuildShojiRun(row, new Vector3(0f, 0.5f + height * 0.5f, 0f), length - 2f, true, height);
-            BuildHipRoof(row, depth + EaveOverhang * 2f, 0.5f + height);
+            BuildHipRoof(row, depth + EaveOverhang * 2f, 0.5f + height, salt);
             PlaceContainers(row, depth * 0.3f);
         }
 
@@ -1933,11 +1933,12 @@ namespace Unseen.Environment
         /// silhouette against the sky, and the sky is what every rooftop in this town is seen
         /// against.
         /// </summary>
-        private void BuildRidge(Transform parent, float span, float y, string tag)
+        private void BuildRidge(Transform parent, float span, float y, string tag,
+            Vector3 offset = default)
         {
             float length = Mathf.Max(1.5f, span * 0.62f);
 
-            Detail(parent, $"Ridge_{tag}", new Vector3(0f, y + 0.22f, 0f),
+            Detail(parent, $"Ridge_{tag}", new Vector3(offset.x, y + 0.22f, offset.z),
                 new Vector3(length, 0.34f, 0.55f), _darkTimber);
 
             // Onigawara: the raised end tiles. Turned outward and up, which is the shape everyone
@@ -1945,11 +1946,11 @@ namespace Unseen.Environment
             for (int sx = -1; sx <= 1; sx += 2)
             {
                 Detail(parent, $"RidgeEnd_{tag}_{sx}",
-                    new Vector3(length * 0.5f * sx, y + 0.46f, 0f),
+                    new Vector3(offset.x + length * 0.5f * sx, y + 0.46f, offset.z),
                     new Vector3(0.42f, 0.62f, 0.7f), _darkTimber);
 
                 Detail(parent, $"RidgeHorn_{tag}_{sx}",
-                    new Vector3(length * 0.5f * sx + 0.18f * sx, y + 0.82f, 0f),
+                    new Vector3(offset.x + length * 0.5f * sx + 0.18f * sx, y + 0.82f, offset.z),
                     new Vector3(0.22f, 0.34f, 0.3f), _darkTimber);
             }
         }
@@ -3404,14 +3405,57 @@ namespace Unseen.Environment
         /// roof instead of being stopped by it. A real sloped mesh would also need its own
         /// collider, where these reuse the cached box meshes the rest of the town is built from.
         /// </summary>
-        private float BuildHipRoof(Transform compound, float eaveSpan, float height)
+        /// <summary>
+        /// Spreads a salt across its bits so that neighbouring buildings do not get neighbouring
+        /// roofs. Cell salts are things like gx * 31 + gz, which climb in step across a row - fed
+        /// straight into a modulo they produce a diagonal stripe of identical roofs.
+        /// </summary>
+        /// <summary>Rounds a dimension to the nearest half metre, to keep the box cache small.</summary>
+        private static float Quantise(float metres) => Mathf.Round(metres * 2f) * 0.5f;
+
+        private static int RoofHash(int salt)
         {
-            // Six shallow risers rather than three deep ones: the pitch is what makes it read as a
-            // roof, and a wider step at the same height just reads as a terrace.
-            const int tiers = 6;
-            const float riser = 0.38f;
+            unchecked
+            {
+                int x = (salt ^ 61) ^ (salt >> 16);
+                x += x << 3;
+                x ^= x >> 4;
+                x *= 0x27d4eb2d;
+                x ^= x >> 15;
+                return x & 0x7fffffff;
+            }
+        }
+
+        private float BuildHipRoof(Transform compound, float eaveSpan, float height, int salt = 0)
+        {
+            // Every roof in the town used to be this shape, and only the scale changed. From a
+            // rooftop that reads as one building repeated, which is the single loudest tell that
+            // a place was generated rather than built.
+            //
+            // So the pitch, the number of courses, the plan of the eaves and the line of the ridge
+            // all vary per building. All of it quantised, because BoxMeshFactory caches on
+            // dimensions and continuous variation once took that cache from 603 meshes to 5,598.
+            // A salt of zero means "build the regular roof". The keep, the shrine and the garden
+            // hut are the formal buildings in the town and they are supposed to be square and
+            // centred - the whole point of an irregular skyline is that the ceremonial things
+            // stand out of it.
+            int h = salt == 0 ? 0 : RoofHash(salt);
+
+            int tiers = salt == 0 ? 6 : 5 + h % 3;
+            float riser = salt == 0 ? 0.38f : 0.30f + (h / 3 % 4) * 0.05f;
+            float inset = salt == 0 ? 1.15f : 0.95f + (h / 12 % 3) * 0.2f;
             const float slabThickness = 0.4f;
-            float inset = 1.15f;
+
+            // A rectangular plan rather than a square one. Real eaves are longer down one axis
+            // than the other, and a square roof on a square block is what makes a skyline read as
+            // a stack of boxes.
+            float skew = salt == 0 ? 0f : ((h / 36 % 5) - 2) * 0.45f;
+
+            // And the ridge walks off centre as it climbs, so one slope is longer than the other.
+            // This is the strongest of the four: a ridge dead in the middle of every building is
+            // what the eye picks up as a grid even when nothing else is square.
+            float driftX = salt == 0 ? 0f : ((h / 180 % 5) - 2) * 0.2f;
+            float driftZ = salt == 0 ? 0f : ((h / 900 % 5) - 2) * 0.2f;
 
             float y = height + 0.18f;
             for (int i = 0; i < tiers; i++)
@@ -3419,10 +3463,14 @@ namespace Unseen.Environment
                 float span = eaveSpan - inset * 2f * i;
                 var tierHost = new GameObject($"Roof_{i}");
                 tierHost.transform.SetParent(compound, false);
-                tierHost.transform.localPosition = new Vector3(0f, y, 0f);
+                tierHost.transform.localPosition = new Vector3(driftX * i, y, driftZ * i);
                 tierHost.layer = UnseenLayers.Default;
 
-                var size = new Vector3(span, slabThickness, span);
+                // Quantised to a half metre. This is what actually bounds the mesh cache: without
+                // it, four pitches times three course counts times four plot sizes times the skew
+                // would give every roof in the town its own geometry.
+                var size = new Vector3(
+                    Quantise(span + skew), slabThickness, Quantise(span - skew));
 
                 // A finer texture scale than the rest of the town: at the shared 2.5 m repeat a
                 // roof tile came out the size of a paving slab, and the steps read as masonry
@@ -3446,10 +3494,15 @@ namespace Unseen.Environment
                         float sign = side < 2 ? 1f : -1f;
                         float lip = nextSpan * 0.5f + 0.12f;
 
+                        // Offset by the drift of the course it sits on, or the banding peels away
+                        // from the roof as the ridge walks off centre.
+                        float cx = driftX * (i + 1);
+                        float cz = driftZ * (i + 1);
+
                         Detail(compound, $"Course_{i}_{side}",
                             horizontal
-                                ? new Vector3(0f, y + riser * 0.5f, lip * sign)
-                                : new Vector3(lip * sign, y + riser * 0.5f, 0f),
+                                ? new Vector3(cx, y + riser * 0.5f, cz + lip * sign)
+                                : new Vector3(cx + lip * sign, y + riser * 0.5f, cz),
                             horizontal
                                 ? new Vector3(nextSpan + 0.24f, riser * 0.55f, 0.16f)
                                 : new Vector3(0.16f, riser * 0.55f, nextSpan + 0.24f),
@@ -3468,7 +3521,8 @@ namespace Unseen.Environment
             // A ridge along the top with an ornament at either end. A hip roof that just stops is
             // the shape of a shed; the ridge and its end tiles are what make it a building
             // somebody cared about.
-            BuildRidge(compound, eaveSpan - inset * 2f * (tiers - 1), top, "Hip");
+            BuildRidge(compound, eaveSpan - inset * 2f * (tiers - 1), top, "Hip",
+                new Vector3(driftX * (tiers - 1), 0f, driftZ * (tiers - 1)));
 
             // Grapple anchors on the eave corners, not just the ridge. A ridge anchor sits behind
             // its own roof from every street, so the rope-path check refused every shot at it and
@@ -3490,7 +3544,8 @@ namespace Unseen.Environment
 
             // Ridge caps along the crown, and the heavy end blocks that sit on the hips.
             float crown = eaveSpan - inset * 2f * (tiers - 1);
-            Detail(compound, "RidgeCap", new Vector3(0f, top + 0.16f, 0f),
+            Detail(compound, "RidgeCap",
+                new Vector3(driftX * (tiers - 1), top + 0.16f, driftZ * (tiers - 1)),
                 new Vector3(crown * 0.55f, 0.32f, 0.8f), _darkTimber);
 
             // Hip ridges running from the crown down to each corner. On a real roof these are the
