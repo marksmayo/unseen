@@ -3132,8 +3132,16 @@ namespace Unseen.Environment
         /// individual renderers - so a sliced shoji still hides its own paper - while giving the
         /// batcher one mesh per structure to work with.
         /// </summary>
+        [Tooltip("Combines static meshes for batching at the end of generation. Off, every " +
+                 "renderer keeps its own mesh - which is slower to draw and is the only way to " +
+                 "measure the town's real geometry, because combining repoints every renderer at " +
+                 "one shared mesh containing everything.")]
+        public bool CombineStaticMeshes = true;
+
         private void CombineStatics()
         {
+            if (!CombineStaticMeshes) return;
+
             foreach (Transform child in _root)
             {
                 if (child.childCount == 0) continue;
