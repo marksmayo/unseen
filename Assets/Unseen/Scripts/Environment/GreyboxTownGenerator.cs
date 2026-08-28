@@ -134,7 +134,7 @@ namespace Unseen.Environment
         [Header("Lighting")]
         [Tooltip("Moonlight brightness. A stealth game still has to be legible: darkness should " +
                  "mean 'hard to be seen', not 'cannot see'.")]
-        public float MoonlightIntensity = 1.15f;
+        public float MoonlightIntensity = 2.0f;
 
         [Tooltip("Moonlight elevation and heading, degrees.")]
         public Vector2 MoonlightAngles = new Vector2(22f, 152f);
@@ -457,7 +457,14 @@ namespace Unseen.Environment
             light.color = new Color(0.55f, 0.66f, 1f);
             light.intensity = MoonlightIntensity;
             light.shadows = LightShadows.Soft;
-            light.shadowStrength = 0.92f;
+            // Not fully opaque shadows.
+            //
+            // At 0.92 a shadowed wall was the same black as the shadow beside it, which looks
+            // superb in a still and is unplayable: a stealth game needs the player to read
+            // geometry in the dark, because the dark is where they live. Letting a little
+            // moonlight through keeps the shape of what is in shadow without lifting the shadow
+            // off the ground.
+            light.shadowStrength = 0.78f;
         }
 
         /// <summary>

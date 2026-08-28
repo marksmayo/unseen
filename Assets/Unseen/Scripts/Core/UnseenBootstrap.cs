@@ -369,8 +369,8 @@ namespace Unseen.Core
             tonemapping.mode.Override(UnityEngine.Rendering.Universal.TonemappingMode.ACES);
 
             var colour = profile.Add<UnityEngine.Rendering.Universal.ColorAdjustments>(true);
-            colour.postExposure.Override(1.15f);
-            colour.contrast.Override(26f);
+            colour.postExposure.Override(1.5f);
+            colour.contrast.Override(19f);
             colour.saturation.Override(-4f);
 
             // Cold shadows, warm lights. This is the whole palette in one effect: everything unlit
@@ -399,7 +399,7 @@ namespace Unseen.Core
             // same job as a shadowed proscenium: it pushes the eye to the middle of the frame and
             // makes the edges feel like somewhere you cannot see into.
             var vignette = profile.Add<UnityEngine.Rendering.Universal.Vignette>(true);
-            vignette.intensity.Override(0.34f);
+            vignette.intensity.Override(0.2f);
             vignette.smoothness.Override(0.42f);
             vignette.color.Override(new Color(0.02f, 0.03f, 0.06f));
 
