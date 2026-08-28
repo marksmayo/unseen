@@ -96,6 +96,18 @@ namespace Unseen.BattleRoyale
                 // the one being fixed. They just get lifted.
                 bool deployed = (agent.Flags & AgentFlags.Deployed) != 0;
 
+                // The ceiling applies to people who have landed, not to people on the way down.
+                //
+                // It had no exemption at all, which quietly made GliderDeployAltitude a lie: the
+                // drop is configured to start at 260 m, the clamp sits at the map ceiling plus
+                // forty - about 60 m over this town - so every descent in the game was cut to a
+                // fifth of its intended height on the tick after it began. It also dragged
+                // agents parked above the town for the lobby straight back down toward the roofs.
+                //
+                // Deployed is the right condition rather than a height or a timer: it is already
+                // the flag that means "this body is under its own control", and it is cleared for
+                // exactly as long as the descent owns the transform.
+
                 if (position.y < _floorY && !deployed)
                 {
                     position.y = _floorY + 2f;
@@ -112,7 +124,7 @@ namespace Unseen.BattleRoyale
 
                     corrected = true;
                 }
-                else if (position.y > _ceilingY)
+                else if (position.y > _ceilingY && deployed)
                 {
                     position.y = _ceilingY;
                     corrected = true;

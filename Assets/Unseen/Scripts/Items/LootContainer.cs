@@ -18,7 +18,13 @@ namespace Unseen.Items
         [Tooltip("Overrides the table roll count when non-zero.")]
         public int RollOverride;
 
-        public float InteractRange = 1.8f;
+        /// <summary>
+        /// How close you have to be. Defaults to the 2.2 m that used to be hard-coded into the
+        /// interact handler, so making this field real changes nothing for a plain chest - the
+        /// 1.8 m it said before was never the number the game actually used, and shipping it as
+        /// the default would have quietly made every chest in the town harder to open.
+        /// </summary>
+        public float InteractRange = 2.2f;
         public float OpenLoudness = 1.3f;
         public float OpenRadius = 22f;
 
@@ -81,6 +87,38 @@ namespace Unseen.Items
         {
             Looted = true;
             if (OpenedVisual != null) OpenedVisual.SetActive(true);
+        }
+
+        /// <summary>
+        /// The nearest container close enough to open, judged by each container's own reach.
+        ///
+        /// InteractRange was dead until this existed: both the prompt and the action asked
+        /// NearestUnlooted for a hard-coded 2.2 m and no container's own value was ever read. That
+        /// is fine while everything is a chest and wrong the moment anything is not - a stack of
+        /// barrels is two and a half metres across, so the reachable thing and the thing the game
+        /// thought was reachable were different objects.
+        ///
+        /// Used by the prompt and by the interact handler, so what the HUD offers and what the key
+        /// does can never disagree.
+        /// </summary>
+        public static LootContainer NearestInReach(float3 point)
+        {
+            LootContainer best = null;
+            float bestDist = float.MaxValue;
+
+            for (int i = 0; i < Containers.Count; i++)
+            {
+                LootContainer c = Containers[i];
+                if (c == null || c.Looted) continue;
+
+                float d = math.distancesq(c.Position, point);
+                if (d > c.InteractRange * c.InteractRange || d >= bestDist) continue;
+
+                bestDist = d;
+                best = c;
+            }
+
+            return best;
         }
 
         public static LootContainer NearestUnlooted(float3 point, float maxDistance)

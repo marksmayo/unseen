@@ -70,7 +70,18 @@ namespace Unseen.BattleRoyale
             _ctx.Entities.Register(agent);
             agent.ResetForMatch();
             GiveStartingKit(agent);
-            agent.Motor.Teleport(position);
+
+            // Never put a body in the street before the match has decided where it goes.
+            //
+            // This is the spawn flash. An agent used to be planted on the ground here and lifted to
+            // the drop altitude later, when the match started - so for the few frames in between,
+            // the player was rendered standing in the town and then snatched into the sky.
+            //
+            // Parking them in DeploymentSystem was not enough on its own: that runs inside the
+            // match tick, and an agent registered after the match system had already run for that
+            // tick still got drawn on the ground once. Placing them high here means there is no
+            // ordering to get right - the ground position is never used at all.
+            agent.Motor.Teleport(ParkedOrGround(position));
             return agent;
         }
 
@@ -93,6 +104,24 @@ namespace Unseen.BattleRoyale
             if (agent.Inventory == null) return;
             if (_startingSmoke == null) _startingSmoke = BuildStartingSmoke();
             agent.Inventory.TryAdd(_startingSmoke);
+        }
+
+        /// <summary>
+        /// Where a freshly spawned agent actually goes.
+        ///
+        /// The drop altitude while a match is still waiting to start and a descent is coming;
+        /// otherwise the position the caller asked for. Somebody joining a match already in
+        /// progress, or a mode with no infiltration, keeps the requested spot - in those cases the
+        /// ground is where they belong and lifting them would be the bug.
+        /// </summary>
+        private float3 ParkedOrGround(float3 requested)
+        {
+            if (_ctx.Config.Match.SkipInfiltration) return requested;
+
+            MatchDirector match = _ctx.Match;
+            if (match != null && match.Phase != MatchPhase.Lobby) return requested;
+
+            return new float3(requested.x, _ctx.Config.Match.GliderDeployAltitude, requested.z);
         }
 
         private static ItemDefinition _startingSmoke;

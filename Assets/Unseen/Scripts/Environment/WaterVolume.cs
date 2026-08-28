@@ -115,6 +115,26 @@ namespace Unseen.Environment
         /// this town now - a river and a castle moat - and if two ever overlap, which one a player
         /// is standing in should not depend on which was generated first.
         /// </summary>
+        /// <summary>
+        /// True if this column of the map has water anywhere in it, whatever the height.
+        ///
+        /// Deliberately not DepthAt with a guessed Y. DepthAt asks "how deep is the water around
+        /// these feet", which needs the feet to already be at the right height - ask it about a
+        /// point at y = 0 above a river whose surface sits three metres below street level and it
+        /// correctly answers "no water here", which is the wrong answer to the question the drop is
+        /// asking. Choosing somewhere to land is a question about the map, not about a body.
+        /// </summary>
+        public static bool OverWater(float x, float z)
+        {
+            for (int i = 0; i < Volumes.Count; i++)
+            {
+                WaterVolume volume = Volumes[i];
+                if (volume != null && volume.Covers(x, z)) return true;
+            }
+
+            return false;
+        }
+
         public static float DepthAt(float3 feet)
         {
             float deepest = 0f;

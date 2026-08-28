@@ -151,7 +151,7 @@ namespace Unseen.Net
 
             SelfPrompt prompts = SelfPrompt.None;
 
-            if (Items.LootContainer.NearestUnlooted(self.TorsoPosition, 2.2f) != null)
+            if (Items.LootContainer.NearestInReach(self.TorsoPosition) != null)
                 prompts |= SelfPrompt.Container;
 
             if (Environment.ShojiPanel.NearestIntact(self.TorsoPosition + self.Forward * 0.9f, 1.4f) != null)

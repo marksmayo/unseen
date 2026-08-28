@@ -2,6 +2,7 @@ using Unity.Mathematics;
 using UnityEngine;
 using Unseen.Core;
 using Unseen.Entities;
+using Unseen.Environment;
 using Unseen.Movement;
 
 namespace Unseen.BattleRoyale
@@ -44,6 +45,52 @@ namespace Unseen.BattleRoyale
         protected override void OnInitialize()
         {
             Ctx.Register(this);
+        }
+
+        /// <summary>
+        /// Parks everyone at the drop altitude while the lobby fills.
+        ///
+        /// Agents are spawned onto the ground and the match does not start until the roster is
+        /// full, so for those seconds the player stood in the street looking at the town - and then
+        /// got snatched into the sky the instant the match began. That reads as a glitch because it
+        /// is one: the game showed a position it had not decided on yet.
+        ///
+        /// Parking at the altitude Begin will use means the drop starts where the waiting ended.
+        /// Begin still spreads everyone along its chord, but that is a sideways move at the same
+        /// height, so there is nothing to see.
+        ///
+        /// Safe to call every lobby tick - it only touches agents that are not already parked, so
+        /// somebody who joins late is lifted without disturbing anybody who is already up there.
+        /// </summary>
+        public void Park(float3 mapCenter)
+        {
+            float altitude = Ctx.Config.Match.GliderDeployAltitude;
+            int count = Ctx.Entities.Count;
+
+            for (int i = 0; i < count; i++)
+            {
+                AgentEntity agent = Ctx.Entities.BySlot(i);
+                if (agent == null || !agent.IsAlive) continue;
+
+                // Already up and waiting.
+                if (agent.Locomotion == LocomotionState.Airborne &&
+                    agent.Position.y >= altitude - 1f) continue;
+
+                agent.Flags &= ~AgentFlags.Deployed;
+
+                // Fanned out a little so a full lobby is not one body inside another.
+                float spread = count <= 1 ? 0f : 6f;
+                float angle = count <= 1 ? 0f : i / (float)count * math.PI * 2f;
+
+                agent.Motor?.Teleport(mapCenter + new float3(
+                    math.cos(angle) * spread, altitude, math.sin(angle) * spread));
+
+                agent.Locomotion = LocomotionState.Airborne;
+
+                // Off for the same reason it is off during the descent: the controller would
+                // depenetrate against nothing and start falling.
+                if (agent.Controller != null) agent.Controller.enabled = false;
+            }
         }
 
         /// <summary>Puts every living agent on a fresh glide path across the map.</summary>
@@ -119,6 +166,12 @@ namespace Unseen.BattleRoyale
                     float radius = (float)random.NextDouble() * mapRadius * 0.85f;
                     float3 candidate = mapCenter + new float3(math.cos(angle) * radius, 0f, math.sin(angle) * radius);
 
+                    // Not in the river or the lake. The same rule the glide path follows: landing
+                    // in water costs a player the opening, because wading is slow and loud and the
+                    // banks hide the streets. Ten tries is plenty when water is a small share of
+                    // the map, and the fallback below is the map centre rather than a wet spot.
+                    if (WaterVolume.OverWater(candidate.x, candidate.z)) continue;
+
                     if (!Physics.Raycast(candidate + new float3(0f, 260f, 0f), Vector3.down,
                             out RaycastHit hit, 400f, UnseenLayers.WorldGeometry, QueryTriggerInteraction.Ignore))
                         continue;
@@ -141,19 +194,54 @@ namespace Unseen.BattleRoyale
             UnseenLog.Info($"[Unseen] infiltration skipped: {placed}/{count} agents placed with clearance");
         }
 
+        /// <summary>
+        /// Somewhere to aim for: spread around the town, and not in the water.
+        ///
+        /// Two changes from the version that only picked a loot container. Containers are still the
+        /// draw - that is where the interesting early fights happen - but taking one every time put
+        /// everybody in a compound courtyard, and now that the street stacks are containers too the
+        /// bias got stronger rather than weaker. So a third of drops aim at open ground instead,
+        /// which is what makes a drop feel like a choice of where to go rather than a shuttle to
+        /// the nearest chest.
+        ///
+        /// And nothing lands in the river or the castle lake. Coming down in water costs a player
+        /// the whole opening: wading is slow and loud, the banks hide the streets, and bots were
+        /// getting stuck in the lake outright. A candidate over water is thrown away and another
+        /// tried, rather than nudged to the nearest shore - a nudge would pile everybody who rolled
+        /// the river onto the same few metres of towpath.
+        /// </summary>
         private float3 PickLandingSpot(float3 mapCenter, float mapRadius, System.Random random)
         {
-            // Prefer a loot container: that is where the interesting early fights happen.
             var containers = Items.LootContainer.All;
-            if (containers.Count > 0)
+            float3 fallback = mapCenter;
+
+            // Twelve tries. Water is a small share of the map, so this effectively never runs out;
+            // the cap is only here so that a map somebody floods entirely cannot hang the drop.
+            for (int attempt = 0; attempt < 12; attempt++)
             {
-                int index = random.Next(containers.Count);
-                return containers[index].Position;
+                float3 candidate;
+
+                if (containers.Count > 0 && random.NextDouble() < 0.66)
+                {
+                    Items.LootContainer c = containers[random.Next(containers.Count)];
+                    if (c == null) continue;
+                    candidate = c.Position;
+                }
+                else
+                {
+                    float angle = (float)random.NextDouble() * math.PI * 2f;
+                    float radius = (float)random.NextDouble() * mapRadius * 0.8f;
+                    candidate = mapCenter +
+                                new float3(math.cos(angle) * radius, 0f, math.sin(angle) * radius);
+                }
+
+                if (attempt == 0) fallback = candidate;
+                if (WaterVolume.OverWater(candidate.x, candidate.z)) continue;
+
+                return candidate;
             }
 
-            float angle = (float)random.NextDouble() * math.PI * 2f;
-            float radius = (float)random.NextDouble() * mapRadius * 0.8f;
-            return mapCenter + new float3(math.cos(angle) * radius, 0f, math.sin(angle) * radius);
+            return fallback;
         }
 
         public override void Tick(in SimFrame frame)

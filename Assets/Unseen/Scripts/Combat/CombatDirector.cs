@@ -423,7 +423,7 @@ namespace Unseen.Combat
         {
             if (!intent.Interact) return;
 
-            LootContainer container = LootContainer.NearestUnlooted(agent.TorsoPosition, 2.2f);
+            LootContainer container = LootContainer.NearestInReach(agent.TorsoPosition);
             if (container != null)
             {
                 container.TakeAll(agent.Inventory);

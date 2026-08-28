@@ -117,6 +117,19 @@ namespace Unseen.BattleRoyale
         {
             int target = Ctx.Config.Match.TargetEntityCount;
             bool full = Ctx.Entities.Count >= target;
+
+            // Waiting happens in the sky, not in the street.
+            //
+            // Agents spawn onto the ground and the match only starts once the roster fills, so the
+            // player used to spend the lobby standing in the town and was then teleported to the
+            // drop altitude - the flash of ground before the descent. Parking them where the drop
+            // begins removes the jump rather than hiding it.
+            //
+            // Skipped when infiltration is off, because then the ground is where the match starts
+            // and lifting everybody up would be the glitch.
+            if (!Ctx.Config.Match.SkipInfiltration)
+                Ctx.Get<DeploymentSystem>()?.Park(_mapCenter);
+
             if (full || frame.Time >= _phaseEnd) StartMatch(frame.Time);
         }
 

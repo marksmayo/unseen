@@ -129,7 +129,7 @@ namespace Unseen.Environment
         [Header("Content density")]
         [Range(0f, 1f)] public float TwoStoreyChance = 0.45f;
         [Range(0f, 4f)] public float LanternsPerCompound = 2.5f;
-        [Range(0f, 4f)] public float ContainersPerCompound = 1.6f;
+        [Range(0f, 8f)] public float ContainersPerCompound = 3.2f;
 
         [Header("Lighting")]
         [Tooltip("Moonlight brightness. A stealth game still has to be legible: darkness should " +
@@ -2815,6 +2815,28 @@ namespace Unseen.Environment
                         offset + new Vector3(0f, height * (0.25f + h * 0.5f), 0f),
                         new Vector3(size + 0.06f, 0.09f, size + 0.06f), _darkTimber);
             }
+
+            // The pile is lootable.
+            //
+            // These read as exactly the thing you would search - they are barrels and crates
+            // outside a shop - and until now they were scenery, so walking up to one and pressing
+            // the key did nothing at all. An object that looks like loot and is not is worse than
+            // no object: it teaches the player that the verb is broken.
+            //
+            // One container on the stack rather than one per barrel. A pile of five is one pile to
+            // search, and five overlapping containers two feet apart would hand over five rolls to
+            // whoever found the right one.
+            //
+            // Left on the Occluder layer. These are cover as well as loot - a barrel breaks a
+            // sightline down a street - and LootContainer only claims the layer when nothing else
+            // has, so the interact registry finds it either way.
+            LootContainer pile = stack.gameObject.AddComponent<LootContainer>();
+            pile.Table = Table != null ? Table : EnsureRuntimeLootTable();
+
+            // Reachable from outside the pile, not from inside it. The barrels stand up to 1.3 m
+            // off the stack centre, so the default 1.8 m would need a player stood in the middle.
+            pile.InteractRange = 2.6f;
+            pile.EnsureRegistered();
         }
 
         // ---------------------------------------------------------------- foliage        // ---------------------------------------------------------------- foliage
