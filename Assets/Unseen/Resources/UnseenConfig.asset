@@ -112,7 +112,7 @@ MonoBehaviour:
     MistDamageGrowth: 1.55
     MaxBotFraction: 1
     BackfillGrace: 8
-    GliderDeployAltitude: 260
+    GliderDeployAltitude: 130
     GliderSpeed: 42
   Bots:
     CombatTickRate: 30

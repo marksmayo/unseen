@@ -93,6 +93,22 @@ namespace Unseen.BattleRoyale
             }
         }
 
+        /// <summary>
+        /// Whether a point is comfortably inside the first mist ring.
+        ///
+        /// The margin is metres of walking room, not a safety factor: landing one metre inside a
+        /// ring that is about to close is the same problem as landing outside it.
+        /// </summary>
+        private bool InsideFirstRing(float3 point, float3 mapCenter, float mapRadius)
+        {
+            float ring = Ctx.Mist != null && Ctx.Mist.CurrentRadius > 1f
+                ? Ctx.Mist.CurrentRadius
+                : math.min(Ctx.Config.Match.InitialZoneRadius, mapRadius);
+
+            float room = math.max(20f, ring - 40f);
+            return math.distancesq(point.xz, mapCenter.xz) <= room * room;
+        }
+
         /// <summary>Puts every living agent on a fresh glide path across the map.</summary>
         public void Begin(float3 mapCenter, float mapRadius, System.Random random)
         {
@@ -107,6 +123,34 @@ namespace Unseen.BattleRoyale
 
             float3 lateral = math.normalizesafe(math.cross(new float3(0f, 1f, 0f), _flightDirection));
 
+            // The chord is shuffled before it is handed out.
+            //
+            // Position along it was slot order, and slot 0 is always the human because the player
+            // connects before the bots spawn - so the player was posted to one extreme end of the
+            // flight path every single match, 260 m from the middle of a 372 m map, while the bots
+            // arranged themselves symmetrically inward. A fixed worst seat is worse than a random
+            // one even when the average is identical.
+            var order = new int[count];
+            for (int i = 0; i < count; i++) order[i] = i;
+
+            for (int i = count - 1; i > 0; i--)
+            {
+                int j = random.Next(i + 1);
+                (order[i], order[j]) = (order[j], order[i]);
+            }
+
+            // And the chord is kept inside the first ring rather than scaled to the map.
+            //
+            // At 0.7 of the map radius the ends of the chord sat within a few metres of the mist,
+            // so anybody who did not steer hard inward spent the descent drifting toward ground
+            // that was about to become lethal. Bounded by the ring, the whole flight path is
+            // survivable wherever you let go.
+            float ringRoom = Ctx.Mist != null && Ctx.Mist.CurrentRadius > 1f
+                ? Ctx.Mist.CurrentRadius
+                : math.min(cfg.InitialZoneRadius, mapRadius);
+
+            float chord = math.min(mapRadius * 0.6f, math.max(30f, ringRoom - 120f));
+
             for (int i = 0; i < count; i++)
             {
                 AgentEntity agent = Ctx.Entities.BySlot(i);
@@ -116,10 +160,19 @@ namespace Unseen.BattleRoyale
                 // form started at 1.1x the radius with slot 0 at offset zero, so whoever held slot 0
                 // - the human, since the player connects before bots spawn - was dropped outside the
                 // playable area entirely, then killed by the closing mist.
-                float t = count <= 1 ? 0.5f : i / (count - 1f);
-                float along = math.lerp(-mapRadius * 0.7f, mapRadius * 0.7f, t);
+                float t = count <= 1 ? 0.5f : order[i] / (count - 1f);
+                float along = math.lerp(-chord, chord, t);
                 float sideways = ((float)random.NextDouble() - 0.5f) * math.min(40f, mapRadius * 0.3f);
                 float3 start = _flightOrigin + _flightDirection * along + lateral * sideways;
+
+                // Nudged off the water before anybody is put there.
+                //
+                // A glider that never steers comes straight down, so the start column is the
+                // landing spot for anyone who lets go - and the human is exactly the player who
+                // might. Rejecting wet landing TARGETS did nothing for them, because they never
+                // fly to their target.
+                for (int nudge = 0; nudge < 8 && WaterVolume.OverWater(start.x, start.z); nudge++)
+                    start += lateral * 18f;
 
                 agent.Flags &= ~AgentFlags.Deployed;
                 agent.Motor?.Teleport(start);
@@ -237,6 +290,15 @@ namespace Unseen.BattleRoyale
 
                 if (attempt == 0) fallback = candidate;
                 if (WaterVolume.OverWater(candidate.x, candidate.z)) continue;
+
+                // Inside the first mist ring, with room to spare.
+                //
+                // The ring is a circle and the town is a square, so the corners of the map lie
+                // outside it - about 519 m out on a town whose first ring is 372 m. Containers are
+                // spread over the whole square, so aiming at one could drop a player into a corner
+                // that was already lethal, which is exactly the "landed and then died to the mist"
+                // that has no counterplay: you cannot walk 150 m before the damage kills you.
+                if (!InsideFirstRing(candidate, mapCenter, mapRadius)) continue;
 
                 return candidate;
             }

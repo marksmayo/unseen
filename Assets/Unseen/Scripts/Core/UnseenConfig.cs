@@ -261,7 +261,15 @@ namespace Unseen.Core
             [Tooltip("Seconds a slot is held for a reconnecting human before a bot takes it.")]
             public float BackfillGrace = 8f;
 
-            public float GliderDeployAltitude = 260f;
+            [Tooltip("How high the drop starts, in metres.\n\n" +
+                     "260 for most of this project's life and never once used: the world bounds " +
+                     "ceiling clamped every descent to about 60 m on the tick after it began. " +
+                     "With the clamp lifted, 260 turned out to be a very long way up - roughly " +
+                     "nineteen seconds hanging in the air before the match starts.\n\n" +
+                     "130 is a real drop you can see the whole town from, at about nine seconds " +
+                     "under the glider. Raising it costs opening tempo; the descent has to finish " +
+                     "well inside InfiltrationDuration.")]
+            public float GliderDeployAltitude = 130f;
             public float GliderSpeed = 42f;
 
             [Tooltip("Skip the glider descent and start everyone on the ground. Off by default now " +

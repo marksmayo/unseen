@@ -50,6 +50,8 @@ namespace Unseen.EditorTools
 
             int dropInWater = LastInWater;
             float dropSpread = LastSpread;
+            int dropOutsideRing = LastOutsideRing;
+            float ring = LastRing;
 
             // ------------------------------------------------------------------ counterfactual
             //
@@ -75,7 +77,12 @@ namespace Unseen.EditorTools
             Debug.Log($"[flash] landings are spread across the map: {(scattered ? "PASS" : "FAIL")} " +
                       $"(furthest pair {dropSpread:0} m apart)");
 
-            if (noFlash && everDropped && controlOnGround && dry && scattered)
+            bool insideRing = dropOutsideRing == 0;
+
+            Debug.Log($"[flash] everybody lands inside the first mist ring ({ring:0} m): " +
+                      $"{(insideRing ? "PASS" : "FAIL")} ({dropOutsideRing} outside)");
+
+            if (noFlash && everDropped && controlOnGround && dry && scattered && insideRing)
                 Debug.Log("[flash] PASSED");
             else Debug.LogError("[flash] FAILED");
         }
@@ -89,6 +96,12 @@ namespace Unseen.EditorTools
 
         /// <summary>Metres between the two furthest-apart landings, from the most recent run.</summary>
         private static float LastSpread;
+
+        /// <summary>Radius of the first mist ring, from the most recent run.</summary>
+        private static float LastRing;
+
+        /// <summary>Landings that fell outside that ring.</summary>
+        private static int LastOutsideRing;
 
         private static float LowestBeforeDrop(bool skipInfiltration, out float altitude,
             out int ticks, out bool everDropped)
@@ -106,7 +119,8 @@ namespace Unseen.EditorTools
             float lowest = float.MaxValue;
             float highest = 0f;
             int descentTicks = 0;
-            int landed = 0, inWater = 0;
+            int landed = 0, inWater = 0, diedDuringDescent = 0, outsideRing = 0;
+            float furthest = 0f;
             float spread = 0f;
             ticks = 0;
             everDropped = false;
@@ -138,7 +152,37 @@ namespace Unseen.EditorTools
                     bool waiting = match.Phase == MatchPhase.Lobby ||
                                    match.Phase == MatchPhase.Infiltration;
 
-                    if (match.Phase == MatchPhase.Infiltration) descentTicks++;
+                    if (match.Phase == MatchPhase.Infiltration)
+                    {
+                        descentTicks++;
+
+                        if (descentTicks == 1)
+                        {
+                            var mist = boot.Context.Mist;
+                            LastRing = mist != null ? mist.CurrentRadius : -1f;
+                            Debug.Log($"[flash] map radius {match.MapRadius:0} m, first mist ring " +
+                                      $"{LastRing:0} m");
+
+                            for (int s = 0; s < boot.Context.Entities.Count; s++)
+                            {
+                                AgentEntity a = boot.Context.Entities.BySlot(s);
+                                if (a == null || !a.IsAlive) continue;
+
+                                float outFromCentre = math.distance(a.Position.xz, match.MapCenter.xz);
+                                Debug.Log($"[flash]   slot {s} ({(a.IsBot ? "bot" : "HUMAN")}) starts " +
+                                          $"{outFromCentre:0} m from centre at {a.Position.y:0} m up");
+                            }
+                        }
+
+                        for (int s = 0; s < boot.Context.Entities.Count; s++)
+                        {
+                            AgentEntity a = boot.Context.Entities.BySlot(s);
+                            if (a == null) continue;
+                            if (!a.IsAlive) diedDuringDescent++;
+                            else furthest = math.max(furthest,
+                                math.distance(a.Position.xz, match.MapCenter.xz));
+                        }
+                    }
 
                     if (match.Phase == MatchPhase.Infiltration)
                         for (int s = 0; s < boot.Context.Entities.Count; s++)
@@ -200,6 +244,11 @@ namespace Unseen.EditorTools
                                 landed++;
                                 if (WaterVolume.OverWater(a.Position.x, a.Position.z)) inWater++;
 
+                                // Landing outside the ring is a death with no counterplay: you
+                                // cannot walk a hundred and fifty metres before the mist kills you.
+                                if (math.distance(a.Position.xz, match.MapCenter.xz) > LastRing)
+                                    outsideRing++;
+
                                 spread = math.max(spread,
                                     math.distance(a.Position.xz, boot.Context.Entities
                                         .BySlot(0).Position.xz));
@@ -223,10 +272,14 @@ namespace Unseen.EditorTools
 
             LastInWater = inWater;
             LastSpread = spread;
+            LastOutsideRing = outsideRing;
 
             if (landed > 0)
                 Debug.Log($"[flash] {landed} landed, {inWater} of them in water; furthest pair " +
                           $"{spread:0} m apart");
+
+Debug.Log($"[flash] furthest anybody got from the centre while descending: {furthest:0} m; " +
+                      $"{diedDuringDescent} agent-ticks spent dead mid-descent");
 
             Debug.Log($"[flash] the descent took {descentTicks / 60f:0.0} s of a " +
                       $"{config.Match.InfiltrationDuration:0} s phase budget");
