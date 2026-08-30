@@ -563,13 +563,13 @@ namespace Unseen.Environment
 
                 if (side == doorSide)
                 {
-                    // Split the wall to leave a 3 m doorway in the middle.
-                    float segment = (blockSize - 3f) * 0.5f;
+                    // Split the wall to leave a doorway in the middle.
+                    float segment = (blockSize - DoorwayWidth) * 0.5f;
                     for (int s = -1; s <= 1; s += 2)
                     {
                         Vector3 offset = horizontal
-                            ? new Vector3(s * (segment + 3f) * 0.5f, 0f, 0f)
-                            : new Vector3(0f, 0f, s * (segment + 3f) * 0.5f);
+                            ? new Vector3(s * (segment + DoorwayWidth) * 0.5f, 0f, 0f)
+                            : new Vector3(0f, 0f, s * (segment + DoorwayWidth) * 0.5f);
                         Vector3 segmentSize = horizontal
                             ? new Vector3(segment, height, 0.4f)
                             : new Vector3(0.4f, height, segment);
@@ -1196,7 +1196,7 @@ namespace Unseen.Environment
                 for (int c = 0; c < 2; c++)
                 {
                     float small = size * (0.35f + (float)_random.NextDouble() * 0.3f);
-                    Transform chip = Organic(river, $"Rock_{i}_{c}",
+                    Transform chip = SolidOrganic(river, $"Rock_{i}_{c}",
                         OrganicMeshFactory.Blob(5, 8, 0.42f, (i + c) % 8),
                         new Vector3(x + (float)(_random.NextDouble() * 2f - 1f) * size,
                             waterTop - small * 0.55f,
@@ -1447,8 +1447,8 @@ namespace Unseen.Environment
                         float rise = y1 - y0;
                         float len = Mathf.Sqrt(run * run + rise * rise);
 
-                        Transform rail = Detail(bridge, $"Rail_{r}_{c}", mid,
-                            new Vector3(len + 0.05f, 0.16f, 0.18f), _vermilion);
+                        Transform rail = Box(bridge, $"Rail_{r}_{c}", mid,
+                            new Vector3(len + 0.05f, 0.16f, 0.18f), UnseenLayers.Default, _vermilion);
                         rail.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(rise, run) * Mathf.Rad2Deg);
 
                         float postX = x0 + run * 0.5f;
@@ -1703,14 +1703,14 @@ namespace Unseen.Environment
                     float sign = side < 2 ? 1f : -1f;
                     float edge = balconySpan * 0.5f - 0.15f;
 
-                    Detail(pagoda, $"BalconyRail_{storey}_{side}",
+                    Box(pagoda, $"BalconyRail_{storey}_{side}",
                         horizontal
                             ? new Vector3(0f, balconyY + 0.75f, edge * sign)
                             : new Vector3(edge * sign, balconyY + 0.75f, 0f),
                         horizontal
                             ? new Vector3(balconySpan, 0.14f, 0.14f)
                             : new Vector3(0.14f, 0.14f, balconySpan),
-                        _darkTimber);
+                        UnseenLayers.Default, _darkTimber);
                 }
 
                 BuildPagodaRoof(pagoda, balconySpan + 2.2f, balconyY + 0.3f, storey);
@@ -2037,6 +2037,55 @@ namespace Unseen.Environment
         private Transform Organic(Transform parent, Vector3 position, Vector3 scale,
             Material material, Mesh mesh)
             => Organic(parent, "Mass", mesh, position, scale, material);
+
+        /// <summary>
+        /// How much smaller a rock's collider is than the rock.
+        ///
+        /// A blob is lumpy and its collider is a box, so they cannot agree everywhere. Undershooting
+        /// is the right way to be wrong: a collider larger than the rock is an invisible wall you
+        /// bump into beside it, which is far more disorienting than being able to scuff the very
+        /// edge of a lump. Matches the ratio the islets already use.
+        /// </summary>
+        private const float RockColliderInset = 0.74f;
+
+        /// <summary>
+        /// The gap a compound leaves for its gate, in metres.
+        ///
+        /// Shared by the wall and by the trim that runs along it. It was written as a bare 3f in
+        /// the wall and nowhere at all in the dressing, which is how the wainscot came to run
+        /// straight across the opening.
+        /// </summary>
+        private const float DoorwayWidth = 3f;
+
+        /// <summary>
+        /// A rock you cannot walk into.
+        ///
+        /// Organic on its own is renderer-only and sits on the Decoration layer, which is correct
+        /// for leaves and grass blades and wrong for a four metre boulder - the rocks in the lake
+        /// were scenery, so you walked into one and found yourself looking at the inside of it.
+        ///
+        /// Two objects rather than a collider bolted onto the blob, which is the pattern the river
+        /// rocks and the lake islets already use and it is worth keeping: the collider sits on the
+        /// Occluder layer so it blocks bodies and sightlines at any range, while the visual stays on
+        /// Decoration so it is still culled at distance with the rest of the trim. One object could
+        /// only be on one of those layers.
+        /// </summary>
+        private Transform SolidOrganic(Transform parent, string name, Mesh mesh, Vector3 position,
+            Vector3 scale, Material material)
+        {
+            Transform core = Box(parent, name, position, scale * RockColliderInset,
+                UnseenLayers.Occluder, null);
+
+            // The box is the shape, not the look. Destroyed rather than disabled so it does not
+            // sit in the renderer count for a mesh nobody will ever see.
+            var hidden = core.GetComponent<MeshRenderer>();
+            if (hidden != null) UnseenObject.Destroy(hidden);
+
+            Acoustics(core, 0.9f, 1f, 1f);
+
+            Organic(core, "Mass", mesh, Vector3.zero, scale, material);
+            return core;
+        }
 
         private Transform Organic(Transform parent, string name, Mesh mesh, Vector3 position,
             Vector3 scale, Material material)
@@ -3299,22 +3348,48 @@ namespace Unseen.Environment
                 ? new Vector3(run, y, thickness)
                 : new Vector3(thickness, y, run);
 
-            Detail(compound, $"Plinth_{side}", Along(0f, 0.35f), Size(length, 0.7f, 0.24f), _stone);
+            // A horizontal band, stepped around the doorway if there is one.
+            //
+            // The uprights already skipped the opening; these did not. Every compound with a gate
+            // had a stone plinth, a boarded wainscot and a nuki rail running straight across the
+            // gap you walk through - trim standing in mid-air over a hole, which is exactly the
+            // "solid thing I can see the inside of" that gives a generated town away.
+            //
+            // The head beam is deliberately left spanning: that is a lintel, it sits above the
+            // opening, and a gateway with nothing over it looks like a hole punched in a wall.
+            void Band(string name, float y, float bandHeight, float thickness, Material material)
+            {
+                if (!hasDoorway)
+                {
+                    Detail(compound, $"{name}_{side}", Along(0f, y),
+                        Size(length, bandHeight, thickness), material);
+                    return;
+                }
+
+                // The same 3 m opening the wall itself leaves, measured the same way, so the trim
+                // lines up with the gap instead of hanging over its edges.
+                float segment = (length - DoorwayWidth) * 0.5f;
+                if (segment <= 0.1f) return;
+
+                for (int s = -1; s <= 1; s += 2)
+                    Detail(compound, $"{name}_{side}_{s}",
+                        Along(s * (segment + DoorwayWidth) * 0.5f, y),
+                        Size(segment, bandHeight, thickness), material);
+            }
+
+            Band("Plinth", 0.35f, 0.7f, 0.24f, _stone);
 
             Detail(compound, $"HeadBeam_{side}", Along(0f, height - 0.28f), Size(length, 0.4f, 0.2f),
                 _darkTimber);
 
-            Detail(compound, $"Nuki_{side}", Along(0f, height * 0.56f), Size(length, 0.2f, 0.16f),
-                _darkTimber);
+            Band("Nuki", height * 0.56f, 0.2f, 0.16f, _darkTimber);
 
             // Namako-kabe: the boarded wainscot that protects the foot of a plaster wall from rain
             // splash and cart wheels. Every machiya has one, and it is the detail that stops a
             // white wall meeting the ground in a single flat line.
-            Detail(compound, $"Wainscot_{side}", Along(0f, 1.35f), Size(length, 1.3f, 0.2f),
-                _darkTimber);
+            Band("Wainscot", 1.35f, 1.3f, 0.2f, _darkTimber);
 
-            Detail(compound, $"WainscotCap_{side}", Along(0f, 2.02f), Size(length, 0.12f, 0.26f),
-                _tile);
+            Band("WainscotCap", 2.02f, 0.12f, 0.26f, _tile);
 
             // Uprights. The doorway sits in the middle of its wall, so that bay is skipped rather
             // than posting a beam across the opening.
@@ -4105,7 +4180,7 @@ namespace Unseen.Environment
 
                 // Sat ON THE BED, not hung off the surface. Whether a rock breaks the surface
                 // follows from how big it is, which is also where the variety comes from for free.
-                Organic(lake, $"LakeRock_{i}",
+                SolidOrganic(lake, $"LakeRock_{i}",
                     OrganicMeshFactory.Blob(7, 12, 0.3f, i % 8),
                     new Vector3(Mathf.Cos(angle) * band, size * 0.46f, Mathf.Sin(angle) * band),
                     new Vector3(size * 1.3f, size, size * 1.15f),
@@ -4256,22 +4331,22 @@ namespace Unseen.Environment
                     // A pier down into the water under every second deck, so the span is carried.
                     if (i % 2 != 0) continue;
 
-                    Detail(lake, $"LakePier_{axis}_{sign}_{i}",
+                    Box(lake, $"LakePier_{axis}_{sign}_{i}",
                         alongZ
                             ? new Vector3(0f, deckY * 0.5f, distance * sign)
                             : new Vector3(distance * sign, deckY * 0.5f, 0f),
-                        new Vector3(1.1f, deckY, 1.1f), _darkTimber);
+                        new Vector3(1.1f, deckY, 1.1f), UnseenLayers.Default, _darkTimber);
 
                     for (int rail = -1; rail <= 1; rail += 2)
                     {
-                        Detail(lake, $"LakeRail_{axis}_{sign}_{i}_{rail}",
+                        Box(lake, $"LakeRail_{axis}_{sign}_{i}_{rail}",
                             alongZ
                                 ? new Vector3(2f * rail, deckY + 0.95f, distance * sign)
                                 : new Vector3(distance * sign, deckY + 0.95f, 2f * rail),
                             alongZ
                                 ? new Vector3(0.16f, 0.16f, deckLength * 2.2f)
                                 : new Vector3(deckLength * 2.2f, 0.16f, 0.16f),
-                            _vermilion);
+                            UnseenLayers.Default, _vermilion);
 
                         Detail(lake, $"LakePost_{axis}_{sign}_{i}_{rail}",
                             alongZ
@@ -4526,7 +4601,7 @@ namespace Unseen.Environment
 
                     Vector3 at = groups[g] + nudge;
 
-                    Organic(garden, $"Stone_{stone}",
+                    SolidOrganic(garden, $"Stone_{stone}",
                         OrganicMeshFactory.Blob(7, 12, 0.3f, stone % 8),
                         at + Vector3.up * (0.12f + size * 0.32f),
                         new Vector3(size * 1.1f, size, size * 0.9f), _riverStone);
