@@ -57,7 +57,7 @@ namespace Unseen.Combat
 
             if (Lying.Count >= MaxLying)
             {
-                if (Lying[0].Visual != null) Object.Destroy(Lying[0].Visual.gameObject);
+                if (Lying[0].Visual != null) UnseenObject.Destroy(Lying[0].Visual.gameObject);
                 Lying.RemoveAt(0);
             }
 
@@ -92,7 +92,7 @@ namespace Unseen.Combat
 
             if (best < 0) return false;
 
-            if (Lying[best].Visual != null) Object.Destroy(Lying[best].Visual.gameObject);
+            if (Lying[best].Visual != null) UnseenObject.Destroy(Lying[best].Visual.gameObject);
             Lying.RemoveAt(best);
             return true;
         }
@@ -110,7 +110,7 @@ namespace Unseen.Combat
         public static void ClearAll()
         {
             for (int i = 0; i < Lying.Count; i++)
-                if (Lying[i].Visual != null) Object.Destroy(Lying[i].Visual.gameObject);
+                if (Lying[i].Visual != null) UnseenObject.Destroy(Lying[i].Visual.gameObject);
 
             Lying.Clear();
         }

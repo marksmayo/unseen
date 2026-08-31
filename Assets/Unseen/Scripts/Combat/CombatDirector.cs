@@ -346,8 +346,12 @@ namespace Unseen.Combat
 
             // Motion warping: both actors are warped onto the exact marks the animation expects,
             // which is what keeps a 1.5 s lockstep animation from sliding on a client.
-            attacker.Motor?.BeginMotionWarp(behind, victim.Yaw, cfg.TakedownDuration);
-            victim.Motor?.BeginMotionWarp(victim.Position, victim.Yaw, cfg.TakedownDuration);
+            // Tagged as takedowns so the visual does not read a warp that happens to end level
+            // with where it began as a vault, and play a handrail hop over a killing move.
+            attacker.Motor?.BeginMotionWarp(behind, victim.Yaw, cfg.TakedownDuration,
+                LocomotionState.Grounded, WarpStyle.Takedown);
+            victim.Motor?.BeginMotionWarp(victim.Position, victim.Yaw, cfg.TakedownDuration,
+                LocomotionState.Grounded, WarpStyle.Takedown);
 
             Raise(CombatEventKind.TakedownStart, attacker.Id, victim.Id, victim.Position, GuardZone.Mid);
             return true;

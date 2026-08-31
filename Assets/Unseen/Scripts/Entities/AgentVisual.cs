@@ -235,6 +235,20 @@ namespace Unseen.Entities
                 case LocomotionState.WallRun: wanted = 2; break;
                 case LocomotionState.RafterCrawl:
                 case LocomotionState.Grapple: wanted = 3; break;
+
+                // Locked means a fixed animation owns the body, but not which one. A vault over a
+                // handrail and a haul onto a roof arrive here identically, and playing nothing -
+                // which is what the default did - left the ninja sliding over the rail upright.
+                case LocomotionState.Locked:
+                    wanted = _agent.Motor != null && _agent.Motor.Warp == WarpStyle.Vault ? 4 : 0;
+                    break;
+
+                // Going over a rail is an ordinary jump with a vault pose on it, because there is
+                // nothing on the far side of a bridge rail to warp onto.
+                case LocomotionState.Airborne:
+                    wanted = _agent.Motor != null && _agent.Motor.IsVaulting ? 4 : 0;
+                    break;
+
                 default: wanted = 0; break;
             }
 

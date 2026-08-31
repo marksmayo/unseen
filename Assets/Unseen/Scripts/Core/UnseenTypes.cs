@@ -56,6 +56,27 @@ namespace Unseen.Core
         Locked = 8
     }
 
+    /// <summary>
+    /// What a motion warp is portraying.
+    ///
+    /// Locked says the body is being carried by a fixed animation; it does not say which one, and
+    /// the three read completely differently. Kept separate from LocomotionState rather than added
+    /// to it because Locked already means something to the movement code - IsLocked, the dead-agent
+    /// exception in MotionSystem, the early-out in the motor - and splitting it into three states
+    /// would mean auditing every one of those for a change that is purely about what you see.
+    /// </summary>
+    public enum WarpStyle : byte
+    {
+        /// <summary>Climbing up onto something: the far side is higher than where you started.</summary>
+        Mantle = 0,
+
+        /// <summary>Going over something: a rail, a fence, a low wall, landing back at your level.</summary>
+        Vault = 1,
+
+        /// <summary>A silent takedown, which owns both bodies.</summary>
+        Takedown = 2
+    }
+
     public enum GuardZone : byte
     {
         High = 0,

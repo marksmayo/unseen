@@ -1,8 +1,10 @@
 using UnityEditor;
+using UnityEditor.Animations;
 using Unity.Mathematics;
 using UnityEngine;
 using Unseen.Core;
 using Unseen.Entities;
+using Unseen.Movement;
 
 namespace Unseen.EditorTools
 {
@@ -108,8 +110,19 @@ namespace Unseen.EditorTools
                 Debug.Log($"[rail] you can still get over it on purpose: " +
                           $"{(canGetOver ? "PASS" : "FAIL")}");
 
-                if (stopsAWalk && canGetOver) Debug.Log("[rail] PASSED");
-                else Debug.LogError("[rail] FAILED");
+                Debug.Log($"[rail] arrived within 0.9 m on {NearRailTicks} ticks, grounded on " +
+                          $"{GroundedAtRail} of them; last state there {LastStateAtRail}");
+
+                bool vaulted = SawVault;
+                Debug.Log($"[rail] the motor asked for a vault while getting over: " +
+                          $"{(vaulted ? "PASS" : "FAIL")}");
+
+                bool animated = CheckVaultAnimation();
+
+                if (stopsAWalk && canGetOver && vaulted && animated)
+                    Debug.Log("[rail] PASSED");
+                else
+                    Debug.LogError("[rail] FAILED");
             }
             finally
             {
@@ -143,19 +156,27 @@ namespace Unseen.EditorTools
             Step(boot, 20);
 
             float best = float.MinValue;
+            SawVault = false;
+            NearRailTicks = 0;
+            GroundedAtRail = 0;
 
             for (int i = 0; i < 180; i++)
             {
+                // Jump AT the rail, not from across the deck.
+                //
+                // Holding the jump bit from the start made the agent leap the instant it began
+                // walking, two metres out, and sail over the rail without the mantle probe ever
+                // reaching it - so the vault never fired and this read as a missing feature. A
+                // player presses jump when they arrive at the thing they are jumping.
+                float distance = -math.dot((float3)agent.Position - (float3)bounds.center, outward);
+                bool atTheRail = distance < 0.9f;
+
                 var intent = new MoveIntent
                 {
                     Sequence = (uint)(200 + i),
                     Move = new float2(0f, 1f),
                     Yaw = UnseenMath.ForwardToYaw(outward),
-
-                    // Held down. A single-frame press can land on a tick where the body is not
-                    // grounded and be thrown away, which reads as "cannot jump this" when the
-                    // truth is "did not jump".
-                    Jump = jumping
+                    Jump = jumping && atTheRail
                 };
 
                 agent.Intent = intent;
@@ -166,12 +187,35 @@ namespace Unseen.EditorTools
 
                 agent.Intent = intent;
 
+                // Whether the motor ever asked for a vault. This is the hook the animation hangs
+                // on, so a rail you get over by some other means would leave it false.
+                // Either shape of vault counts: a warp onto the far side of a low wall, or the
+                // vault pose laid over a jump when there is nothing to land on.
+                if (agent.Motor != null &&
+                    ((agent.Motor.IsWarping && agent.Motor.Warp == WarpStyle.Vault) ||
+                     agent.Motor.IsVaulting)) SawVault = true;
+
+                // What state the body was in when it arrived, which is the precondition the
+                // mantle probe needs: TryMantle is only reached from TickGrounded.
+                if (atTheRail && jumping)
+                {
+                    NearRailTicks++;
+                    if (agent.Locomotion == LocomotionState.Grounded) GroundedAtRail++;
+                    LastStateAtRail = agent.Locomotion;
+                }
+
                 float past = math.dot((float3)agent.Position - (float3)bounds.center, outward);
                 best = math.max(best, past);
             }
 
             return best;
         }
+
+        /// <summary>Set by Drive: whether a vault-styled motion warp ran during the attempt.</summary>
+        private static bool SawVault;
+        private static int NearRailTicks;
+        private static int GroundedAtRail;
+        private static LocomotionState LastStateAtRail;
 
         /// <summary>The deck height under a rail: the first surface below it that is not the rail.</summary>
         private static float FindDeck(Bounds bounds)
@@ -214,6 +258,45 @@ namespace Unseen.EditorTools
                 UnseenLayers.WorldGeometry, QueryTriggerInteraction.Ignore);
 
             return deckPositive ? -across : across;
+        }
+
+        /// <summary>
+        /// Whether the Parkour layer can actually play a vault.
+        ///
+        /// Checked as an asset rather than by watching the Animator, because AgentVisual drives it
+        /// from LateUpdate and no MonoBehaviour callback runs outside play mode - watching the live
+        /// rig here would report nothing regardless of whether it works.
+        /// </summary>
+        private static bool CheckVaultAnimation()
+        {
+            var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(
+                "Assets/Unseen/Art/Characters/NinjaAnimator.controller");
+
+            if (controller == null) { Debug.LogError("[rail] no animator controller"); return false; }
+
+            foreach (AnimatorControllerLayer layer in controller.layers)
+            {
+                if (layer.name != "Parkour") continue;
+
+                foreach (AnimatorStateTransition t in layer.stateMachine.anyStateTransitions)
+                {
+                    if (t.destinationState == null || t.destinationState.name != "Vault") continue;
+
+                    var clip = t.destinationState.motion as AnimationClip;
+                    bool hasClip = clip != null && clip.length > 0.05f;
+
+                    Debug.Log($"[rail] Parkour layer has a Vault state, clip " +
+                              $"{(clip != null ? clip.name : "MISSING")} " +
+                              $"{(clip != null ? clip.length : 0f):0.00} s");
+                    Debug.Log($"[rail] a vault has an animation to play: " +
+                              $"{(hasClip ? "PASS" : "FAIL")}");
+
+                    return hasClip;
+                }
+            }
+
+            Debug.LogError("[rail] no Any State -> Vault transition on the Parkour layer");
+            return false;
         }
 
         private static void Step(UnseenBootstrap boot, int ticks)

@@ -88,7 +88,7 @@ namespace Unseen.Combat
         public void Reset()
         {
             for (int i = 0; i < _blades.Count; i++)
-                if (_blades[i].Visual != null) Object.Destroy(_blades[i].Visual.gameObject);
+                if (_blades[i].Visual != null) UnseenObject.Destroy(_blades[i].Visual.gameObject);
 
             _blades.Clear();
             _nextThrow.Clear();
@@ -190,7 +190,7 @@ namespace Unseen.Combat
                 if (distance > 0.0001f &&
                     TryHitAgent(cfg, blade, from, math.normalize(step), distance, frame))
                 {
-                    if (blade.Visual != null) Object.Destroy(blade.Visual.gameObject);
+                    if (blade.Visual != null) UnseenObject.Destroy(blade.Visual.gameObject);
                     _blades.RemoveAt(i);
                     continue;
                 }
@@ -336,7 +336,7 @@ namespace Unseen.Combat
         private void Land(UnseenConfig.ShurikenSection cfg, in Blade blade, float3 at,
             in SimFrame frame)
         {
-            if (blade.Visual != null) Object.Destroy(blade.Visual.gameObject);
+            if (blade.Visual != null) UnseenObject.Destroy(blade.Visual.gameObject);
 
             float3 resting = at;
 

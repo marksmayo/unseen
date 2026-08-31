@@ -72,24 +72,25 @@ namespace Unseen.BattleRoyale
                 AgentEntity agent = Ctx.Entities.BySlot(i);
                 if (agent == null || !agent.IsAlive) continue;
 
-                // Already up and waiting.
-                if (agent.Locomotion == LocomotionState.Airborne &&
-                    agent.Position.y >= altitude - 1f) continue;
-
                 agent.Flags &= ~AgentFlags.Deployed;
 
                 // Fanned out a little so a full lobby is not one body inside another.
                 float spread = count <= 1 ? 0f : 6f;
                 float angle = count <= 1 ? 0f : i / (float)count * math.PI * 2f;
 
-                agent.Motor?.Teleport(mapCenter + new float3(
+                // Pinned every tick with the controller left alive.
+                //
+                // The first version switched the controller off, the way the descent does, and
+                // skipped anybody already high enough. Both were wrong. The descent can disable the
+                // controller because the glide owns the tick; a parked agent is still run by
+                // MotionSystem, which then called Move on a disabled controller six hundred times a
+                // match - Unity logs an error each time, and the headless test failed on the count.
+                // Skipping agents already up there left them sagging a metre under gravity before
+                // the check caught them again.
+                agent.Motor?.Hover(mapCenter + new float3(
                     math.cos(angle) * spread, altitude, math.sin(angle) * spread));
 
                 agent.Locomotion = LocomotionState.Airborne;
-
-                // Off for the same reason it is off during the descent: the controller would
-                // depenetrate against nothing and start falling.
-                if (agent.Controller != null) agent.Controller.enabled = false;
             }
         }
 

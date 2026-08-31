@@ -67,7 +67,9 @@ namespace Unseen.Movement
         /// This is the motion-warping hook: the target transform is authoritative, the animation
         /// is told to hit it.
         /// </summary>
-        public void BeginMotionWarp(float3 targetPosition, float targetYaw, float duration, LocomotionState exitState = LocomotionState.Grounded)
+        public void BeginMotionWarp(float3 targetPosition, float targetYaw, float duration,
+            LocomotionState exitState = LocomotionState.Grounded,
+            WarpStyle style = WarpStyle.Mantle)
         {
             _lockStart = transform.position;
             _lockTarget = targetPosition;
@@ -77,8 +79,34 @@ namespace Unseen.Movement
             _lockElapsed = 0f;
             _lockExitState = exitState;
             _velocity = float3.zero;
+            Warp = style;
             _agent.Locomotion = LocomotionState.Locked;
         }
+
+        /// <summary>
+        /// Which warp is running. Only meaningful while IsWarping.
+        ///
+        /// Read by the visual to pick an animation, because Locked alone cannot tell a vault over a
+        /// handrail from hauling yourself onto a roof, and those two look nothing like each other.
+        /// </summary>
+        public WarpStyle Warp { get; private set; }
+
+        private float _vaultingFor;
+
+        /// <summary>
+        /// True for a moment after a jump taken to clear something low.
+        ///
+        /// A vault over a bridge rail is not a motion warp and cannot be one: warping needs
+        /// somewhere to land, and the far side of a bridge rail is the river. So the physics stays
+        /// an ordinary jump and only the pose changes - which is the honest shape of the move
+        /// anyway, since what makes it a vault is the body going over the obstacle rather than the
+        /// game taking the controls away.
+        ///
+        /// A countdown owned by the motor rather than a deadline the visual compares against a
+        /// clock: the visual has no honest access to simulation time, which is the same reason
+        /// stagger is mirrored onto the flags.
+        /// </summary>
+        public bool IsVaulting => _vaultingFor > 0f;
 
         public bool IsWarping => _agent != null && _agent.Locomotion == LocomotionState.Locked;
 
@@ -95,6 +123,25 @@ namespace Unseen.Movement
         public void MoveDirect(float3 position)
         {
             transform.position = position;
+        }
+
+        /// <summary>
+        /// Holds a body at a position without touching the controller.
+        ///
+        /// For parking agents in the sky while the lobby fills. The obvious way to do that was to
+        /// switch the controller off and teleport them, which is what the glide does - but the glide
+        /// also owns the tick, and a parked agent does not: MotionSystem still runs TickAirborne on
+        /// it, which called CharacterController.Move on a disabled controller six hundred times a
+        /// match. Unity logs an error for each one and the headless test counted them all.
+        ///
+        /// Zeroing the velocity is what makes this a hover rather than a nudge: gravity accumulates
+        /// in the motor, so pinning only the position would leave a body that snaps back each tick
+        /// while building up fall speed for the moment it is released.
+        /// </summary>
+        public void Hover(float3 position)
+        {
+            transform.position = position;
+            _velocity = float3.zero;
         }
 
         public void Teleport(float3 position)
@@ -115,6 +162,8 @@ namespace Unseen.Movement
 
         public void Simulate(SimContext ctx, float dt, int tick, float time)
         {
+            if (_vaultingFor > 0f) _vaultingFor = math.max(0f, _vaultingFor - dt);
+
             if (_agent == null || !_agent.IsAlive) return;
 
             UnseenConfig cfg = ctx.Config;
@@ -223,6 +272,9 @@ namespace Unseen.Movement
             {
                 if (TryMantle(cfg, intent)) return;
                 if (TryGrabRafter(cfg)) return;
+
+                // A jump taken at something low is a vault, and looks like one.
+                if (IsLowObstacleAhead()) _vaultingFor = cfg.Movement.MantleDuration;
 
                 _velocity.y = cfg.Movement.JumpVelocity;
                 _agent.Locomotion = LocomotionState.Airborne;
@@ -570,10 +622,71 @@ namespace Unseen.Movement
                     0.4f, cfg.Movement.StandHeight + 0.9f, out LedgeHit ledge))
                 return false;
 
-            if (!FindStandableTop(cfg, ledge, forward, out float3 target)) return false;
+            if (!FindStandableTop(cfg, ledge, forward, out float3 target))
+            {
+                // Something low ahead with nowhere to land on it: a bridge rail, a balcony rail, a
+                // fence at the edge of a drop. The mantle correctly refuses - there is no top to
+                // stand on and the far side is air - and the jump underneath carries the body over.
+                //
+                // Marked as a vault anyway, because that is what it looks like from outside and
+                // what it feels like to do. This is the case the animation exists for; a mantle
+                // onto a roof is a different move.
+                _vaultingFor = cfg.Movement.MantleDuration;
+                return false;
+            }
 
-            BeginMotionWarp(target, _agent.Yaw, cfg.Movement.MantleDuration);
+            BeginMotionWarp(target, _agent.Yaw, cfg.Movement.MantleDuration,
+                LocomotionState.Grounded, StyleFor(target));
             return true;
+        }
+
+        /// <summary>
+        /// Whether this warp is a vault or a climb, decided by where it ends up.
+        ///
+        /// Going over a handrail and hauling yourself onto a roof both arrive here through the same
+        /// ledge search, and the honest difference is not the obstacle - it is the landing. A vault
+        /// puts you back down at roughly the height you left; a mantle puts you on top of
+        /// something. Measured rather than guessed from the obstacle, because a rail whose top is
+        /// too narrow to stand on already resolves its landing to the deck beyond it.
+        /// </summary>
+        /// <summary>Waist to just over hip height: what counts as vaultable rather than climbable.</summary>
+        private const float VaultableHeight = 1.45f;
+
+        /// <summary>
+        /// Whether there is something low directly ahead, worth going over rather than around.
+        ///
+        /// A separate cast rather than reusing the ledge probe, which was the obvious thing to do
+        /// and does not work: FindLedge wants a lip it can put a hand on and a top it can measure,
+        /// and a handrail is a hundred and eighty millimetres thick. It correctly finds nothing, so
+        /// hanging the vault pose off it meant the pose never played on the one obstacle players
+        /// vault most.
+        ///
+        /// Nothing above the obstacle is treated as vaultable rather than as a failure, because
+        /// that is precisely the shape of a rail: a bar with open air over it.
+        /// </summary>
+        private bool IsLowObstacleAhead()
+        {
+            float3 forward = _agent.Forward;
+            Vector3 waist = (Vector3)_agent.Position + Vector3.up * 0.7f;
+
+            if (!Physics.SphereCast(waist, 0.25f, (Vector3)forward, out RaycastHit hit, 1.1f,
+                    UnseenLayers.WorldGeometry, QueryTriggerInteraction.Ignore))
+                return false;
+
+            // Look down onto whatever was hit, from a little past its face.
+            Vector3 above = hit.point + (Vector3)forward * 0.2f + Vector3.up * 2.4f;
+
+            if (!Physics.Raycast(above, Vector3.down, out RaycastHit top, 3f,
+                    UnseenLayers.WorldGeometry, QueryTriggerInteraction.Ignore))
+                return true;
+
+            return top.point.y - _agent.Position.y < VaultableHeight;
+        }
+
+        private WarpStyle StyleFor(float3 target)
+        {
+            const float climbRise = 0.6f;
+            return target.y - _agent.Position.y < climbRise ? WarpStyle.Vault : WarpStyle.Mantle;
         }
 
         /// <summary>
