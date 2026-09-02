@@ -103,7 +103,7 @@ Material:
     - _Blend: 0
     - _BlendModePreserveSpecular: 1
     - _BumpScale: 0.5
-    - _ChannelCentre: -69
+    - _ChannelCentre: -70
     - _ChannelHalf: 8
     - _Choppiness: 0.9
     - _ClearCoatMask: 0
