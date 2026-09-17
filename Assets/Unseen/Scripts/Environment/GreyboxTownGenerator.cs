@@ -141,7 +141,9 @@ namespace Unseen.Environment
 
         [Tooltip("Multiplier on lantern brightness. Visual only - the stealth index reads " +
                  "StealthLightSource.Intensity, which is deliberately separate.")]
-        public float LanternVisualIntensity = 15f;
+        public float LanternVisualIntensity = 5.5f;
+
+        public bool EnableVisualUpgrade = true;
 
         [Header("Art")]
         [Tooltip("Textured materials. Falls back to Resources, then to flat greybox colours.")]
@@ -341,7 +343,9 @@ namespace Unseen.Environment
             BuildTownMist(extent, pitch);
             BuildFoliage(extent, pitch);
             BuildRampart(extent);
+            ResolveVegetationClearance();
             BuildSpiritForest();
+            if (EnableVisualUpgrade) SceneVisualUpgrade.Apply(_root, Seed);
             BudgetLanternLights();
             CombineStatics();
 
@@ -454,7 +458,7 @@ namespace Unseen.Environment
             // buildings almost edge-on to it, so a roofline reads as a shape against the sky rather
             // than as a lit surface - which is the single strongest thing in the reference art. The
             // colder tint is what makes a lantern look warm; warmth is a relationship, not a value.
-            light.color = new Color(0.55f, 0.66f, 1f);
+            light.color = new Color(0.65f, 0.74f, 1f);
             light.intensity = MoonlightIntensity;
             light.shadows = LightShadows.Soft;
             // Not fully opaque shadows.
@@ -464,7 +468,9 @@ namespace Unseen.Environment
             // geometry in the dark, because the dark is where they live. Letting a little
             // moonlight through keeps the shape of what is in shadow without lifting the shadow
             // off the ground.
-            light.shadowStrength = 0.78f;
+            light.shadowStrength = 0.72f;
+            light.shadowBias = .035f;
+            light.shadowNormalBias = .28f;
         }
 
         /// <summary>
@@ -477,8 +483,11 @@ namespace Unseen.Environment
 
             // RenderSettings lives in UnityEngine; only AmbientMode is in UnityEngine.Rendering.
             RenderSettings.skybox = _set.Sky;
-            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Skybox;
-            RenderSettings.ambientIntensity = _set.AmbientIntensity;
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
+            RenderSettings.ambientSkyColor = new Color(.13f, .17f, .25f);
+            RenderSettings.ambientEquatorColor = new Color(.065f, .082f, .115f);
+            RenderSettings.ambientGroundColor = new Color(.032f, .035f, .045f);
+            RenderSettings.ambientIntensity = 1f;
             RenderSettings.fog = _set.FogDensity > 0f;
             RenderSettings.fogMode = FogMode.ExponentialSquared;
             RenderSettings.fogDensity = _set.FogDensity;
@@ -617,6 +626,7 @@ namespace Unseen.Environment
                 new Vector3(blockSize * 0.6f, 1f, 1.2f),
                 UnseenLayers.GrappleAnchor, _tile);
             Acoustics(ridge, 0.5f, 1.2f, 1.3f);
+            AddRoofCrests(compound, blockSize * 0.6f, roofTop + 0.9f);
 
             if (twoStorey)
             {
@@ -765,6 +775,7 @@ namespace Unseen.Environment
             Transform crest = Box(kura, "Ridge", new Vector3(0f, roofTop + 0.5f, 0f),
                 new Vector3(size * 0.5f, 0.9f, 1f), UnseenLayers.GrappleAnchor, _tile);
             Acoustics(crest, 0.5f, 1.2f, 1.3f);
+            AddRoofCrests(kura, size * 0.5f, roofTop + 0.85f);
 
             PlaceContainers(kura, half * 0.6f);
         }
@@ -1933,6 +1944,19 @@ namespace Unseen.Environment
         /// silhouette against the sky, and the sky is what every rooftop in this town is seen
         /// against.
         /// </summary>
+        private void AddRoofCrests(Transform parent, float length, float y)
+        {
+            Mesh mesh = BlenderArt.Get("RoofCrest");
+            if (mesh == null) return;
+            for (int side = -1; side <= 1; side += 2)
+            {
+                Transform crest = Organic(parent, $"CeramicCrest_{side}", mesh,
+                    new Vector3(length * 0.5f * side, y, 0f),
+                    new Vector3(0.85f, 1.25f, 0.85f), _tile);
+                if (side < 0) crest.localRotation = Quaternion.Euler(0, 180, 0);
+            }
+        }
+
         private void BuildRidge(Transform parent, float span, float y, string tag,
             Vector3 offset = default)
         {
@@ -1945,6 +1969,15 @@ namespace Unseen.Environment
             // recognises even at a distance where the detail is three pixels.
             for (int sx = -1; sx <= 1; sx += 2)
             {
+                Mesh crest = BlenderArt.Get("RoofCrest");
+                if (crest != null)
+                {
+                    Transform ornament = Organic(parent, $"RidgeCrest_{tag}_{sx}", crest,
+                        new Vector3(offset.x + length * 0.5f * sx, y + 0.62f, offset.z),
+                        new Vector3(0.65f, 1.05f, 0.55f), _tile);
+                    if (sx < 0) ornament.localRotation = Quaternion.Euler(0f, 180f, 0f);
+                    continue;
+                }
                 Detail(parent, $"RidgeEnd_{tag}_{sx}",
                     new Vector3(offset.x + length * 0.5f * sx, y + 0.46f, offset.z),
                     new Vector3(0.42f, 0.62f, 0.7f), _darkTimber);
@@ -1996,6 +2029,65 @@ namespace Unseen.Environment
         /// radius, so it almost never fires - and when it does, two trunks in the same hole was not
         /// the look anybody wanted either.
         /// </summary>
+        private void ResolveVegetationClearance()
+        {
+            var clearance = new VegetationClearance(_root);
+            var plants = new HashSet<Transform>();
+            foreach (MeshRenderer renderer in _root.GetComponentsInChildren<MeshRenderer>())
+            {
+                if (!renderer.enabled || !VegetationClearance.IsPlant(renderer.sharedMaterial)) continue;
+                Transform plant = renderer.transform;
+                for (Transform ancestor = plant; ancestor != _root && ancestor != null; ancestor = ancestor.parent)
+                {
+                    if (ancestor.name == "Tree" || ancestor.name == "Shrub" || ancestor.name.StartsWith("Hedge_"))
+                    { plant = ancestor; break; }
+                }
+                plants.Add(plant);
+            }
+
+            int moved = 0, omitted = 0;
+            foreach (Transform plant in plants)
+            {
+                var renderers = plant.GetComponentsInChildren<MeshRenderer>();
+                Bounds bounds = new Bounds(plant.position, Vector3.zero);
+                bool any = false;
+                foreach (var renderer in renderers)
+                {
+                    if (!renderer.enabled) continue;
+                    if (!any) { bounds = renderer.bounds; any = true; }
+                    else bounds.Encapsulate(renderer.bounds);
+                }
+                if (!any || !clearance.Overlaps(bounds)) continue;
+                Vector3 original = plant.position;
+                bool fitted = false;
+                // Move whole trees/shrubs/hedges, so their cover and inhabitants follow the art.
+                bool movable = plant.name == "Tree" || plant.name == "Shrub" || plant.name.StartsWith("Hedge_");
+                for (int attempt = 0; movable && attempt < 24; attempt++)
+                {
+                    float angle = attempt * 2.399963f;
+                    float distance = 1f + attempt * .28f;
+                    Vector3 candidate = original + new Vector3(Mathf.Cos(angle), 0, Mathf.Sin(angle)) * distance;
+                    if (!GroundUnder(candidate, out float y)) continue;
+                    // Preserve root-to-ground offset for centred hedge roots.
+                    float baseOffset = plant.name.StartsWith("Hedge_") ? bounds.extents.y : 0f;
+                    candidate.y = y + baseOffset;
+                    Bounds shifted = bounds;
+                    shifted.center += candidate - original;
+                    if (clearance.Overlaps(shifted)) continue;
+                    if (!GroundUnder(new Vector3(shifted.min.x, y, shifted.min.z), out float y0) ||
+                        !GroundUnder(new Vector3(shifted.max.x, y, shifted.max.z), out float y1) ||
+                        Mathf.Abs(y0 - y) > .35f || Mathf.Abs(y1 - y) > .35f) continue;
+                    plant.position = candidate;
+                    fitted = true;
+                    moved++;
+                    break;
+                }
+                if (!fitted) { plant.gameObject.SetActive(false); omitted++; }
+            }
+            Physics.SyncTransforms();
+            UnseenLog.Info($"[vegetation] fitted actual plant bounds: {moved} relocated, {omitted} omitted at walls/roofs");
+        }
+
         private bool HasRoomToGrow(Vector3 at, float radius, float height)
         {
             Vector3 bottom = at + Vector3.up * (radius + 0.15f);
@@ -2233,9 +2325,27 @@ namespace Unseen.Environment
                     // The wide flat sheets are where the area goes: one at 74 m across covers
                     // 5,500 square metres on its own. Smaller, and the upright ones - which are
                     // seen edge-on from above and cost almost nothing in fill - carry more of it.
+                    // Flat panels brought down from 26-52 m to 16-30 m.
+                    //
+                    // Not for fill this time, for sorting. URP orders transparents by the distance
+                    // from the camera to each object's bounds centre, so a 50 m sheet and a 12 m
+                    // one sitting in the same volume of air swap places as you walk between their
+                    // centres - and because they blend rather than overwrite, the composite visibly
+                    // jumps at the swap. Panels closer in size swap less often and matter less when
+                    // they do. Overdraw falls out of it as a second benefit rather than the aim.
+                    //
+                    // The upright ones keep their range: they are what you walk into at eye level,
+                    // they are seen edge-on from above, and they are not what was stacking.
+                    // Upright panels brought down from 10-25 m to 7-15 m as well.
+                    //
+                    // An upright panel is 0.42 as tall as it is wide and stands at eye height, so a
+                    // 25 m one is a 25 by 10 m sheet square across the street in front of you. No
+                    // falloff saves a panel that large: it fills the view, and anything that fills
+                    // the view at a roughly even density is a wall whatever it is made of. Smaller
+                    // panels are what let several of them overlap into something with a shape.
                     float size = i == 0
-                        ? 26f + (float)_random.NextDouble() * 26f
-                        : 10f + (float)_random.NextDouble() * 15f;
+                        ? 16f + (float)_random.NextDouble() * 14f
+                        : 7f + (float)_random.NextDouble() * 8f;
 
                     var panel = new GameObject($"Mist_{gx}_{gz}_{i}");
                     panel.transform.SetParent(host, false);
@@ -3142,14 +3252,18 @@ namespace Unseen.Environment
                 Vector3 at = dir * spread * 0.3f * (float)_random.NextDouble();
 
                 Transform cane = Organic(tree, $"Cane_{c}",
-                    OrganicMeshFactory.Tube(5, 4, 0.75f, 0.1f, 0.1f),
+                    BlenderArt.Get("BambooCulm") ?? OrganicMeshFactory.Tube(5, 4, 0.75f, 0.1f, 0.1f),
                     at, new Vector3(0.16f, caneHeight, 0.16f), _bamboo);
                 cane.localRotation = Quaternion.Euler(dir.z * 7f, 0f, -dir.x * 7f);
 
-                Organic(tree, $"CaneLeaves_{c}",
-                    OrganicMeshFactory.Blob(5, 9, 0.4f, c),
-                    at + new Vector3(0f, caneHeight * 0.9f, 0f),
-                    new Vector3(1.2f, 0.85f, 1.2f), _foliage);
+                for (int f = 0; f < 3; f++)
+                {
+                    Transform leaves = Organic(tree, $"CaneLeaves_{c}_{f}",
+                        BlenderArt.Get("BambooFrond") ?? OrganicMeshFactory.Blob(5, 9, .4f, c),
+                        Vector3.zero, Vector3.one * (1.25f + f * .1f), WeatheredMaterials.BambooLeaves(_foliage));
+                    leaves.position = cane.TransformPoint(new Vector3(0, .86f - f * .14f, 0));
+                    leaves.localRotation = Quaternion.Euler(-12 + f * 10, angle + f * 137.5f, -8);
+                }
             }
         }
 
@@ -3241,7 +3355,8 @@ namespace Unseen.Environment
             GreyboxMaterialSet set = MaterialSet != null ? MaterialSet : GreyboxMaterialSet.Load();
             Material tuft = set != null && set.BambooLeaf != null ? set.BambooLeaf : _foliage;
 
-            forest.Build(inner, Mathf.Max(wanted, clearing), _bamboo, _bambooMass, tuft);
+            forest.Build(inner, Mathf.Max(wanted, clearing), _bamboo,
+                WeatheredMaterials.Surface(_bambooMass, forest: true), WeatheredMaterials.BambooLeaves(tuft));
         }
 
         /// <summary>Height multiple, read from config so the forest and the rules agree.</summary>
@@ -3554,10 +3669,33 @@ namespace Unseen.Environment
             float driftX = salt == 0 ? 0f : ((h / 180 % 5) - 2) * 0.2f;
             float driftZ = salt == 0 ? 0f : ((h / 900 % 5) - 2) * 0.2f;
 
+            // The narrowest course worth building. Below this the tier is a sliver, and below zero
+            // it is inside out.
+            const float minimumCourse = 0.8f;
+
             float y = height + 0.18f;
+            int built = 0;
+
             for (int i = 0; i < tiers; i++)
             {
                 float span = eaveSpan - inset * 2f * i;
+
+                // Stop before the courses invert.
+                //
+                // span loses twice the inset every course, so a narrow building runs out of roof
+                // before it runs out of tiers: at up to seven courses and an inset of up to 1.35 m,
+                // anything under about nine metres across goes negative on the upper ones. A
+                // negative extent gives BoxMeshFactory an inside-out box and hands BoxCollider a
+                // size it refuses - Unity forces it positive and warns, which is what filled the
+                // player log with Nagaya roofs. The real cost is not the warning: a forced-positive
+                // collider is a different shape from the mesh beside it, so those courses had
+                // collision that did not match what anyone could see or stand on.
+                //
+                // The skew comes off first because it lengthens one axis at the other's expense,
+                // so it is the shorter axis that decides when to stop.
+                if (i > 0 && span - Mathf.Abs(skew) < minimumCourse) break;
+
+                built++;
                 var tierHost = new GameObject($"Roof_{i}");
                 tierHost.transform.SetParent(compound, false);
                 tierHost.transform.localPosition = new Vector3(driftX * i, y, driftZ * i);
@@ -3566,8 +3704,13 @@ namespace Unseen.Environment
                 // Quantised to a half metre. This is what actually bounds the mesh cache: without
                 // it, four pitches times three course counts times four plot sizes times the skew
                 // would give every roof in the town its own geometry.
+                // Clamped as well as guarded above: the base course is always built whatever its
+                // span, and Quantise rounds, so this is the floor that guarantees no mesh and no
+                // collider ever receives a negative extent.
                 var size = new Vector3(
-                    Quantise(span + skew), slabThickness, Quantise(span - skew));
+                    Mathf.Max(minimumCourse, Quantise(span + skew)),
+                    slabThickness,
+                    Mathf.Max(minimumCourse, Quantise(span - skew)));
 
                 // A finer texture scale than the rest of the town: at the shared 2.5 m repeat a
                 // roof tile came out the size of a paving slab, and the steps read as masonry
@@ -3615,11 +3758,18 @@ namespace Unseen.Environment
 
             float top = y - riser + slabThickness * 0.5f;
 
+            // Everything above is measured from the courses that were actually built, not from the
+            // number asked for. On a narrow building the loop stops early, and a ridge placed at
+            // the height and span of a course that was never laid sits in mid-air at a negative
+            // width - the same inside-out box in a different costume.
+            int courses = Mathf.Max(1, built);
+            int crownStep = courses - 1;
+
             // A ridge along the top with an ornament at either end. A hip roof that just stops is
             // the shape of a shed; the ridge and its end tiles are what make it a building
             // somebody cared about.
-            BuildRidge(compound, eaveSpan - inset * 2f * (tiers - 1), top, "Hip",
-                new Vector3(driftX * (tiers - 1), 0f, driftZ * (tiers - 1)));
+            BuildRidge(compound, eaveSpan - inset * 2f * crownStep, top, "Hip",
+                new Vector3(driftX * crownStep, 0f, driftZ * crownStep));
 
             // Grapple anchors on the eave corners, not just the ridge. A ridge anchor sits behind
             // its own roof from every street, so the rope-path check refused every shot at it and
@@ -3640,9 +3790,9 @@ namespace Unseen.Environment
             }
 
             // Ridge caps along the crown, and the heavy end blocks that sit on the hips.
-            float crown = eaveSpan - inset * 2f * (tiers - 1);
+            float crown = Mathf.Max(minimumCourse, eaveSpan - inset * 2f * crownStep);
             Detail(compound, "RidgeCap",
-                new Vector3(driftX * (tiers - 1), top + 0.16f, driftZ * (tiers - 1)),
+                new Vector3(driftX * crownStep, top + 0.16f, driftZ * crownStep),
                 new Vector3(crown * 0.55f, 0.32f, 0.8f), _darkTimber);
 
             // Hip ridges running from the crown down to each corner. On a real roof these are the
@@ -4036,7 +4186,7 @@ namespace Unseen.Environment
             if (_litWindow.HasProperty("_EmissionColor"))
             {
                 _litWindow.EnableKeyword("_EMISSION");
-                _litWindow.SetColor("_EmissionColor", glow * 2.4f);
+                _litWindow.SetColor("_EmissionColor", glow * .65f);
                 // Realtime only. These are created at generation time and there is no lightmap
                 // for them to contribute to.
                 _litWindow.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
@@ -5153,7 +5303,10 @@ namespace Unseen.Environment
             go.layer = UnseenLayers.Decoration;
 
             var filter = go.AddComponent<MeshFilter>();
-            filter.sharedMesh = BoxMeshFactory.Get(size, _textureMetres);
+            bool horizontalWater = name == "Water" || name == "LakeWater" || name == "PoolWater";
+            Mesh surface = horizontalWater ? BlenderArt.Get("WaterSurface") : null;
+            filter.sharedMesh = surface != null ? surface : BoxMeshFactory.Get(size, _textureMetres);
+            if (surface != null) go.transform.localScale = size;
 
             var renderer = go.AddComponent<MeshRenderer>();
             if (material != null) renderer.sharedMaterial = material;
@@ -5227,6 +5380,13 @@ namespace Unseen.Environment
                 _bambooMass = set.BambooMass != null ? set.BambooMass : set.Foliage;
                 _textureMetres = set.TextureMetres;
                 _textured = true;
+                _stone = WeatheredMaterials.Surface(_stone);
+                _timber = WeatheredMaterials.Surface(_timber);
+                _darkTimber = WeatheredMaterials.Surface(_darkTimber);
+                _tile = WeatheredMaterials.Surface(_tile);
+                _plaster = WeatheredMaterials.Surface(_plaster, plaster: true);
+                _vermilion = WeatheredMaterials.Surface(_vermilion);
+                _ground = WeatheredMaterials.Surface(_ground);
                 return;
             }
 

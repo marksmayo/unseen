@@ -101,11 +101,17 @@ namespace Unseen.Core
 
         private void Awake()
         {
-            Boot();
+            if (FirstLoadIntro.ShouldPlay(Mode == LaunchMode.DedicatedServer))
+            {
+                var intro = new GameObject("First Load Intro");
+                intro.transform.SetParent(transform, false);
+                intro.AddComponent<FirstLoadIntro>().Play(Boot);
+            }
+            else Boot();
         }
 
         /// <summary>
-        /// Builds the world, the transport and the simulation. Called from Awake in a normal session;
+        /// Builds the world, the transport and the simulation after the first-load intro;
         /// editor tooling calls it directly because Awake does not run in edit mode.
         /// </summary>
         public void Boot()
@@ -191,6 +197,38 @@ namespace Unseen.Core
                         if (i + 1 < args.Length && int.TryParse(args[i + 1], out int entities) && Config != null)
                             Config.Match.TargetEntityCount = Mathf.Clamp(entities, 1, 128);
                         break;
+
+                    // Joining a server. The mode is set here as well as the address, because
+                    // "-connect somewhere" with no "-client" is what everybody types, and refusing
+                    // to do the obvious thing with it is a worse answer than doing it.
+                    case "-connect":
+                        if (i + 1 < args.Length &&
+                            Net.ConnectTarget.TryParse(args[i + 1], out Net.NetEndpoint target))
+                        {
+                            Net.UnseenTransport.ConnectTo = target;
+                            Mode = LaunchMode.Client;
+                        }
+                        else
+                        {
+                            UnseenLog.Error($"[Unseen] could not read -connect " +
+                                            $"'{(i + 1 < args.Length ? args[i + 1] : "")}'. " +
+                                            "Expected host:port, for example 192.168.1.50:7777.");
+                        }
+                        break;
+
+                    case "-port":
+                        if (i + 1 < args.Length && int.TryParse(args[i + 1], out int port) &&
+                            port > 0 && port <= 65535)
+                        {
+                            Net.UnseenTransport.ListenPort = port;
+                        }
+                        break;
+
+                    case "-name":
+                        // Passed on as asked for, not as granted. The server sanitises it and may
+                        // hand back something else entirely, and that reply is what gets displayed.
+                        if (i + 1 < args.Length) Net.UnseenTransport.RequestedName = args[i + 1];
+                        break;
                 }
             }
         }
@@ -218,6 +256,7 @@ namespace Unseen.Core
             var generatorHost = new GameObject("GreyboxTown");
             GreyboxTownGenerator generator = generatorHost.AddComponent<GreyboxTownGenerator>();
             generator.Seed = Seed;
+            generator.EnableVisualUpgrade = Mode != LaunchMode.DedicatedServer;
             return generator.Generate();
         }
 
@@ -307,6 +346,10 @@ namespace Unseen.Core
             _camera = cameraHost.AddComponent<ThirdPersonCameraRig>();
             _camera.Input = _input;
 
+            var feedback = rig.AddComponent<CombatFeedback>();
+            feedback.View = _clientView;
+            feedback.CameraRig = _camera;
+
             EnablePostProcessing(cameraHost);
 
             StealthHud hud = rig.AddComponent<StealthHud>();
@@ -354,6 +397,15 @@ namespace Unseen.Core
             cameraData.renderPostProcessing = true;
             cameraData.renderShadows = true;
 
+            // SMAA on top of the pipeline's MSAA, because this town is built out of exactly the
+            // geometry MSAA handles worst: bamboo culms, roof edges and balcony rails, all thin and
+            // all high contrast against a dark sky. SMAA rather than TAA - TAA needs motion vectors
+            // and smears a moving silhouette, and a smeared silhouette is a stealth game telling
+            // the player a lie about where someone is standing.
+            cameraData.antialiasing =
+                UnityEngine.Rendering.Universal.AntialiasingMode.SubpixelMorphologicalAntiAliasing;
+            cameraData.antialiasingQuality = UnityEngine.Rendering.Universal.AntialiasingQuality.High;
+
             var volumeHost = new GameObject("PostProcessing");
             volumeHost.transform.SetParent(cameraHost.transform, false);
 
@@ -373,8 +425,8 @@ namespace Unseen.Core
             tonemapping.mode.Override(UnityEngine.Rendering.Universal.TonemappingMode.ACES);
 
             var colour = profile.Add<UnityEngine.Rendering.Universal.ColorAdjustments>(true);
-            colour.postExposure.Override(1.5f);
-            colour.contrast.Override(19f);
+            colour.postExposure.Override(.85f);
+            colour.contrast.Override(10f);
             colour.saturation.Override(-4f);
 
             // Cold shadows, warm lights. This is the whole palette in one effect: everything unlit
@@ -395,7 +447,7 @@ namespace Unseen.Core
             // blooming as hard as the lamp lighting it, which is how a row of shrubs came out
             // acid green.
             bloom.threshold.Override(1.15f);
-            bloom.intensity.Override(1.15f);
+            bloom.intensity.Override(.55f);
             bloom.scatter.Override(0.72f);
             bloom.tint.Override(new Color(1f, 0.86f, 0.66f));
 
@@ -459,11 +511,12 @@ namespace Unseen.Core
         private void ApplyBrightness(GameSettings settings)
         {
             if (_exposure == null || settings == null) return;
-            _exposure.postExposure.Override(1.35f * settings.Brightness);
+            _exposure.postExposure.Override(.85f * settings.Brightness);
         }
 
         private void Update()
         {
+            if (!_booted || _sim == null) return;
             float dt = Time.deltaTime;
 
             _net.Poll(dt);

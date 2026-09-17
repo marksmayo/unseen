@@ -59,6 +59,10 @@ namespace Unseen.Environment
                  "level.")]
         public float BaseDepth = 16f;
 
+        private VegetationClearance _clearance;
+        private readonly List<Renderer> _culmRenderers = new List<Renderer>();
+        private readonly List<Renderer> _leafRenderers = new List<Renderer>();
+
         private readonly List<Transform> _segments = new List<Transform>(96);
         private readonly List<BoxCollider> _colliders = new List<BoxCollider>(96);
         private readonly List<Transform> _culms = new List<Transform>(1024);
@@ -100,6 +104,7 @@ namespace Unseen.Environment
         /// </summary>
         public void Build(float maxRadius, float height, Material culm, Material mass, Material foliage)
         {
+            _clearance = new VegetationClearance(transform.parent != null ? transform.parent : transform);
             _maxRadius = Mathf.Max(1f, maxRadius);
             _height = Mathf.Max(1f, height);
             InnerEdge = _maxRadius;
@@ -138,9 +143,10 @@ namespace Unseen.Environment
                 // A cane is round, and a box with bark on it is still a box. One shared tapered
                 // tube, scaled per culm.
                 stalk.AddComponent<MeshFilter>().sharedMesh =
-                    OrganicMeshFactory.Tube(5, 4, 0.8f, 0.05f, 0.08f);
+                    BlenderArt.Get("BambooCulm") ?? OrganicMeshFactory.Tube(5, 4, 0.8f, 0.05f, 0.08f);
 
                 var stalkRenderer = stalk.AddComponent<MeshRenderer>();
+                _culmRenderers.Add(stalkRenderer);
                 if (culm != null) stalkRenderer.sharedMaterial = culm;
 
                 stalk.SetActive(false);
@@ -154,9 +160,11 @@ namespace Unseen.Environment
                     var spray = new GameObject($"Leaves_{i}_{f}");
                     spray.transform.SetParent(transform, false);
                     spray.AddComponent<MeshFilter>().sharedMesh =
-                        OrganicMeshFactory.Blob(5, 8, 0.4f, f);
+                        BlenderArt.Get("BambooFrond") ?? OrganicMeshFactory.Blob(5, 8, 0.4f, f);
 
                     var sprayRenderer = spray.AddComponent<MeshRenderer>();
+                    _leafRenderers.Add(sprayRenderer);
+                    sprayRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                     if (foliage != null) sprayRenderer.sharedMaterial = foliage;
 
                     spray.SetActive(false);
@@ -295,7 +303,8 @@ namespace Unseen.Environment
                 // The tube stands ON the origin rather than being centred on it, so the culm sits
                 // at ground level rather than half-buried.
                 culm.localPosition = outward * radius;
-                culm.localScale = new Vector3(0.17f, height, 0.17f);
+                float width = .16f + Mathf.Abs(Mathf.Sin(i * 2.17f)) * .10f;
+                culm.localScale = new Vector3(width, height, width);
                 culm.localRotation = Quaternion.Euler(lean * 0.4f, angle, lean);
 
                 for (int f = 0; f < fronds; f++)
@@ -308,17 +317,27 @@ namespace Unseen.Environment
                     float drop = f * 0.16f;
                     float splay = (f % 2 == 0 ? 1f : -1f) * (18f + f * 7f);
 
-                    head.localPosition = culm.localPosition +
-                                        new Vector3(0f, height * (0.86f - drop), 0f);
+                    head.position = culm.TransformPoint(new Vector3(0f, 0.86f - drop, 0f));
                     // Narrow and tall, not a ball.
                     //
                     // The spray used to be a tall thin slab and I replaced it with a unit-DIAMETER
                     // blob scaled up, which made every one of them a two-metre sphere. Nine hundred
                     // of those on thin stalks read as a field of enormous white lilies.
                     float spread = 0.5f + Mathf.Abs(Mathf.Sin((i + f) * 2.11f)) * 0.28f;
-                    head.localScale = new Vector3(spread, 1.9f, spread);
+                    head.localScale = Vector3.one * (1.4f + spread);
                     head.localRotation = Quaternion.Euler(
                         splay * 0.5f, angle + f * 61f, lean * 0.5f + splay);
+                }
+
+                // The boundary collider keeps following the mist; its decorative plants must
+                // not sprout through the buildings it passes. The index is built once.
+                bool blocked = _clearance.Overlaps(_culmRenderers[i].bounds);
+                for (int f = 0; f < fronds && !blocked; f++)
+                    blocked = _clearance.Overlaps(_leafRenderers[i * fronds + f].bounds);
+                if (blocked)
+                {
+                    culm.gameObject.SetActive(false);
+                    for (int f = 0; f < fronds; f++) _leaves[i * fronds + f].gameObject.SetActive(false);
                 }
             }
         }

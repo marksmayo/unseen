@@ -118,6 +118,15 @@ Shader "Unseen/RiverWater"
             {
                 Varyings output;
                 VertexPositionInputs positions = GetVertexPositionInputs(input.positionOS.xyz);
+                // Blender's surface grid carries low-amplitude waves in world metres.
+                // Vertical waterfall sheets retain their original shape.
+                float3 normalWS = TransformObjectToWorldNormal(input.normalOS);
+                float horizontal = step(0.9, abs(normalWS.y));
+                float2 p = positions.positionWS.xz;
+                float waveHeight = sin(p.x * 0.7 + p.y * 0.31 + _Time.y * 1.3) * 0.025
+                    + sin(p.y * 1.1 - p.x * 0.23 - _Time.y * 0.9) * 0.015;
+                positions.positionWS.y += waveHeight * _Choppiness * horizontal;
+                positions.positionCS = TransformWorldToHClip(positions.positionWS);
                 output.positionCS = positions.positionCS;
                 output.positionWS = positions.positionWS;
                 output.normalWS = TransformObjectToWorldNormal(input.normalOS);

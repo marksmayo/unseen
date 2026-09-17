@@ -19,7 +19,10 @@ namespace Unseen.Environment
     public sealed class LanternLightBudget : MonoBehaviour
     {
         [Tooltip("How many lantern lights may be on at once.")]
-        public int Budget = 40;
+        public int Budget = 32;
+
+        [Tooltip("Only the nearest lamps cast shadows; point shadows render six faces each.")]
+        public int ShadowBudget = 2;
 
         [Tooltip("Seconds between re-sorts. The player cannot outrun this at a sprint.")]
         public float Interval = 0.35f;
@@ -80,7 +83,13 @@ namespace Unseen.Environment
             for (int rank = 0; rank < _order.Count; rank++)
             {
                 Light light = _lights[_order[rank]];
-                bool shouldBeOn = rank < Budget;
+                bool shouldBeOn = rank < Budget && light.intensity > 0f;
+                light.shadows = shouldBeOn && rank < ShadowBudget ? LightShadows.Soft : LightShadows.None;
+                if (light.shadows != LightShadows.None)
+                {
+                    light.shadowResolution = UnityEngine.Rendering.LightShadowResolution.Low;
+                    light.shadowBias = .025f; light.shadowNormalBias = .15f;
+                }
                 if (light.enabled != shouldBeOn) light.enabled = shouldBeOn;
             }
         }

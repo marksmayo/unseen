@@ -33,6 +33,7 @@ namespace Unseen.EditorTools
 
             ConfigurePipeline(pipeline);
             ConfigureRenderer(renderer);
+            EnsureAmbientOcclusion(renderer);
 
             GraphicsSettings.defaultRenderPipeline = pipeline;
 
@@ -108,6 +109,15 @@ namespace Unseen.EditorTools
             Set(so, "m_SoftShadowsSupported", true);
             Set(so, "m_MSAA", 2);
 
+            // The depth texture is what lets transparent surfaces know what is behind them.
+            //
+            // Without it the mist and smoke shaders cannot soften where a panel cuts through a
+            // wall, a street or the river, so every one of them draws a hard straight line at the
+            // intersection - which is what reads in motion as a transparent box sliding about the
+            // scene. It costs a depth prepass; SSAO already asks for one, so this is close to free
+            // now and it is the difference between fog and a stack of visible quads.
+            Set(so, "m_RequireDepthTexture", true);
+
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
@@ -123,6 +133,91 @@ namespace Unseen.EditorTools
 
             Set(so, "m_DepthPrimingMode", 0);
             so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        /// <summary>
+        /// Adds screen-space ambient occlusion to the renderer, unless it is already there.
+        ///
+        /// Contact darkening is not decoration in this game. The player is asked to read which patch
+        /// of ground is dark enough to stand in, and without AO a wall meets the street with no
+        /// gradient at all - every surface is a flat tone right up to the join, so nothing reads as
+        /// resting on anything.
+        ///
+        /// Feature assets live as sub-assets of the renderer and are tracked in two parallel
+        /// serialized lists: m_RendererFeatures holds the reference, m_RendererFeatureMap holds the
+        /// sub-asset's local file id. Both must be grown together - URP's own inspector does exactly
+        /// this, and a feature added to only one of them is silently ignored.
+        /// </summary>
+        private static void EnsureAmbientOcclusion(UniversalRendererData renderer)
+        {
+            foreach (ScriptableRendererFeature existing in renderer.rendererFeatures)
+            {
+                if (existing is ScreenSpaceAmbientOcclusion)
+                {
+                    ConfigureAmbientOcclusion(existing);
+                    return;
+                }
+            }
+
+            var ssao = ScriptableObject.CreateInstance<ScreenSpaceAmbientOcclusion>();
+            ssao.name = nameof(ScreenSpaceAmbientOcclusion);
+            ssao.hideFlags |= HideFlags.HideInHierarchy;
+            AssetDatabase.AddObjectToAsset(ssao, renderer);
+            AssetDatabase.TryGetGUIDAndLocalFileIdentifier(ssao, out _, out long localId);
+
+            var so = new SerializedObject(renderer);
+            SerializedProperty features = so.FindProperty("m_RendererFeatures");
+            SerializedProperty map = so.FindProperty("m_RendererFeatureMap");
+
+            if (features == null || map == null)
+            {
+                Debug.LogWarning("[Unseen] renderer feature lists not found; add SSAO by hand.");
+                return;
+            }
+
+            features.arraySize++;
+            features.GetArrayElementAtIndex(features.arraySize - 1).objectReferenceValue = ssao;
+            map.arraySize++;
+            map.GetArrayElementAtIndex(map.arraySize - 1).longValue = localId;
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            ConfigureAmbientOcclusion(ssao);
+            Debug.Log("[Unseen] SSAO renderer feature added");
+        }
+
+        /// <summary>
+        /// Tunes SSAO for a town lit almost entirely by lanterns.
+        ///
+        /// DirectLightingStrength is pushed well above URP's 0.25 default on purpose. AO normally
+        /// occludes only the ambient term, and this scene's ambient is 0.14 - there is almost
+        /// nothing there to take away, so at the default the effect is invisible exactly where it
+        /// matters most, inside a lantern pool. Radius is in world metres: 0.3 m darkens the join
+        /// where a wall meets the street without smearing shade across a whole courtyard.
+        ///
+        /// The settings type is internal to URP, so it is reached through serialisation rather than
+        /// the typed API - the same reason, and the same trade, as the pipeline values above.
+        /// </summary>
+        private static void ConfigureAmbientOcclusion(ScriptableRendererFeature feature)
+        {
+            var so = new SerializedObject(feature);
+            SerializedProperty settings = so.FindProperty("m_Settings");
+            if (settings == null)
+            {
+                Debug.LogWarning("[Unseen] SSAO settings not found; left at defaults.");
+                return;
+            }
+
+            SetChild(settings, "Intensity", 2.0f);
+            SetChild(settings, "Radius", 0.3f);
+            SetChild(settings, "DirectLightingStrength", 0.45f);
+            SetChild(settings, "Falloff", 60f);
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static void SetChild(SerializedProperty parent, string name, float value)
+        {
+            SerializedProperty p = parent.FindPropertyRelative(name);
+            if (p != null) p.floatValue = value;
         }
 
         private static void Set(SerializedObject so, string path, bool value)

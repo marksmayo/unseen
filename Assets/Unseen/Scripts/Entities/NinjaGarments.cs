@@ -199,7 +199,8 @@ namespace Unseen.Entities
             t.rotation = Quaternion.LookRotation(Perpendicular(axis), axis);
             t.localScale = new Vector3(width, height, depth);
 
-            Render(piece, OrganicMeshFactory.Tube(8, 2, 0.94f, 0f, 0.12f), cloth);
+            Render(piece, BlenderArt.Get("ClothWrap") ??
+                OrganicMeshFactory.Tube(8, 2, 0.94f, 0f, 0.12f), cloth);
 
             // World position kept: the band was measured in world space against the standing pose.
             t.SetParent(bone, true);

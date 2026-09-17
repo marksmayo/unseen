@@ -10,17 +10,13 @@
       "url": "https://packages.unity.com"
     },
     "com.unity.burst": {
-      "version": "1.8.30",
-      "depth": 1,
-      "source": "registry",
-      "dependencies": {
-        "com.unity.mathematics": "1.2.1",
-        "com.unity.modules.jsonserialize": "1.0.0"
-      },
-      "url": "https://packages.unity.com"
+      "version": "2.0.0",
+      "depth": 0,
+      "source": "builtin",
+      "dependencies": {}
     },
     "com.unity.collections": {
-      "version": "6.5.0",
+      "version": "6.6.0",
       "depth": 0,
       "source": "builtin",
       "dependencies": {
@@ -36,8 +32,14 @@
       "source": "builtin",
       "dependencies": {}
     },
+    "com.unity.graph-authoring": {
+      "version": "1.0.0",
+      "depth": 2,
+      "source": "builtin",
+      "dependencies": {}
+    },
     "com.unity.ide.rider": {
-      "version": "3.0.31",
+      "version": "3.0.38",
       "depth": 0,
       "source": "registry",
       "dependencies": {
@@ -46,11 +48,11 @@
       "url": "https://packages.unity.com"
     },
     "com.unity.ide.visualstudio": {
-      "version": "2.0.22",
+      "version": "2.0.26",
       "depth": 0,
       "source": "registry",
       "dependencies": {
-        "com.unity.test-framework": "1.1.9"
+        "com.unity.test-framework": "1.1.33"
       },
       "url": "https://packages.unity.com"
     },
@@ -67,33 +69,40 @@
       "dependencies": {},
       "url": "https://packages.unity.com"
     },
+    "com.unity.profiling.core": {
+      "version": "1.0.3",
+      "depth": 2,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://packages.unity.com"
+    },
     "com.unity.render-pipelines.core": {
-      "version": "17.5.0",
+      "version": "17.6.0",
       "depth": 1,
       "source": "builtin",
       "dependencies": {
         "com.unity.burst": "1.8.14",
         "com.unity.collections": "2.4.3",
-        "com.unity.modules.terrain": "1.0.0",
-        "com.unity.modules.jsonserialize": "1.0.0"
+        "com.unity.modules.jsonserialize": "1.0.0",
+        "com.unity.profiling.core": "1.0.3"
       }
     },
     "com.unity.render-pipelines.universal": {
-      "version": "17.5.0",
+      "version": "17.6.0",
       "depth": 0,
       "source": "builtin",
       "dependencies": {
-        "com.unity.render-pipelines.core": "17.5.0",
-        "com.unity.shadergraph": "17.5.0",
-        "com.unity.render-pipelines.universal-config": "17.5.0"
+        "com.unity.render-pipelines.core": "17.6.0",
+        "com.unity.shadergraph": "17.6.0",
+        "com.unity.render-pipelines.universal-config": "17.6.0"
       }
     },
     "com.unity.render-pipelines.universal-config": {
-      "version": "17.5.0",
+      "version": "17.6.0",
       "depth": 1,
       "source": "builtin",
       "dependencies": {
-        "com.unity.render-pipelines.core": "17.5.0"
+        "com.unity.render-pipelines.core": "17.6.0"
       }
     },
     "com.unity.searcher": {
@@ -104,16 +113,17 @@
       "url": "https://packages.unity.com"
     },
     "com.unity.shadergraph": {
-      "version": "17.5.0",
+      "version": "17.6.0",
       "depth": 1,
       "source": "builtin",
       "dependencies": {
-        "com.unity.render-pipelines.core": "17.5.0",
-        "com.unity.searcher": "4.9.3"
+        "com.unity.render-pipelines.core": "17.6.0",
+        "com.unity.searcher": "4.9.3",
+        "com.unity.graph-authoring": "1.0.0"
       }
     },
     "com.unity.test-framework": {
-      "version": "1.7.0",
+      "version": "1.8.0",
       "depth": 0,
       "source": "builtin",
       "dependencies": {
@@ -123,17 +133,16 @@
       }
     },
     "com.unity.test-framework.performance": {
-      "version": "3.5.0",
+      "version": "6.6.0",
       "depth": 1,
-      "source": "registry",
+      "source": "builtin",
       "dependencies": {
         "com.unity.test-framework": "1.1.33",
         "com.unity.modules.jsonserialize": "1.0.0"
-      },
-      "url": "https://packages.unity.com"
+      }
     },
     "com.unity.ugui": {
-      "version": "2.5.0",
+      "version": "2.6.0",
       "depth": 0,
       "source": "builtin",
       "dependencies": {
@@ -227,6 +236,12 @@
       }
     },
     "com.unity.modules.terrain": {
+      "version": "1.0.0",
+      "depth": 0,
+      "source": "builtin",
+      "dependencies": {}
+    },
+    "com.unity.modules.tetgen": {
       "version": "1.0.0",
       "depth": 0,
       "source": "builtin",

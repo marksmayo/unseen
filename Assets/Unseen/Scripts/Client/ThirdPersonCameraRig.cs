@@ -80,6 +80,31 @@ namespace Unseen.Client
 
         public float PositionSmoothing = 20f;
 
+        [Header("Motion feel")]
+        [Range(0f,1f)] public float MotionFeel = 1f;
+        private Unseen.Entities.AgentEntity _motionAgent;
+        private bool _lastGrounded=true;
+        private float _lastFallSpeed, _impact;
+        public void AddImpact(float strength) => _impact = Mathf.Max(_impact, Mathf.Clamp01(strength));
+        private void UpdateMotionFeel()
+        {
+            if (_camera == null) return;
+            float speed=0;
+            if (_motionAgent != null && _motionAgent.Motor != null)
+            {
+                Vector3 v=(Vector3)_motionAgent.Motor.Velocity;
+                bool grounded=_motionAgent.Motor.IsGrounded;
+                if(grounded&&!_lastGrounded)AddImpact(Mathf.Clamp01(-_lastFallSpeed/10f));
+                _lastGrounded=grounded;_lastFallSpeed=v.y;
+                speed=new Vector2(v.x,v.z).magnitude;
+            }
+            _impact=Mathf.MoveTowards(_impact,0,Time.deltaTime*3f);
+            float expansion=Crouched||Prone?0:Mathf.SmoothStep(0,2.5f,Mathf.InverseLerp(3,8,speed));
+            if(_currentDistance<1.5f)expansion=0;
+            // FOV response preserves the centre aim ray, shoulder offset, and collision-tested position.
+            float target=62+MotionFeel*(expansion-_impact*1.2f);
+            _camera.fieldOfView=Mathf.Lerp(_camera.fieldOfView,target,1-Mathf.Exp(-8*Time.deltaTime));
+        }
         private Camera _camera;
         private float _currentDistance;
         private Renderer[] _localVisual;
@@ -137,6 +162,8 @@ namespace Unseen.Client
         public void SetTarget(Transform target)
         {
             Follow = target;
+            _motionAgent = target != null ? target.GetComponent<Unseen.Entities.AgentEntity>() : null;
+            _lastGrounded = true; _impact = 0;
             _currentDistance = Distance;
 
             // Start framed rather than easing in from wherever the rig happened to be.
@@ -238,6 +265,7 @@ namespace Unseen.Client
             transform.rotation = rotation;
 
             UpdateLocalVisual(_currentDistance);
+            UpdateMotionFeel();
         }
     }
 }

@@ -75,6 +75,8 @@ namespace Unseen.Entities
             // the pose it was imported in.
             if (Garments) NinjaGarments.Fit(visual, Cloth, id);
 
+            NinjaEquipmentArt.Fit(visual);
+            visual.gameObject.AddComponent<NinjaMotionPolish>();
             return visual;
         }
     }

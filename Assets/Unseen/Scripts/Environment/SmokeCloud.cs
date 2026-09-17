@@ -37,6 +37,7 @@ namespace Unseen.Environment
         private Material _material;
 
         private Transform[] _puffs;
+        private float[] _scales;
 
         public static IReadOnlyList<SmokeCloud> All => Clouds;
         public float CurrentRadius => Radius * Mathf.Clamp01(GrowDuration <= 0f ? 1f : _age / GrowDuration);
@@ -141,8 +142,14 @@ namespace Unseen.Environment
             // the screen grey; smoke painting the screen grey when you are inside it is the effect.
             if (_material.HasProperty("_NearFade")) _material.SetFloat("_NearFade", 0f);
 
-            const int puffs = 7;
+            // Seventeen, not seven.
+            //
+            // Seven quads at one density cannot read as a volume from inside or outside: you can
+            // count them. The count was cheap to raise only once the panels stopped drawing hard
+            // lines where they cut the ground - before the depth fade, adding puffs added seams.
+            const int puffs = 17;
             _puffs = new Transform[puffs];
+            _scales = new float[puffs];
 
             for (int i = 0; i < puffs; i++)
             {
@@ -152,17 +159,29 @@ namespace Unseen.Environment
                 // Scattered inside the sphere and turned every which way, seeded off the cloud
                 // position so that two clouds are not the same cloud.
                 float t = i / (float)puffs;
-                float yaw = t * 360f + transform.position.x * 7f;
-                float pitch = (i % 3) * 60f + transform.position.z * 3f;
+                float yaw = t * 360f * 2.4f + transform.position.x * 7f;
+                float pitch = (i % 5) * 36f + transform.position.z * 3f;
 
                 host.transform.localRotation = Quaternion.Euler(pitch, yaw, yaw * 0.5f);
                 host.transform.localPosition = Quaternion.Euler(0f, yaw, 0f) *
-                                               new Vector3(0f, (t - 0.5f) * 0.5f, t * 0.35f);
+                                               new Vector3(0f, (t - 0.5f) * 0.6f, (0.25f + t) * 0.42f);
+
+                // A spread of sizes. Uniform puffs read as a pattern however many there are; this
+                // is deterministic off the index so the server and the client agree.
+                _scales[i] = 1.45f + ((i * 37) % 11) / 11f * 1.15f;
 
                 host.AddComponent<MeshFilter>().sharedMesh = QuadMesh();
                 MeshRenderer renderer = host.AddComponent<MeshRenderer>();
                 renderer.sharedMaterial = _material;
-                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+
+                // Smoke that blocks light.
+                //
+                // A bomb thrown into a lantern-lit street should darken it - the cover you gain is
+                // then something the hunter can see happening, not just a number in the stealth
+                // maths. The shader's shadow pass dithers against the same alpha, so a thin edge
+                // casts thinly. Only the smoke does this: the town's 800-odd mist panels doing it
+                // would flood the shadow atlas for no gain.
+                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
                 renderer.receiveShadows = false;
 
                 _puffs[i] = host.transform;
@@ -177,13 +196,34 @@ namespace Unseen.Environment
             // at full size while its radius was still ramping would promise cover it did not give.
             float r = CurrentRadius;
 
+            // Face the camera, when there is one.
+            //
+            // The fixed cross of quads was chosen because the server spawns these too and has no
+            // camera to face - which is right for the server and wrong for everyone looking at it.
+            // A cross seen along one of its planes thins out to almost nothing, so the cover you
+            // are hiding behind visibly weakens depending on where the hunter stands. Billboarding
+            // only on the client keeps the server's behaviour exactly as it was.
+            Camera view = Camera.main;
+
             for (int i = 0; i < _puffs.Length; i++)
             {
                 Transform puff = _puffs[i];
                 if (puff == null) continue;
 
-                puff.localScale = Vector3.one * (r * 2.1f);
-                puff.Rotate(0f, 0f, 6f * dt, Space.Self);
+                float scale = _scales != null && i < _scales.Length ? _scales[i] : 2.1f;
+                puff.localScale = Vector3.one * (r * scale);
+
+                if (view != null)
+                {
+                    // Spun about the view axis rather than left square to it, so seventeen panels
+                    // facing the same way do not read as one flat card.
+                    puff.rotation = Quaternion.LookRotation(puff.position - view.transform.position)
+                                    * Quaternion.Euler(0f, 0f, i * 53f + Time.time * 6f);
+                }
+                else
+                {
+                    puff.Rotate(0f, 0f, 6f * dt, Space.Self);
+                }
             }
 
             // Thins out over the last third of its life rather than vanishing, so the moment cover

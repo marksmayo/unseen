@@ -29,8 +29,14 @@ namespace Unseen.Client
         private Vector3 _center;
 
         /// <summary>
-        /// A capless tube of unit radius and unit half-height, matching the cylinder primitive's
-        /// dimensions so the existing scaling maths is unchanged.
+        /// A capless tube matching the cylinder primitive's dimensions - radius 0.5 and half-height
+        /// 1 - so the existing scaling maths is unchanged.
+        ///
+        /// The radius matters and was wrong. Unity's cylinder primitive is one unit across, not
+        /// two, and this built its ring at radius 1 while LateUpdate went on scaling by the
+        /// diameter. The wall therefore stood at twice the zone radius: the fog you could see and
+        /// the boundary that damages you were never the same circle, and the error grew with the
+        /// zone rather than staying a fixed offset.
         /// </summary>
         private static Mesh BuildTube()
         {
@@ -44,8 +50,8 @@ namespace Unseen.Client
             {
                 float t = i / (float)segments;
                 float angle = t * Mathf.PI * 2f;
-                float x = Mathf.Sin(angle);
-                float z = Mathf.Cos(angle);
+                float x = Mathf.Sin(angle) * 0.5f;
+                float z = Mathf.Cos(angle) * 0.5f;
 
                 vertices[i * 2] = new Vector3(x, -1f, z);
                 vertices[i * 2 + 1] = new Vector3(x, 1f, z);

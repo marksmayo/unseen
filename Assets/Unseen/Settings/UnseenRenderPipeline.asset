@@ -19,7 +19,7 @@ MonoBehaviour:
   m_RendererDataList:
   - {fileID: 11400000, guid: 8b8894fb7affb3945878aee190b45046, type: 2}
   m_DefaultRendererIndex: 0
-  m_RequireDepthTexture: 0
+  m_RequireDepthTexture: 1
   m_RequireOpaqueTexture: 0
   m_OpaqueDownsampling: 1
   m_SupportsTerrainHoles: 1
@@ -84,6 +84,7 @@ MonoBehaviour:
   m_SupportScreenSpaceLensFlare: 1
   m_GPUResidentDrawerMode: 0
   m_SmallMeshScreenPercentage: 0
+  m_ShadowSmallMeshScreenPercentages: {x: 0, y: 0, z: 0, w: 0}
   m_GPUResidentDrawerEnableOcclusionCullingInCameras: 0
   m_ShadowType: 1
   m_LocalShadowsSupported: 0
@@ -105,19 +106,21 @@ MonoBehaviour:
   m_PrefilterXRKeywords: 1
   m_PrefilteringModeForwardPlus: 2
   m_PrefilteringModeDeferredRendering: 0
-  m_PrefilteringModeScreenSpaceOcclusion: 0
+  m_PrefilteringModeScreenSpaceOcclusion: 2
+  m_PrefilteringModeScreenSpaceReflection: 0
+  m_PrefilterWriteSmoothness: 1
   m_PrefilterDebugKeywords: 1
   m_PrefilterWriteRenderingLayers: 1
   m_PrefilterHDROutput: 1
   m_PrefilterAlphaOutput: 1
-  m_PrefilterSSAODepthNormals: 1
+  m_PrefilterSSAODepthNormals: 0
   m_PrefilterSSAOSourceDepthLow: 1
   m_PrefilterSSAOSourceDepthMedium: 1
   m_PrefilterSSAOSourceDepthHigh: 1
   m_PrefilterSSAOInterleaved: 1
-  m_PrefilterSSAOBlueNoise: 1
+  m_PrefilterSSAOBlueNoise: 0
   m_PrefilterSSAOSampleCountLow: 1
-  m_PrefilterSSAOSampleCountMedium: 1
+  m_PrefilterSSAOSampleCountMedium: 0
   m_PrefilterSSAOSampleCountHigh: 1
   m_PrefilterDBufferMRT1: 1
   m_PrefilterDBufferMRT2: 1
@@ -136,6 +139,8 @@ MonoBehaviour:
   m_PrefilterReflectionProbeBoxProjection: 1
   m_PrefilterReflectionProbeAtlas: 1
   m_PrefilterPointSamplingUpsampling: 1
+  m_Light2DPrefilteringMode: 0
+  m_Light2DKeptVariantCombos: []
   m_ShaderVariantLogLevel: 0
   m_ShadowCascades: 0
   m_Textures:

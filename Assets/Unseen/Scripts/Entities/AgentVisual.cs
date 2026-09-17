@@ -82,6 +82,7 @@ namespace Unseen.Entities
             _authoredScale = transform.localScale;
             if (Rig == null) Rig = GetComponentInChildren<Animator>();
             if (Body == null) Body = GetComponentInChildren<SkinnedMeshRenderer>();
+            NinjaBodyArt.Apply(this);
             FixCullingBounds();
         }
 
@@ -107,8 +108,16 @@ namespace Unseen.Entities
 
         public void SetSkin(Material material)
         {
+            if (Body == null) Body = GetComponentInChildren<SkinnedMeshRenderer>();
+            NinjaBodyArt.Apply(this);
             if (material == null || Body == null) return;
-            Body.sharedMaterial = material;
+            Body.sharedMaterial = Unseen.Environment.WeatheredMaterials.Fabric(material);
+        }
+
+        public void ApplyArtScale(float scale)
+        {
+            transform.localScale *= scale;
+            _authoredScale = transform.localScale;
         }
 
         private void LateUpdate()

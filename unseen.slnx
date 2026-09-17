@@ -1,0 +1,5 @@
+﻿<Solution>
+  <Project Path="Unseen.Runtime.csproj" />
+  <Project Path="Unseen.Editor.csproj" />
+  <Project Path="Unseen.Tests.csproj" />
+</Solution>

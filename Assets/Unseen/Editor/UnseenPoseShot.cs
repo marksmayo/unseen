@@ -49,6 +49,12 @@ namespace Unseen.EditorTools
                 subject.transform.SetParent(rigHost.transform, false);
                 subject.transform.localPosition = Vector3.zero;
                 subject.transform.localRotation = Quaternion.identity;
+                var visual = subject.GetComponent<Unseen.Entities.AgentVisual>();
+                if (visual != null)
+                {
+                    var set = Unseen.Entities.AgentVisualSet.Load();
+                    visual.SetSkin(set != null ? set.SkinFor(0) : null);
+                }
 
                 // Curve paths are relative to the GameObject the Animator sits on, which is a
                 // child of the prefab root. Sampling onto the prefab root instead resolves none of

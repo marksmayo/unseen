@@ -1,6 +1,7 @@
 using System.IO;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 using Unseen.Core;
 using Unseen.Entities;
@@ -143,7 +144,17 @@ namespace Unseen.EditorTools
                 camera.allowHDR = true;
 
                 // URP needs its per-camera data; requesting it creates it if absent.
-                camera.GetUniversalAdditionalCameraData().renderShadows = true;
+                //
+                // renderPostProcessing matters more than it looks. The bootstrap builds the global
+                // volume - tonemapping, bloom, split toning, vignette, grain - and then this tool
+                // disables the rig's own camera and renders through its own. A camera that does not
+                // opt in renders the scene with none of that applied, so every shot came out flat,
+                // unbloomed and untonemapped: a picture of the scene, but not a picture of the game.
+                var shotData = camera.GetUniversalAdditionalCameraData();
+                shotData.renderShadows = true;
+                shotData.renderPostProcessing = true;
+                shotData.antialiasing = AntialiasingMode.SubpixelMorphologicalAntiAliasing;
+                shotData.antialiasingQuality = AntialiasingQuality.High;
 
                 Directory.CreateDirectory(OutputDir);
 
@@ -151,10 +162,23 @@ namespace Unseen.EditorTools
                 if (sample != null)
                 {
                     Vector3 pos = sample.Position;
+                    Animator animator = sample.GetComponentInChildren<Animator>();
+                    AnimationClip guard = AssetDatabase.LoadAssetAtPath<AnimationClip>(
+                        "Assets/Unseen/Art/Characters/Clips/ninja_guard.anim");
+                    if (animator != null && guard != null)
+                    {
+                        animator.enabled = false;
+                        guard.SampleAnimation(animator.gameObject, .2f);
+                        foreach (SkinnedMeshRenderer skin in sample.GetComponentsInChildren<SkinnedMeshRenderer>())
+                        {
+                            skin.forceMatrixRecalculationPerRender = true;
+                            skin.updateWhenOffscreen = true;
+                        }
+                    }
                     var closeUp = new Shot
                     {
                         Name = "05-ninja",
-                        Position = pos + new Vector3(2.6f, 1.5f, 2.6f),
+                        Position = pos + new Vector3(1.8f, 1.3f, 1.8f),
                         LookAt = pos + new Vector3(0f, 0.9f, 0f),
                         Fov = 50f
                     };
@@ -173,6 +197,24 @@ namespace Unseen.EditorTools
                     // Stood at the rampart at full height, which is where it is when it first
                     // rises. In a match it closes from here.
                     forest.SetRing(Vector3.zero, forest.MaxRadius, 1f);
+
+                    Transform cane = null;
+                    foreach (Transform child in forest.transform)
+                        if (child.gameObject.activeInHierarchy && child.name.StartsWith("Culm_") &&
+                            (cane == null || child.position.z < cane.position.z)) cane = child;
+                    if (cane != null)
+                    {
+                        Vector3 inward = (forest.Centre - cane.position).normalized;
+                        Vector3 leafHeight = cane.position + Vector3.up * cane.localScale.y * .76f;
+                        var bambooShots = new System.Collections.Generic.List<Shot>(shots)
+                        {
+                            new Shot { Name = "18-bamboo-detail", Position = leafHeight + inward * 6.3f,
+                                LookAt = leafHeight, Fov = 57f },
+                            new Shot { Name = "19-bamboo-grove", Position = cane.position + inward * 11f + Vector3.up * 2.3f,
+                                LookAt = cane.position + Vector3.up * 6f, Fov = 65f }
+                        };
+                        shots = bambooShots.ToArray();
+                    }
 
                     // Above the rooftops rather than at head height: a fixed ground-level camera
                     // ends up inside whatever building the generator happens to put there, and
@@ -358,7 +400,13 @@ namespace Unseen.EditorTools
                     camera.fieldOfView = shot.Fov;
 
                     string path = Path.Combine(OutputDir, shot.Name + ".png");
-                    Render(camera, path);
+                    var hidden = new System.Collections.Generic.List<GameObject>();
+                    if (shot.Name == "05-ninja")
+                        foreach (AgentEntity other in boot.Context.Entities.All)
+                            if (other != sample && other.gameObject.activeSelf)
+                            { hidden.Add(other.gameObject); other.gameObject.SetActive(false); }
+                    try { Render(camera, path); }
+                    finally { foreach (GameObject other in hidden) other.SetActive(true); }
                     Debug.Log($"[shot] wrote {path}");
                 }
             }
@@ -407,6 +455,14 @@ namespace Unseen.EditorTools
 
                 // Two passes: the first lets the pipeline warm up shadow maps and any deferred setup,
                 // so the saved frame is not the one where half the lighting is still missing.
+                //
+                // These shots do not carry the game's post-processing - no tonemapping, bloom,
+                // split toning, vignette or grain - even though the camera sets
+                // renderPostProcessing and the bootstrap's global volume exists during the run.
+                // Measured, not assumed: rendering through SubmitRenderRequest, URP's supported
+                // replacement for this call, produces a byte-identical image, so the render call is
+                // not the cause. Whatever is, it is upstream of here. Treat these renders as
+                // geometry, material and lighting references only, and judge the grade in play mode.
                 camera.Render();
                 camera.Render();
 
