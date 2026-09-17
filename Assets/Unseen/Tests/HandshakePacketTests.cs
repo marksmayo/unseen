@@ -82,5 +82,30 @@ namespace Unseen.Tests
             Assert.AreEqual(cookie, HandshakePackets.ReadCookie(reader));
             Assert.AreEqual("Mark", reader.ReadString());
         }
+
+        [Test]
+        public void APayloadCarriesItsSequenceAndWhatTheSenderHasSeen()
+        {
+            var writer = new NetWriter();
+            var body = new byte[] { 7, 7, 7 };
+
+            HandshakePackets.WritePayload(writer, body, body.Length,
+                sequence: 1000, ack: 950, ackBits: 0xDEADBEEF);
+
+            var reader = new NetReader();
+            reader.Attach(writer.Buffer, writer.Length);
+
+            Assert.AreEqual(HandshakeMessage.Payload, HandshakePackets.ReadMessage(reader));
+
+            // Three facts on every packet: which one this is, the newest the sender has received,
+            // and which of the thirty-two before that arrived. That is the whole acknowledgement
+            // scheme - a receiver learns what was lost without a message per packet, and can throw
+            // away anything older than what it already holds.
+            PayloadHeader header = HandshakePackets.ReadPayloadHeader(reader);
+
+            Assert.AreEqual(1000, header.Sequence);
+            Assert.AreEqual(950, header.Ack);
+            Assert.AreEqual(0xDEADBEEFu, header.AckBits);
+        }
     }
 }

@@ -205,5 +205,43 @@ namespace Unseen.Tests
             Assert.IsTrue(gate.Accept(Peer(3), gate.Challenge(Peer(3), 30f), 30.1f),
                 "and its seat should be available to somebody new");
         }
+
+        [Test]
+        public void AnAdmittedPeerCannotFloodTheServerWithTraffic()
+        {
+            var gate = new ConnectionGatekeeper(Secret);
+            NetEndpoint peer = Peer(1);
+
+            gate.Accept(peer, gate.Challenge(peer, 1f), 1.1f);
+
+            // Getting in is rate limited; staying in was not. An admitted client can send as fast
+            // as its connection allows, and every packet costs a decode before anything decides it
+            // was nonsense - so the cheapest attack on a server is to be a legitimate player who
+            // sends a thousand inputs a second.
+            int accepted = 0;
+            for (int i = 0; i < 500; i++)
+                if (gate.ShouldAcceptTraffic(peer, 2f)) accepted++;
+
+            Assert.Less(accepted, 500, "a burst far beyond the tick rate must not all be processed");
+            Assert.Greater(accepted, 0, "but the connection is not cut off either");
+        }
+
+        [Test]
+        public void AnHonestClientIsNeverRateLimited()
+        {
+            var gate = new ConnectionGatekeeper(Secret);
+            NetEndpoint peer = Peer(1);
+
+            gate.Accept(peer, gate.Challenge(peer, 1f), 1.1f);
+
+            // Sixty inputs a second for ten seconds, which is what the real client sends. A limiter
+            // that clipped this would drop real inputs and feel like the game ignoring the player -
+            // far worse than the flooding it set out to prevent.
+            int refused = 0;
+            for (int i = 0; i < 600; i++)
+                if (!gate.ShouldAcceptTraffic(peer, 2f + i / 60f)) refused++;
+
+            Assert.AreEqual(0, refused, "ordinary play must never be throttled");
+        }
     }
 }

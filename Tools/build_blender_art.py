@@ -169,9 +169,86 @@ for p in frond.data.polygons:
     p.use_smooth = True
 export(frond)
 
+# Katana, standing on the butt of its grip: z from 0 to 1, tip at the top.
+#
+# Built upright rather than along a horizontal axis because that is how it is reasoned about when
+# attached - grip at the origin, blade away from the hand - so the transform that puts it in a fist
+# or across a back is a rotation of something already the right way up.
+#
+# The cross-section is the point of a katana and the reason this is not a box. A ridge (shinogi)
+# runs the length on both faces, the back (mune) is flat, and the edge is a single line: light
+# catches the ridge and the edge differently as it turns, which is what makes it read as a blade
+# rather than a painted plank. The curve (sori) grows toward the tip rather than being a constant
+# arc, which is what a real one does and what stops it looking like a banana.
+vertices, faces = [], []
+
+
+def ring(centre_z, half_width, thickness, bend, closed_tip=False):
+    """One cross-section of the blade. Six points: edge, two shinogi, two upper, mune."""
+    x = bend
+    if closed_tip:
+        return [(x, 0, centre_z)] * 6
+    return [
+        (x, -half_width, centre_z),                       # ha - the edge
+        (x - thickness, -half_width * 0.25, centre_z),    # shinogi, near face
+        (x - thickness * 0.72, half_width * 0.88, centre_z),
+        (x, half_width, centre_z),                        # mune - the back
+        (x + thickness * 0.72, half_width * 0.88, centre_z),
+        (x + thickness, -half_width * 0.25, centre_z),    # shinogi, far face
+    ]
+
+
+GRIP_TOP, GUARD_TOP = 0.26, 0.30
+blade_rings = 14
+start = len(vertices)
+
+for i in range(blade_rings):
+    t = i / (blade_rings - 1)
+    z = GUARD_TOP + t * (1.0 - GUARD_TOP)
+
+    # Sori: almost straight at the guard, gathering toward the tip.
+    bend = -0.055 * t * t
+
+    # The kissaki - the last eighth narrows hard into the point.
+    taper = 1.0 - 0.55 * max(0.0, (t - 0.86) / 0.14) ** 1.5
+    vertices += ring(z, 0.052 * taper, 0.011 * taper, bend, closed_tip=(i == blade_rings - 1))
+
+for i in range(blade_rings - 1):
+    a, b = start + i * 6, start + (i + 1) * 6
+    faces += [(a + k, a + (k + 1) % 6, b + (k + 1) % 6, b + k) for k in range(6)]
+
+# Tsuba: a plate rather than a disc, because a round guard on a low-poly sword reads as a washer.
+start = len(vertices)
+for z in (GRIP_TOP, GUARD_TOP):
+    for i in range(12):
+        a = i * math.tau / 12
+        vertices.append((0.052 * math.cos(a), 0.078 * math.sin(a), z))
+faces.append(tuple(range(start, start + 12)))
+faces.append(tuple(reversed(range(start + 12, start + 24))))
+faces += [(start + i, start + (i + 1) % 12, start + 12 + (i + 1) % 12, start + 12 + i)
+          for i in range(12)]
+
+# Tsuka: the grip, faceted and slightly oval so it has an obvious orientation in the hand.
+start = len(vertices)
+grip_rings = 5
+for j in range(grip_rings):
+    z = j / (grip_rings - 1) * GRIP_TOP
+    swell = 1.0 + 0.10 * math.sin(j / (grip_rings - 1) * math.pi)
+    for i in range(8):
+        a = i * math.tau / 8
+        vertices.append((0.019 * swell * math.cos(a), 0.027 * swell * math.sin(a), z))
+for j in range(grip_rings - 1):
+    a, b = start + j * 8, start + (j + 1) * 8
+    faces += [(a + k, a + (k + 1) % 8, b + (k + 1) % 8, b + k) for k in range(8)]
+faces.append(tuple(range(start, start + 8)))
+
+katana = mesh('Katana', vertices, faces)
+export(katana)
+
 # Space the editable models apart for convenient inspection; exports stay normalized.
 wrap.location.x = 2
 water.location.x = 4
 culm.location.x = 6
 frond.location.x = 8
+katana.location.x = 10
 bpy.ops.wm.save_as_mainfile(filepath=str(SOURCE / 'UnseenDetails.blend'))

@@ -75,4 +75,48 @@ namespace Unseen.Tests
             Assert.AreEqual(authoritative.FinalZoneRadius, applied.FinalZoneRadius, 1e-4f);
         }
     }
+
+    /// <summary>
+    /// The number that makes reconciliation possible: which of a client's inputs the server has
+    /// actually acted on.
+    ///
+    /// The server has always known it - ReplicationSystem keeps a last-sequence per connection to
+    /// reject out-of-order inputs - and has never told anybody. Without it a client cannot know
+    /// which predictions to retire, so it either replays everything for ever or trusts the server's
+    /// position blindly and gives up on prediction.
+    /// </summary>
+    public sealed class InputAcknowledgementTests
+    {
+        [Test]
+        public void TheAcknowledgedInputSurvivesTheWire()
+        {
+            var writer = new NetWriter();
+
+            // Written where the self block lives, because it is a fact about you and nobody else:
+            // every client needs a different number here, and it is meaningless to anyone but its
+            // owner.
+            SnapshotProtocol.WriteAcknowledgedInput(writer, 4242u);
+
+            var reader = new NetReader();
+            reader.Attach(writer.Buffer, writer.Length);
+
+            Assert.AreEqual(4242u, SnapshotProtocol.ReadAcknowledgedInput(reader));
+        }
+
+        [Test]
+        public void AnAcknowledgementSurvivesTheSequenceWrapping()
+        {
+            var writer = new NetWriter();
+            SnapshotProtocol.WriteAcknowledgedInput(writer, uint.MaxValue - 1u);
+
+            var reader = new NetReader();
+            reader.Attach(writer.Buffer, writer.Length);
+
+            // Input sequences are unsigned and count up for the life of a connection. Routed through
+            // a signed int on the way out, the top of the range comes back negative and the client
+            // decides the server has acknowledged nothing - retiring no predictions and replaying a
+            // backlog that only grows.
+            Assert.AreEqual(uint.MaxValue - 1u, SnapshotProtocol.ReadAcknowledgedInput(reader));
+        }
+    }
 }

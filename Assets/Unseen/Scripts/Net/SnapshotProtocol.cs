@@ -425,6 +425,30 @@ namespace Unseen.Net
             return true;
         }
 
+        /// <summary>
+        /// Writes which of a client's inputs the server has actually acted on.
+        ///
+        /// The server has always known this - ReplicationSystem keeps a last-sequence per connection
+        /// to reject out-of-order inputs - and has never told anybody. Without it a client cannot
+        /// know which predictions to retire, so it either replays its whole backlog for ever or
+        /// abandons prediction and wears the round trip.
+        ///
+        /// Unsigned on the wire rather than an int cast both ways. Input sequences count up for the
+        /// life of a connection, and a number that comes back negative reads as "nothing has been
+        /// acknowledged" - a backlog that only grows, and movement that feels worse the longer
+        /// somebody plays.
+        /// </summary>
+        public static void WriteAcknowledgedInput(NetWriter writer, uint sequence)
+        {
+            writer.WriteUInt(sequence);
+        }
+
+        /// <summary>Reads the acknowledgement written by <see cref="WriteAcknowledgedInput"/>.</summary>
+        public static uint ReadAcknowledgedInput(NetReader reader)
+        {
+            return reader.ReadUInt();
+        }
+
         public static void EncodeInput(NetWriter writer, in MoveIntent intent)
         {
             writer.WriteByte((byte)NetMessage.Input);

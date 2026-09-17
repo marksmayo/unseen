@@ -190,6 +190,62 @@ namespace Unseen.Net
             return true;
         }
 
+        /// <summary>
+        /// Packets a connection may send in a burst, and how fast that allowance refills.
+        ///
+        /// The client sends sixty inputs a second by design, so the refill sits well above that and
+        /// the burst well above a frame's worth. Both halves matter: a limiter that clips honest
+        /// traffic is worse than the flooding it prevents, because a dropped input is the game
+        /// ignoring a player who did nothing wrong.
+        /// </summary>
+        public const float TrafficBurst = 90f;
+
+        public const float TrafficRefillPerSecond = 180f;
+
+        private readonly Dictionary<NetEndpoint, float> _trafficTokens =
+            new Dictionary<NetEndpoint, float>();
+
+        private readonly Dictionary<NetEndpoint, float> _trafficAt =
+            new Dictionary<NetEndpoint, float>();
+
+        /// <summary>
+        /// Whether a packet from an established connection is worth decoding.
+        ///
+        /// Getting in was rate limited; staying in was not. An admitted client could send as fast
+        /// as its link allowed and every packet cost a decode before anything judged it nonsense -
+        /// so the cheapest attack on this server was to be a real player sending a thousand inputs
+        /// a second. Tracked per connection rather than in the hashed table the handshake uses,
+        /// because these are peers that have proved who they are and there are only ever sixty-four.
+        /// </summary>
+        public bool ShouldAcceptTraffic(NetEndpoint peer, float atSeconds)
+        {
+            if (!_established.ContainsKey(peer)) return false;
+
+            if (!_trafficTokens.TryGetValue(peer, out float tokens))
+            {
+                tokens = TrafficBurst;
+                _trafficAt[peer] = atSeconds;
+            }
+
+            float last = _trafficAt.TryGetValue(peer, out float at) ? at : atSeconds;
+            float elapsed = atSeconds - last;
+
+            if (elapsed > 0f)
+            {
+                tokens = System.Math.Min(TrafficBurst, tokens + elapsed * TrafficRefillPerSecond);
+                _trafficAt[peer] = atSeconds;
+            }
+
+            if (tokens < 1f)
+            {
+                _trafficTokens[peer] = tokens;
+                return false;
+            }
+
+            _trafficTokens[peer] = tokens - 1f;
+            return true;
+        }
+
         /// <summary>Notes that an established peer is still talking.</summary>
         public void Heard(NetEndpoint peer, float atSeconds)
         {
@@ -216,7 +272,15 @@ namespace Unseen.Net
 
             // Collected first, removed after: a dictionary cannot be modified while it is being
             // walked, and the reusable list keeps a per-tick sweep from allocating.
-            for (int i = 0; i < _expired.Count; i++) _established.Remove(_expired[i]);
+            for (int i = 0; i < _expired.Count; i++)
+            {
+                _established.Remove(_expired[i]);
+
+                // The traffic budget goes with the connection, or a long-running server keeps a
+                // token count for every address that ever played on it.
+                _trafficTokens.Remove(_expired[i]);
+                _trafficAt.Remove(_expired[i]);
+            }
 
             return _expired;
         }

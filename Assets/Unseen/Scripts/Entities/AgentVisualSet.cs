@@ -1,4 +1,5 @@
 using UnityEngine;
+using Unseen.Environment;
 using Unseen.Core;
 
 namespace Unseen.Entities
@@ -76,6 +77,11 @@ namespace Unseen.Entities
             if (Garments) NinjaGarments.Fit(visual, Cloth, id);
 
             NinjaEquipmentArt.Fit(visual);
+
+            // The katana, after the rest of the equipment so it is the outermost thing on the back.
+            visual.gameObject.AddComponent<BladeVisual>()
+                  .Attach(visual.transform, SceneVisualUpgrade.Material(
+                      "Upgrade Blade Steel", new Color(0.62f, 0.64f, 0.68f), 0.78f, 0.85f));
             visual.gameObject.AddComponent<NinjaMotionPolish>();
             return visual;
         }

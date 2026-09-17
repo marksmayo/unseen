@@ -109,8 +109,11 @@ namespace Unseen.Net
         {
             if (!_peerById.TryGetValue(connectionId, out NetEndpoint peer)) return;
 
+            SequenceWindow inbound = WindowFor(connectionId);
+
             _scratch.Reset();
-            HandshakePackets.WritePayload(_scratch, payload, length);
+            HandshakePackets.WritePayload(_scratch, payload, length,
+                NextSequence(connectionId), inbound.Latest, inbound.AckBits);
             _socket.Send(peer, _scratch.Buffer, _scratch.Length);
         }
 
@@ -119,8 +122,36 @@ namespace Unseen.Net
             if (!IsConnected) return;
 
             _scratch.Reset();
-            HandshakePackets.WritePayload(_scratch, payload, length);
+            HandshakePackets.WritePayload(_scratch, payload, length,
+                NextSequence(ServerConnectionId), _inbound.Latest, _inbound.AckBits);
             _socket.Send(_serverEndpoint, _scratch.Buffer, _scratch.Length);
+        }
+
+        /// <summary>The id a client files the server's own connection state under.</summary>
+        private const int ServerConnectionId = 0;
+
+        private readonly Dictionary<int, ushort> _outgoing = new Dictionary<int, ushort>();
+        private readonly Dictionary<int, SequenceWindow> _windows = new Dictionary<int, SequenceWindow>();
+        private readonly SequenceWindow _inbound = new SequenceWindow();
+
+        private ushort NextSequence(int connectionId)
+        {
+            _outgoing.TryGetValue(connectionId, out ushort current);
+
+            // Wraps on its own. Unchecked because rolling over is the design, not an overflow.
+            unchecked { current++; }
+
+            _outgoing[connectionId] = current;
+            return current;
+        }
+
+        private SequenceWindow WindowFor(int connectionId)
+        {
+            if (_windows.TryGetValue(connectionId, out SequenceWindow window)) return window;
+
+            window = new SequenceWindow();
+            _windows[connectionId] = window;
+            return window;
         }
 
         public void Poll(float deltaTime)
@@ -325,6 +356,10 @@ namespace Unseen.Net
 
         private void HandlePayload(byte[] payload, NetEndpoint from)
         {
+            // The reader is already past the protocol id and message type, so this is the ordering
+            // header sitting in front of the game's own bytes.
+            PayloadHeader header = HandshakePackets.ReadPayloadHeader(_reader);
+
             // The game's bytes start after our header. Copied out rather than passed with an offset
             // because INetworkService hands the simulation a buffer and a length, and every reader
             // above this has always started at zero.
@@ -341,9 +376,25 @@ namespace Unseen.Net
                 if (!_idByPeer.TryGetValue(from, out int id)) return;
 
                 _gate.Heard(from, _now);
+
+                // Checked before the sequence window, because the point is to stop paying for
+                // traffic at all - a packet refused here costs a dictionary lookup rather than a
+                // decode and a dispatch into the simulation.
+                if (!_gate.ShouldAcceptTraffic(from, _now)) return;
+
+                // Stale or repeated: the packet arrived, and the window has recorded that, but
+                // handing it up would apply an older input over a newer one - a player taking a
+                // step they had already taken, or taking one backwards.
+                if (!WindowFor(id).Accept(header.Sequence)) return;
+
                 ServerReceived?.Invoke(id, body, length);
                 return;
             }
+
+            // Same on the client, where the cost is worse: a snapshot that left the server before
+            // the one already drawn drags every position backwards for a frame, and what a player
+            // sees is rubber-banding they will blame on their connection.
+            if (!_inbound.Accept(header.Sequence)) return;
 
             ClientReceived?.Invoke(body, length);
         }

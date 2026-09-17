@@ -78,18 +78,43 @@ namespace Unseen.Net
         /// <summary>Where this socket can be reached, on loopback.</summary>
         public NetEndpoint LocalEndpoint { get; }
 
-        /// <summary>Sends a datagram. Fire and forget; UDP promises nothing and neither does this.</summary>
-        public void Send(NetEndpoint to, byte[] payload, int length)
+        /// <summary>
+        /// The largest datagram worth sending in one piece.
+        ///
+        /// Twelve hundred rather than Ethernet's fifteen hundred, because a packet's path is not
+        /// one hop: tunnels, VPNs and mobile carriers each take their cut of the frame, and the
+        /// smallest link on the route decides. This is the figure the games industry settled on for
+        /// having margin over all of that.
+        ///
+        /// It matters because oversize does not fail, it fragments. IP breaks the datagram up and
+        /// the far end reassembles it - until one fragment is lost, when the whole thing vanishes.
+        /// So on a lossy connection big snapshots stop arriving while small ones still do, and what
+        /// a player sees is somebody becoming invisible rather than a network fault. It gets worse
+        /// exactly when a match is busiest, because that is when snapshots are largest.
+        /// </summary>
+        public const int MaxDatagramBytes = 1200;
+
+        /// <summary>
+        /// Sends a datagram, and says whether it went.
+        ///
+        /// Returning a result rather than swallowing it: a caller that hands over more than the path
+        /// can carry needs to find out here, not weeks later as packet loss nobody can reproduce.
+        /// </summary>
+        public bool Send(NetEndpoint to, byte[] payload, int length)
         {
+            if (length > MaxDatagramBytes) return false;
+
             var target = new IPEndPoint(ToIp(to.Address), to.Port);
 
             try
             {
                 _socket.SendTo(payload, 0, length, SocketFlags.None, target);
+                return true;
             }
             catch (SocketException)
             {
                 // A send that fails is a packet that was lost, which is a thing UDP does anyway.
+                return false;
             }
         }
 

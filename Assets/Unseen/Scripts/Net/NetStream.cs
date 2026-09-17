@@ -89,6 +89,18 @@ namespace Unseen.Net
             for (int i = 0; i < 8; i++) _buffer[_position++] = (byte)((value >> (i * 8)) & 0xFF);
         }
 
+        /// <summary>
+        /// Four bytes unsigned, for the acknowledgement bitfield.
+        ///
+        /// Not WriteInt with a cast: the top bit of that field is a real acknowledgement like any
+        /// other, and routing it through a signed type invites somebody to compare it with zero.
+        /// </summary>
+        public void WriteUInt(uint value)
+        {
+            Ensure(4);
+            for (int i = 0; i < 4; i++) _buffer[_position++] = (byte)((value >> (i * 8)) & 0xFF);
+        }
+
         /// <summary>Writes a 0..1 quantity in one byte.</summary>
         public void WriteNormalised(float value)
         {
@@ -188,6 +200,14 @@ namespace Unseen.Net
             float y = ReadInt() * quantum;
             float z = ReadInt() * quantum;
             return new float3(x, y, z);
+        }
+
+        /// <summary>Reads the four bytes written by <see cref="NetWriter.WriteUInt"/>.</summary>
+        public uint ReadUInt()
+        {
+            uint value = 0;
+            for (int i = 0; i < 4; i++) value |= (uint)ReadByte() << (i * 8);
+            return value;
         }
 
         /// <summary>Reads the eight bytes written by <see cref="NetWriter.WriteULong"/>.</summary>

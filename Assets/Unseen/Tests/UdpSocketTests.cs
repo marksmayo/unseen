@@ -144,5 +144,27 @@ namespace Unseen.Tests
                     "a single poll must surface everything that is waiting, not one datagram");
             }
         }
+
+        [Test]
+        public void AnOversizedDatagramIsRefusedRatherThanVanishing()
+        {
+            using (var server = new UdpSocket(0))
+            using (var client = new UdpSocket(0))
+            {
+                // Beyond what a path will carry in one piece. A datagram larger than the path MTU is
+                // fragmented by IP and, if any fragment is lost, the whole thing disappears - so on
+                // a bad connection large snapshots stop arriving while small ones still do. That
+                // reads as one player being invisible to another rather than as a network problem,
+                // and it gets worse exactly when the match is busiest and the snapshots are biggest.
+                var huge = new byte[UdpSocket.MaxDatagramBytes + 1];
+
+                Assert.IsFalse(client.Send(server.LocalEndpoint, huge, huge.Length),
+                    "the socket should refuse to send what the path cannot carry whole");
+
+                var fits = new byte[UdpSocket.MaxDatagramBytes];
+                Assert.IsTrue(client.Send(server.LocalEndpoint, fits, fits.Length),
+                    "and should still send what fits");
+            }
+        }
     }
 }

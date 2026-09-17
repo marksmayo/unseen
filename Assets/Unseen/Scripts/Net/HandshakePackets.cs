@@ -1,5 +1,16 @@
 namespace Unseen.Net
 {
+    /// <summary>
+    /// What a payload packet says about ordering: which packet this is, the newest the sender has
+    /// received, and which of the thirty-two before that arrived.
+    /// </summary>
+    public struct PayloadHeader
+    {
+        public ushort Sequence;
+        public ushort Ack;
+        public uint AckBits;
+    }
+
     /// <summary>What a handshake packet is.</summary>
     public enum HandshakeMessage : byte
     {
@@ -132,16 +143,43 @@ namespace Unseen.Net
             writer.WriteString(grantedName);
         }
 
-        /// <summary>Bytes written before a game payload: protocol id and message type.</summary>
-        public const int PayloadHeaderBytes = 5;
+        /// <summary>
+        /// Bytes written before a game payload: protocol id, message type, sequence, ack and the
+        /// ack bitfield.
+        ///
+        /// Thirteen bytes rather than five. Against a snapshot of a few hundred that is about three
+        /// per cent; against a thirteen-byte input packet it is a doubling, which sounds worse than
+        /// it is - acknowledgement is what makes an input reconcilable, and an input the server
+        /// cannot acknowledge is one the client can never retire from its prediction backlog. The
+        /// bytes buy responsiveness.
+        /// </summary>
+        public const int PayloadHeaderBytes = 13;
 
-        /// <summary>Wraps a game payload so the receiver can tell it is ours and what it is.</summary>
-        public static void WritePayload(NetWriter writer, byte[] payload, int length)
+        /// <summary>
+        /// Wraps a game payload with everything the far end needs to order it and to learn what
+        /// reached us.
+        /// </summary>
+        public static void WritePayload(NetWriter writer, byte[] payload, int length,
+            ushort sequence, ushort ack, uint ackBits)
         {
             writer.WriteInt(ProtocolId);
             writer.WriteByte((byte)HandshakeMessage.Payload);
+            writer.WriteUShort(sequence);
+            writer.WriteUShort(ack);
+            writer.WriteUInt(ackBits);
 
             for (int i = 0; i < length; i++) writer.WriteByte(payload[i]);
+        }
+
+        /// <summary>Reads the ordering header that follows the message type on a payload.</summary>
+        public static PayloadHeader ReadPayloadHeader(NetReader reader)
+        {
+            return new PayloadHeader
+            {
+                Sequence = reader.ReadUShort(),
+                Ack = reader.ReadUShort(),
+                AckBits = reader.ReadUInt()
+            };
         }
 
         /// <summary>Writes a heartbeat stamped with the sender's clock.</summary>

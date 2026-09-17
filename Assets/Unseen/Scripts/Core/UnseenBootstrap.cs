@@ -173,64 +173,33 @@ namespace Unseen.Core
             }
         }
 
+        /// <summary>
+        /// Applies the command line.
+        ///
+        /// The reading is in LaunchOptions, which takes an array and can therefore be tested; this
+        /// only decides what to do with the answers. Clamping entities stays here because it needs
+        /// the config, and parsing has no business knowing about that.
+        /// </summary>
         private void ApplyCommandLine()
         {
-            string[] args = System.Environment.GetCommandLineArgs();
-            for (int i = 0; i < args.Length; i++)
-            {
-                switch (args[i])
-                {
-                    case "-server":
-                    case "--server":
-                        Mode = LaunchMode.DedicatedServer;
-                        break;
+            LaunchOptions options = LaunchOptions.Parse(System.Environment.GetCommandLineArgs());
 
-                    case "-listen":
-                        Mode = LaunchMode.ListenServer;
-                        break;
+            // Only when the command line actually chose one. Applying the default unconditionally
+            // would overwrite a mode set in the inspector or by a tool - the screenshot capture
+            // asks for ListenServer before booting, and would have been demoted to offline practice
+            // on every run, silently.
+            if (options.HasMode) Mode = options.Mode;
 
-                    case "-seed":
-                        if (i + 1 < args.Length && int.TryParse(args[i + 1], out int seed)) Seed = seed;
-                        break;
+            if (options.HasSeed) Seed = options.Seed;
 
-                    case "-entities":
-                        if (i + 1 < args.Length && int.TryParse(args[i + 1], out int entities) && Config != null)
-                            Config.Match.TargetEntityCount = Mathf.Clamp(entities, 1, 128);
-                        break;
+            if (options.HasEntities && Config != null)
+                Config.Match.TargetEntityCount = Mathf.Clamp(options.Entities, 1, 128);
 
-                    // Joining a server. The mode is set here as well as the address, because
-                    // "-connect somewhere" with no "-client" is what everybody types, and refusing
-                    // to do the obvious thing with it is a worse answer than doing it.
-                    case "-connect":
-                        if (i + 1 < args.Length &&
-                            Net.ConnectTarget.TryParse(args[i + 1], out Net.NetEndpoint target))
-                        {
-                            Net.UnseenTransport.ConnectTo = target;
-                            Mode = LaunchMode.Client;
-                        }
-                        else
-                        {
-                            UnseenLog.Error($"[Unseen] could not read -connect " +
-                                            $"'{(i + 1 < args.Length ? args[i + 1] : "")}'. " +
-                                            "Expected host:port, for example 192.168.1.50:7777.");
-                        }
-                        break;
+            Net.UnseenTransport.ListenPort = options.ListenPort;
+            Net.UnseenTransport.ConnectTo = options.ConnectTo;
+            Net.UnseenTransport.RequestedName = options.RequestedName;
 
-                    case "-port":
-                        if (i + 1 < args.Length && int.TryParse(args[i + 1], out int port) &&
-                            port > 0 && port <= 65535)
-                        {
-                            Net.UnseenTransport.ListenPort = port;
-                        }
-                        break;
-
-                    case "-name":
-                        // Passed on as asked for, not as granted. The server sanitises it and may
-                        // hand back something else entirely, and that reply is what gets displayed.
-                        if (i + 1 < args.Length) Net.UnseenTransport.RequestedName = args[i + 1];
-                        break;
-                }
-            }
+            if (!string.IsNullOrEmpty(options.Error)) UnseenLog.Error($"[Unseen] {options.Error}");
         }
 
         private INetworkService CreateNetworkService()
