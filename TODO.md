@@ -213,7 +213,17 @@ Everything a stranger needs in order to get from "bought it" to "playing", witho
 
 ### Build and release pipeline
 
-- [ ] **CI.** No `.github/workflows` exists. Build both targets, run the suite, on every push.
+- [x] **CI.** *(Done 2026-09-18.)* `.github/workflows/verify.yml` runs the EditMode suite on every
+      push and pull request; `build.yml` builds the Windows client and the Linux headless server on
+      main, stamped with the commit so a build given to a playtester can be traced to its source.
+      Separate workflows on purpose - tests finish in minutes and matter on every push, a player
+      build does not. `fail-fast: false` on the build matrix, because "the client broke" and "the
+      server broke" are different problems and the headless server is the one nobody builds by hand
+      often enough to notice when it stops working.
+      **Will fail until a Unity licence secret is added** - deliberately, as the first step, naming
+      what it wants. Without that check the Unity action dies inside activation complaining about a
+      licensing client, which reads as a broken runner rather than a missing setting.
+      Needs either `UNITY_LICENSE` (personal) or `UNITY_EMAIL` + `UNITY_PASSWORD` + `UNITY_SERIAL`.
 - [ ] **Automated Steam depot upload** (steamcmd) with branch support so testers get builds.
 - [ ] **Versioning and build stamping**, visible in-game and in crash reports.
 - [ ] **Code signing** for the Windows binary.
@@ -316,8 +326,20 @@ Specific items already known, not covered above.
 - [ ] **IPv4 only, no DNS.** `NetEndpoint` packs an address into a `uint` and the socket binds
       `InterNetwork`. Changing it later means touching the endpoint, the cookie derivation and the
       socket together.
-- [ ] **Homoglyph coverage is partial.** Cyrillic, Greek and digit lookalikes only; the full TR39
-      table is thousands of entries.
+- [x] **Homoglyph coverage.** *(Done 2026-09-18.)* Three layers, because no one of them is enough.
+      NFKD plus mark-stripping folds every accent, width and styling variant structurally - several
+      hundred confusables handled by one call, and it keeps working on alphabets Unicode has not
+      added yet. Mathematical alphanumerics are folded arithmetically, because Mono does not
+      decompose above the basic plane and that block is what every "fancy text" site emits. A
+      hand-written table then covers what normalisation formally cannot reach: Cyrillic, Greek,
+      Cherokee and the small capitals. Finally `MixesScripts` refuses any name written in two
+      alphabets at once, which is the signature every homoglyph attack shares regardless of which
+      character it used - so the table no longer has to be complete to hold. Japanese, Chinese and
+      Korean script combinations are exempt; the game is set in a Japanese town and a rule that
+      flagged 忍者ニンジャ would punish its own audience.
+      Remaining gap, deliberate: letters from scripts outside the named ranges all classify as one,
+      so two such scripts together read as a single script and pass. Wrongly refusing somebody's
+      real name is the worse error of the two.
 - [ ] **URP upgrade unverified in play.** Compiles and passes tests on 17.6; the render paths have
       not been examined by eye at length.
 - [ ] **Screenshot tool does not apply post-processing.** Renders are reliable for geometry,
