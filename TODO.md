@@ -88,8 +88,20 @@ contact with sixty-four players, because the answers change what gets built afte
 - [ ] **Re-measure bandwidth properly.** The first real figure is 12–19 kbps down per player with
       few contacts; `NETWORKING.md` estimates 50–65. Measure with sixty-four players actually
       visible to each other, which is the worst case the interest manager exists to prevent.
-- [ ] **Measure the cost of the mist.** 595 alpha-blended panels was a deliberate compromise
-      before SSAO, the depth texture and triplanar sampling were added. All three raise its cost.
+- [x] **Mist overdraw: measured, and the panels now cull by distance.** *(2026-09-18.)* 630 quads
+      covering 174,000 m² of a 562,000 m² map - a third of the world in alpha, paid every frame.
+      They were on the Default layer and therefore **never distance-culled**: they drew at four
+      hundred metres exactly as at four. Now on their own `GroundMist` layer with a 140 m cull, next
+      to the existing Decoration cull at 85 m. Further than trim because a bank of fog is still a
+      bank of fog where a baluster is sub-pixel, and nothing is lost: the near field is the whole
+      reason the panels exist, and distance haze is already the exponential fog's job.
+      **The saving does not show in a screenshot** - the capture tool builds its own camera and
+      applies no cull distances, so renders draw everything at every range. It needs GPU frame time
+      in the running game, which is the Phase 0 item still open.
+- [ ] **Consider cutting flat-panel count, not just draw distance.** Culling reduces what is drawn;
+      the 174,000 m² of coverage is unchanged. The flat panels carry nearly all of it. **Needs a
+      decision** - the count has been tuned up and down twice already with reasons recorded both
+      times, so it is a judgement about atmosphere rather than a number to optimise.
 - [ ] **Establish a target spec and a frame budget** and write both down. Every later decision
       about art density and player count refers back to them.
 - [ ] **Soak test.** Run a server for 24 hours with bots. Memory, handle count, connection slots.

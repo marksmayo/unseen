@@ -67,6 +67,14 @@ namespace Unseen.Client
                  "and nothing else.")]
         public float DecorationCullDistance = 85f;
 
+        [Tooltip("How far away the street mist keeps drawing. Its whole job is the near field - " +
+                 "something between you and the far end of an alley - and distance haze is already " +
+                 "the exponential fog's work. Six hundred and thirty alpha-blended quads covering " +
+                 "a third of the map's area were drawing at any range, which made them the most " +
+                 "expensive thing in the town per unit of visual benefit. Further than Decoration, " +
+                 "because a bank of fog is still a bank of fog where trim is sub-pixel.")]
+        public float MistCullDistance = 140f;
+
         [Header("Collision")]
         [Tooltip("Radius of the probe that looks for geometry between pivot and camera.")]
         public float ProbeRadius = 0.25f;
@@ -129,6 +137,7 @@ namespace Unseen.Client
             for (int i = 0; i < distances.Length; i++) distances[i] = 0f;
 
             distances[UnseenLayers.Decoration] = Mathf.Max(10f, DecorationCullDistance);
+            distances[UnseenLayers.GroundMist] = Mathf.Max(20f, MistCullDistance);
 
             _camera.layerCullDistances = distances;
 

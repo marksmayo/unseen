@@ -31,11 +31,27 @@ namespace Unseen.Core
         /// </summary>
         public const int Decoration = 18;
 
+        /// <summary>
+        /// The mist panels lying in the streets. Renderer-only, like Decoration, and on their own
+        /// layer for the same reason: so the camera can stop drawing them at a distance.
+        ///
+        /// It earns a layer of its own rather than sharing Decoration because the two want very
+        /// different distances - trim is sub-pixel at eighty-five metres, whereas a bank of fog is
+        /// still a bank of fog, so the mist has to survive further out.
+        ///
+        /// Measured, not guessed at: six hundred and thirty of these quads cover a hundred and
+        /// seventy-four thousand square metres of a five hundred and sixty-two thousand square
+        /// metre map. That is a third of the world in alpha, and transparent area is paid for every
+        /// frame whether or not anything is behind it. They were the single largest rendering cost
+        /// in the town and nothing was culling them, because they were left on Default.
+        /// </summary>
+        public const int GroundMist = 19;
+
         public static readonly string[] CustomLayerNames =
         {
             "Occluder", "ShojiPaper", "Ninja", "Interactable", "Rafter",
             "Climbable", "GrappleAnchor", "MistVolume", "LootContainer", "Foliage",
-            "Decoration"
+            "Decoration", "GroundMist"
         };
 
         /// <summary>Geometry that fully breaks line of sight.</summary>

@@ -2393,6 +2393,16 @@ namespace Unseen.Environment
                         panel.transform.localScale = new Vector3(size, size, 1f);
                     }
 
+                    // Its own layer, so the camera can stop drawing it at a distance.
+                    //
+                    // These were on Default and therefore never culled by range - they drew at four
+                    // hundred metres exactly as they drew at four. That is what made them the
+                    // largest rendering cost in the town: a third of the map's area in transparent
+                    // surface, paid every frame. Culling them far away costs nothing anybody can
+                    // see, because the near-field haze is the entire reason they exist; distance is
+                    // already handled by the exponential fog.
+                    panel.layer = UnseenLayers.GroundMist;
+
                     panel.AddComponent<MeshFilter>().sharedMesh = MistQuad();
                     var renderer = panel.AddComponent<MeshRenderer>();
                     renderer.sharedMaterial = _groundMist;
