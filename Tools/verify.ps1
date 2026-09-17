@@ -9,23 +9,37 @@
 [CmdletBinding()]
 param(
     [string]$Unity,
-    [string]$Version = "6000.5.9f1",
+    [string]$Version,
     [switch]$SkipTests
 )
 
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
 
+if (-not $Version) {
+    # Read from the project rather than keeping a second copy of the number here. This went stale
+    # the moment the editor was upgraded and kept pointing at a version no longer installed -
+    # which reads as "Unity not found" rather than "wrong version", so the next person goes
+    # looking for a broken install. ProjectVersion.txt is the fact; this follows it.
+    $versionFile = Join-Path $projectRoot "ProjectSettings/ProjectVersion.txt"
+    if (Test-Path $versionFile) {
+        $Version = (Select-String -Path $versionFile -Pattern '^m_EditorVersion:\s*(\S+)').Matches[0].Groups[1].Value
+    }
+}
+
 if (-not $Unity) {
     $candidates = @(
         "$env:USERPROFILE\Unity\Hub\Editor\$Version\Editor\Unity.exe",
-        "${env:ProgramFiles}\Unity\Hub\Editor\$Version\Editor\Unity.exe"
+        "${env:ProgramFiles}\Unity\Hub\Editor\$Version\Editor\Unity.exe",
+        # Installed outside the Hub, which is where this machine's editor actually is: the Hub is
+        # an MSIX package here and has been unreliable, so the editor was installed directly.
+        "${env:ProgramFiles}\Unity $Version\Editor\Unity.exe"
     )
     $Unity = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 }
 
 if (-not $Unity -or -not (Test-Path $Unity)) {
-    Write-Error "Unity editor not found. Pass -Unity <path to Unity.exe>."
+    Write-Error "Unity $Version not found. Pass -Unity <path to Unity.exe>."
 }
 
 $outDir = Join-Path $projectRoot "Server/out"
