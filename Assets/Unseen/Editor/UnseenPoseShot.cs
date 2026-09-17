@@ -249,8 +249,8 @@ namespace Unseen.EditorTools
 
         private static class StanceDrop
         {
-            public const float Crouch = 0.348f;
-            public const float Prone = 0.339f;
+            public const float Crouch = 0.385f;
+            public const float Prone = 0.365f;
         }
 
         private static Texture2D Render(Camera camera)

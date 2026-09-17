@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering.Universal;
 using Unseen.Core;
 
 namespace Unseen.Environment
@@ -45,11 +46,23 @@ namespace Unseen.Environment
             {
                 if (lantern == null) continue;
                 Light light = lantern.GetComponent<Light>();
-                if (light != null) _lights.Add(light);
+                if (light != null)
+                {
+                    _lights.Add(light);
+                    if (Application.isPlaying)
+                        light.GetUniversalAdditionalLightData().additionalLightsShadowResolutionTier =
+                            UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierLow;
+                }
             }
 
             _distances = new float[_lights.Count];
             UnseenLog.Info($"[Unseen] lantern light budget: {_lights.Count} lanterns, {Budget} lit at once");
+        }
+
+        /// <summary>Refresh for an explicit capture camera, using the same budget as gameplay.</summary>
+        public void Refresh(Camera camera)
+        {
+            _camera = camera; _next = 0f; LateUpdate();
         }
 
         private void LateUpdate()
@@ -87,7 +100,6 @@ namespace Unseen.Environment
                 light.shadows = shouldBeOn && rank < ShadowBudget ? LightShadows.Soft : LightShadows.None;
                 if (light.shadows != LightShadows.None)
                 {
-                    light.shadowResolution = UnityEngine.Rendering.LightShadowResolution.Low;
                     light.shadowBias = .025f; light.shadowNormalBias = .15f;
                 }
                 if (light.enabled != shouldBeOn) light.enabled = shouldBeOn;

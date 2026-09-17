@@ -84,5 +84,40 @@ namespace Unseen.Tests
 
             Assert.IsTrue(blade.CanStrike, "stopping lets the draw it already asked for finish");
         }
+
+        [Test]
+        public void WantingToStrikeIsWhatStartsTheDraw()
+        {
+            var blade = new BladeCarry();
+
+            // Pressing attack with the blade away must begin the draw rather than being swallowed.
+            // Refusing outright would make the first press of a fight do nothing at all, which
+            // reads as the game missing the input rather than as a cost being paid.
+            blade.WantsDrawn(true);
+            blade.Advance(0.016f);
+
+            Assert.AreEqual(BladeState.Drawing, blade.State,
+                "asking to strike starts the blade coming off the back");
+        }
+
+        [Test]
+        public void TheBladeIsReadyAfterExactlyItsDrawTime()
+        {
+            var blade = new BladeCarry();
+            blade.WantsDrawn(true);
+
+            // Stepped at a frame at a time, as the simulation will. A state machine that loses a
+            // tick per transition is a control that feels a fraction behind without ever being
+            // visibly wrong, so the total is asserted rather than "eventually".
+            float elapsed = 0f;
+            while (elapsed < BladeCarry.DrawSeconds)
+            {
+                blade.Advance(1f / 60f);
+                elapsed += 1f / 60f;
+            }
+
+            Assert.IsTrue(blade.CanStrike,
+                $"a blade asked for should be ready within {BladeCarry.DrawSeconds:0.00}s");
+        }
     }
 }

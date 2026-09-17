@@ -460,6 +460,17 @@ namespace Unseen.Environment
             // colder tint is what makes a lantern look warm; warmth is a relationship, not a value.
             light.color = new Color(0.65f, 0.74f, 1f);
             light.intensity = MoonlightIntensity;
+
+            // A broad, low-cost sky bounce keeps the moon-facing silhouette readable.
+            // This is a render light only; stealth continues to use its own registered sources.
+            var fillHost = new GameObject("Sky bounce");
+            fillHost.transform.SetParent(_root, false);
+            fillHost.transform.rotation = Quaternion.Euler(38f, MoonlightAngles.y + 180f, 0f);
+            var fill = fillHost.AddComponent<Light>();
+            fill.type = LightType.Directional;
+            fill.color = new Color(.48f, .60f, .82f);
+            fill.intensity = .55f;
+            fill.shadows = LightShadows.None;
             light.shadows = LightShadows.Soft;
             // Not fully opaque shadows.
             //
@@ -488,6 +499,12 @@ namespace Unseen.Environment
             RenderSettings.ambientEquatorColor = new Color(.065f, .082f, .115f);
             RenderSettings.ambientGroundColor = new Color(.032f, .035f, .045f);
             RenderSettings.ambientIntensity = 1f;
+            // Procedural scenes have no baked light probes. Seed diffuse sky light explicitly
+            // so shaded facades remain legible on the first frame, including batch captures.
+            var skyProbe = new UnityEngine.Rendering.SphericalHarmonicsL2();
+            skyProbe.AddAmbientLight(new Color(.12f, .16f, .24f));
+            skyProbe.AddDirectionalLight(Vector3.up, new Color(.12f, .16f, .23f), .7f);
+            RenderSettings.ambientProbe = skyProbe;
             RenderSettings.fog = _set.FogDensity > 0f;
             RenderSettings.fogMode = FogMode.ExponentialSquared;
             RenderSettings.fogDensity = _set.FogDensity;

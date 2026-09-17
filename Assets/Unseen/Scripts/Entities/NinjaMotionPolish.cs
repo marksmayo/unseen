@@ -7,7 +7,7 @@ using Unseen.Combat;
 namespace Unseen.Entities
 {
     /// <summary>Additive presentation only: Blender-authored envelopes, weight shifts and a creeping gait.</summary>
-    [DefaultExecutionOrder(-100)]
+    [DefaultExecutionOrder(100)]
     public sealed class NinjaMotionPolish : MonoBehaviour
     {
         [Serializable] private sealed class Envelopes { public float[] landing, breathing, attack; }

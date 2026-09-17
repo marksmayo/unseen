@@ -311,6 +311,7 @@ namespace Unseen.Core
             _clientView.Bind(_net, Config, _ctx.Destructibles, _input, _ctx.Entities);
 
             var cameraHost = new GameObject("PlayerCamera");
+            cameraHost.tag = "MainCamera";
             cameraHost.transform.SetParent(rig.transform, false);
             _camera = cameraHost.AddComponent<ThirdPersonCameraRig>();
             _camera.Input = _input;

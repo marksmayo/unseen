@@ -50,10 +50,10 @@ namespace Unseen.Entities
         [Tooltip("How far the body sinks when crouched. The crouch pose folds the knees, which " +
                  "lifts the feet; this puts them back on the floor. Measured with " +
                  "Unseen > Art > Capture Animation Poses rather than guessed.")]
-        public float CrouchBodyDrop = 0.319f;
+        public float CrouchBodyDrop = 0.385f;
 
         [Tooltip("How far the body sinks when prone. Same measurement, a much deeper fold.")]
-        public float ProneBodyDrop = 0.289f;
+        public float ProneBodyDrop = 0.365f;
 
         [Tooltip("How quickly the body settles into and out of a crouch.")]
         public float CrouchBlendSpeed = 7f;
@@ -127,6 +127,8 @@ namespace Unseen.Entities
             // failure mode is expensive to diagnose from a screenshot.
             if (_authoredScale.sqrMagnitude > 0f && transform.localScale != _authoredScale)
                 transform.localScale = _authoredScale;
+
+            ShowBlade();
 
             if (Rig == null) return;
 
@@ -297,6 +299,35 @@ namespace Unseen.Entities
 
             if (Rig.layerCount > CombatLayer) Rig.SetLayerWeight(CombatLayer, _actionWeight);
         }
+
+        /// <summary>
+        /// Puts the katana where this agent's blade actually is.
+        ///
+        /// Two sources, the same split as every other piece of state here. A local agent has the
+        /// real BladeCarry, so its draw is shown travelling from shoulder to hand. A proxy has only
+        /// the replicated flags, so it gets the two ends of that journey and no motion between -
+        /// which is enough to read across a courtyard, and costs nothing on the wire.
+        /// </summary>
+        private void ShowBlade()
+        {
+            if (_blade == null)
+            {
+                _blade = GetComponent<BladeVisual>();
+                if (_blade == null) return;
+            }
+
+            if (_agent != null && _agent.Melee != null)
+            {
+                Combat.BladeCarry carry = _agent.Melee.Blade;
+                _blade.Show(carry.State, carry.Progress);
+                return;
+            }
+
+            bool drawn = (ProxyFlags & (ushort)AgentFlags.BladeDrawn) != 0;
+            _blade.Show(drawn ? Combat.BladeState.Drawn : Combat.BladeState.Sheathed, drawn ? 1f : 0f);
+        }
+
+        private BladeVisual _blade;
 
         private int ResolveAction()
         {

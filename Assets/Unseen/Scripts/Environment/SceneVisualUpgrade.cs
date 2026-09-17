@@ -54,6 +54,8 @@ namespace Unseen.Environment
             var random = new System.Random(seed ^ 0x51A7);
             Physics.SyncTransforms();
             BoxCollider[] solids = town.GetComponentsInChildren<BoxCollider>();
+            // Spend the finite detail budget on the central landmark and nearby streets first.
+            System.Array.Sort(solids, (a,b) => a.bounds.center.sqrMagnitude.CompareTo(b.bounds.center.sqrMagnitude));
             int roofRuns = 0, brackets = 0;
             foreach (BoxCollider solid in solids)
             {

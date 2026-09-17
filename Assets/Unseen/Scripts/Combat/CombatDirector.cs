@@ -102,8 +102,27 @@ namespace Unseen.Combat
             HandleInteract(agent, intent, frame);
             HandleUtility(agent, intent, frame);
 
+            // The blade, before anything that needs it.
+            //
+            // Wanting to strike or guard is what asks for it; sprinting overrides both, because you
+            // cannot run with a live blade in your hand. Advanced every tick so a draw begun by a
+            // press finishes whether or not the button is still down.
+            bool wantsBlade = intent.AttackLight || intent.AttackHeavy || intent.Guard;
+            melee.Blade.WantsDrawn(wantsBlade);
+            melee.Blade.SetSprinting(intent.Sprint);
+            melee.Blade.Advance(frame.Dt);
+
+            // Onto the flags, so everybody who can see this agent can see the sword is out. Costs
+            // no bytes: the field is already on every contact and had a spare bit.
+            if (melee.Blade.CanStrike) agent.Flags |= AgentFlags.BladeDrawn;
+            else agent.Flags &= ~AgentFlags.BladeDrawn;
+
             bool attackPressed = RisingEdge(_attackHeld, agent.Id.Value, intent.AttackLight || intent.AttackHeavy);
             if (!attackPressed || !melee.CanAct(now)) return;
+
+            // Nothing to swing with yet. The press is not thrown away - it started the draw above -
+            // so the swing simply arrives when the blade does, which is the cost of having run.
+            if (!melee.Blade.CanStrike) return;
 
             // A silent takedown always beats a swing when it is available.
             if (TryBeginTakedown(agent, frame)) return;
@@ -302,7 +321,12 @@ namespace Unseen.Combat
         private void UpdateGuard(AgentEntity agent, in MoveIntent intent, float now, UnseenConfig.CombatSection cfg)
         {
             AgentCombat melee = agent.Melee;
-            bool wants = intent.Guard && melee.Phase == AttackPhase.Idle && !melee.IsGuardBroken(now);
+
+            // A guard needs something to guard with. Running puts the blade away, so the choice to
+            // sprint is also the choice to be undefended until it is back in hand - which is the
+            // trade the draw timing exists to create.
+            bool wants = intent.Guard && melee.Blade.CanStrike &&
+                         melee.Phase == AttackPhase.Idle && !melee.IsGuardBroken(now);
             bool raised = RisingEdge(_guardHeld, agent.Id.Value, wants);
 
             melee.GuardZoneHeld = intent.Zone;

@@ -19,6 +19,13 @@ namespace Unseen.EditorTools
     /// </summary>
     public static class UnseenScreenshot
     {
+        private static bool _highlights;
+        public static void CaptureHighlights()
+        {
+            _highlights = true;
+            try { Capture(); } finally { _highlights = false; }
+        }
+
         private const int Width = 1600;
         private const int Height = 900;
         private const string OutputDir = "Server/out/shots";
@@ -175,6 +182,15 @@ namespace Unseen.EditorTools
                             skin.updateWhenOffscreen = true;
                         }
                     }
+
+                    // The blade in hand, because this is a guard pose and a guard needs something
+                    // to guard with - the simulation refuses one with the katana still on the back.
+                    // It is also the only way to see the held pose at all: the agents in a capture
+                    // are never mid-swing at the instant the shutter falls, so without this the
+                    // sword is on the back in every screenshot ever taken.
+                    var bladeVisual = sample.GetComponentInChildren<Unseen.Entities.BladeVisual>();
+                    if (bladeVisual != null)
+                        bladeVisual.Show(Unseen.Combat.BladeState.Drawn, 1f);
                     var closeUp = new Shot
                     {
                         Name = "05-ninja",
@@ -392,12 +408,26 @@ namespace Unseen.EditorTools
                     Debug.Log($"[shot] lantern close-up at {pos}");
                 }
 
+                foreach (Transform detail in host.GetComponentsInChildren<Transform>())
+                {
+                    if (detail.name != "Courtyard prop group") continue;
+                    var list = new System.Collections.Generic.List<Shot>(shots);
+                    list.Add(new Shot { Name = "20-street-details",
+                        Position = detail.position + detail.forward * 2.7f + detail.right * 1.3f + Vector3.up * 1.5f,
+                        LookAt = detail.position + Vector3.up * .9f, Fov = 55f });
+                    shots = list.ToArray(); break;
+                }
+
                 foreach (Shot shot in shots)
                 {
+                    if (_highlights && shot.Name != "11-castle" && shot.Name != "05-ninja" &&
+                        shot.Name != "03-rooftops" && shot.Name != "20-street-details") continue;
                     cameraHost.transform.position = shot.Position;
                     cameraHost.transform.rotation =
                         Quaternion.LookRotation((shot.LookAt - shot.Position).normalized, Vector3.up);
                     camera.fieldOfView = shot.Fov;
+                    foreach (var budget in host.GetComponentsInChildren<LanternLightBudget>())
+                        budget.Refresh(camera);
 
                     string path = Path.Combine(OutputDir, shot.Name + ".png");
                     var hidden = new System.Collections.Generic.List<GameObject>();

@@ -1842,7 +1842,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 0.45432377, y: 0.45432377, z: 0.45432377}
+  m_LocalScale: {x: 0.47812734, y: 0.47812734, z: 0.47812734}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 4513669177267560366}
@@ -1864,8 +1864,8 @@ MonoBehaviour:
   Body: {fileID: 5640816742968432950}
   SpeedSmoothing: 8
   ActionBlendSpeed: 9
-  CrouchBodyDrop: 0.31948912
-  ProneBodyDrop: 0.28882617
+  CrouchBodyDrop: 0.385
+  ProneBodyDrop: 0.365
   CrouchBlendSpeed: 7
   ProxyFlags: 0
 --- !u!1 &8182593873120526549

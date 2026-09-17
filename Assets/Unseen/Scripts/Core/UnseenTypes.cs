@@ -108,7 +108,21 @@ namespace Unseen.Core
         /// nothing else - and without this everybody else's throws would be invisible while the
         /// blade sailed out of an idle body.
         /// </summary>
-        Throwing = 1 << 12
+        Throwing = 1 << 12,
+
+        /// <summary>
+        /// The katana is in hand rather than on the back. Appended, never renumbered: this goes
+        /// over the wire.
+        ///
+        /// A bit in a field every contact already carries, rather than a byte of its own. The
+        /// snapshot has a hard size limit now, and a per-contact byte is paid for by every player
+        /// in view of every other - so a fact that is genuinely binary should cost a bit.
+        ///
+        /// Binary is enough for somebody else's blade: a proxy needs to show a sword on the back
+        /// or in the hand. The owner gets the exact state, with its draw progress, from the self
+        /// block, because their own blade is the one whose timing they are reading.
+        /// </summary>
+        BladeDrawn = 1 << 13
     }
 
     public enum SoundKind : byte

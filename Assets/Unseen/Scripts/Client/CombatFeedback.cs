@@ -29,12 +29,13 @@ namespace Unseen.Client
             _material=new Material(shader){name="Combat accents"};
             var host=new GameObject("Pooled combat sparks");host.transform.SetParent(transform,false);
             _sparks=host.AddComponent<ParticleSystem>();_sparks.Stop(true,ParticleSystemStopBehavior.StopEmittingAndClear);
-            var main=_sparks.main;main.playOnAwake=false;main.loop=false;main.maxParticles=160;main.simulationSpace=ParticleSystemSimulationSpace.World;main.gravityModifier=.5f;
+            var main=_sparks.main;main.playOnAwake=false;main.loop=true;main.maxParticles=160;main.simulationSpace=ParticleSystemSimulationSpace.World;main.gravityModifier=.5f;
             var emission=_sparks.emission;emission.enabled=false;var shape=_sparks.shape;shape.enabled=false;
             var color=_sparks.colorOverLifetime;color.enabled=true;
             var gradient=new Gradient();gradient.SetKeys(new[]{new GradientColorKey(Color.white,0),new GradientColorKey(Color.white,1)},new[]{new GradientAlphaKey(1,0),new GradientAlphaKey(0,1)});color.color=gradient;
             var renderer=host.GetComponent<ParticleSystemRenderer>();renderer.sharedMaterial=_material;renderer.renderMode=ParticleSystemRenderMode.Stretch;renderer.lengthScale=1.2f;renderer.velocityScale=.025f;
             renderer.shadowCastingMode=UnityEngine.Rendering.ShadowCastingMode.Off;
+            _sparks.Play();
             for(int i=0;i<_arcs.Length;i++)
             {
                 var go=new GameObject("Blade accent");go.transform.SetParent(transform,false);var line=go.AddComponent<LineRenderer>();

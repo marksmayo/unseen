@@ -33,7 +33,7 @@ namespace Unseen.EditorTools
                 for (int i = 0; i < oldBind.Length; i++)
                     if (!oldBind[i].Equals(newBind[i])) throw new Exception("Refined ninja bind pose changed");
                 var baked = new Mesh();
-                visual.Body.BakeMesh(baked);
+                visual.Body.BakeMesh(baked, true);
                 float min = float.MaxValue, max = float.MinValue;
                 foreach (Vector3 p in baked.vertices)
                 {

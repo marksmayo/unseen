@@ -98,12 +98,12 @@ namespace Unseen.Client
                 _lastGrounded=grounded;_lastFallSpeed=v.y;
                 speed=new Vector2(v.x,v.z).magnitude;
             }
-            _impact=Mathf.MoveTowards(_impact,0,Time.deltaTime*3f);
             float expansion=Crouched||Prone?0:Mathf.SmoothStep(0,2.5f,Mathf.InverseLerp(3,8,speed));
             if(_currentDistance<1.5f)expansion=0;
             // FOV response preserves the centre aim ray, shoulder offset, and collision-tested position.
             float target=62+MotionFeel*(expansion-_impact*1.2f);
             _camera.fieldOfView=Mathf.Lerp(_camera.fieldOfView,target,1-Mathf.Exp(-8*Time.deltaTime));
+            _impact=Mathf.MoveTowards(_impact,0,Time.deltaTime*3f);
         }
         private Camera _camera;
         private float _currentDistance;

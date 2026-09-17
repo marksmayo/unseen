@@ -492,22 +492,17 @@ namespace Unseen.EditorTools
                 // skinned mesh the latter is bind-pose data in the skeleton's own space and can be
                 // wildly different from the size the thing actually renders at.
                 float target = UnseenConfig.Default.Movement.StandHeight;
-                Bounds worldBounds = default;
-                bool measured = false;
-                foreach (Renderer renderer in instance.GetComponentsInChildren<Renderer>())
+                // Renderer bounds include culling padding. Fit the actual skinned vertices.
+                var baked = new Mesh();
+                body.BakeMesh(baked, true);
+                float minY = float.PositiveInfinity, maxY = float.NegativeInfinity;
+                foreach (Vector3 vertex in baked.vertices)
                 {
-                    if (!measured)
-                    {
-                        worldBounds = renderer.bounds;
-                        measured = true;
-                    }
-                    else
-                    {
-                        worldBounds.Encapsulate(renderer.bounds);
-                    }
+                    float y = body.transform.TransformPoint(vertex).y;
+                    minY = Mathf.Min(minY, y); maxY = Mathf.Max(maxY, y);
                 }
-
-                float rendered = measured ? worldBounds.size.y : 0f;
+                Object.DestroyImmediate(baked);
+                float rendered = maxY - minY;
                 float meshHeight = body != null && body.sharedMesh != null ? body.sharedMesh.bounds.size.y : 0f;
 
                 if (rendered > 0.05f)

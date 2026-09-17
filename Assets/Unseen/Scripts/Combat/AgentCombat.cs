@@ -22,6 +22,15 @@ namespace Unseen.Combat
     /// </summary>
     public sealed class AgentCombat : MonoBehaviour
     {
+        /// <summary>
+        /// Where this agent's katana is.
+        ///
+        /// Server-side like the rest of this component: whether a blade is ready decides whether a
+        /// hit lands, so a client that made that call locally would be choosing when it may attack.
+        /// Clients are told the state and draw it; they do not decide it.
+        /// </summary>
+        public BladeCarry Blade { get; } = new BladeCarry();
+
         public AttackPhase Phase { get; internal set; }
         public bool Heavy { get; internal set; }
         public GuardZone AttackZone { get; internal set; }

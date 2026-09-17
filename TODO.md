@@ -96,8 +96,14 @@ The primitives are built and tested. Most of this is wiring them to the wire.
       Wire-format change — update `NETWORKING.md` in the same commit.
 - [ ] **Wire `InputReconciler` into the client rig.** Prediction is movement-only by decision;
       stealth and the parry window stay server-authoritative. *(Partial)*
-- [ ] **Reliable channel for must-arrive messages.** Match state changes, zone transitions and
-      chat cannot be lost. Snapshots and inputs stay unreliable by design.
+- [x] **Reliable channel for must-arrive messages.** *(Done 2026-09-18.)* `ReliableChannel` holds a
+      message until the far end confirms it, resending every 0.25s rather than every tick - a
+      per-tick resend turns one unacknowledged message into sixty a second, hardest exactly when
+      congestion is what delayed the acknowledgement. Acknowledgement is per message, not "through
+      N": acks arrive out of order, and retiring everything below a sequence silently discards what
+      is still in flight. Bounded at 64, because what clears the queue is an ack that may never come.
+      **Not yet carried by the transport** - the channel exists and is tested; `UnseenUdpService`
+      does not use it.
 - [ ] **Client stops running its own simulation.** `UnseenBootstrap.Update` steps `_sim` for every
       mode, so a pure client runs its own `MatchDirector` and sixty-four bots. Needs a local agent
       driven by the snapshot self block first, or the camera has nothing to follow.
