@@ -147,6 +147,13 @@ namespace Unseen.Integrations.FishNet
             return _roundTrip.TryGetValue(connectionId, out float rtt) ? rtt : 0f;
         }
 
+        /// <summary>
+        /// No opinion. This adapter wraps our snapshots in an opaque broadcast and does not carry a
+        /// name through the connect handshake, so the caller names the player. Wiring one through
+        /// would mean adding it to the adapter's own connect message.
+        /// </summary>
+        public string NameOf(int connectionId) => null;
+
         public void SendToClient(int connectionId, byte[] payload, int length, bool reliable)
         {
             if (!_byId.TryGetValue(connectionId, out NetworkConnection connection)) return;

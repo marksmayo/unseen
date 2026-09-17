@@ -37,6 +37,21 @@ namespace Unseen.Net
         /// <summary>Measured round trip in seconds. Feeds the latency-compensated parry window.</summary>
         float RoundTripTime(int connectionId);
 
+        /// <summary>
+        /// What the server decided this connection is called, or null if it has no opinion.
+        ///
+        /// The client asks for a name during the handshake; the server sanitises it, resolves any
+        /// collision with somebody already here, and this is where the answer comes back out. It
+        /// belongs on the interface rather than on one transport because the simulation talks to
+        /// exactly one type, and a name readable only off the concrete class is a name the game
+        /// cannot use - which is precisely what happened: the name travelled the whole handshake
+        /// correctly and then stopped, and players were labelled player-1 regardless.
+        ///
+        /// Null rather than a generated label when the transport has no names, so the caller owns
+        /// the fallback. Two layers inventing defaults produce two different names for one player.
+        /// </summary>
+        string NameOf(int connectionId);
+
         void SendToClient(int connectionId, byte[] payload, int length, bool reliable);
         void SendToServer(byte[] payload, int length, bool reliable);
 

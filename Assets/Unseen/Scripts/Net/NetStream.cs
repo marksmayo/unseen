@@ -75,6 +75,20 @@ namespace Unseen.Net
             WriteInt(BitConverter.SingleToInt32Bits(value));
         }
 
+        /// <summary>
+        /// Writes eight bytes, little endian like the rest of this file.
+        ///
+        /// Added for the handshake cookie, which is compared for exact equality - so unlike a
+        /// position or an angle there is no tolerance here at all, and a format that dropped or
+        /// mangled the high bits would refuse every honest player while looking entirely correct
+        /// on the small values a debugger tends to be shown.
+        /// </summary>
+        public void WriteULong(ulong value)
+        {
+            Ensure(8);
+            for (int i = 0; i < 8; i++) _buffer[_position++] = (byte)((value >> (i * 8)) & 0xFF);
+        }
+
         /// <summary>Writes a 0..1 quantity in one byte.</summary>
         public void WriteNormalised(float value)
         {
@@ -174,6 +188,14 @@ namespace Unseen.Net
             float y = ReadInt() * quantum;
             float z = ReadInt() * quantum;
             return new float3(x, y, z);
+        }
+
+        /// <summary>Reads the eight bytes written by <see cref="NetWriter.WriteULong"/>.</summary>
+        public ulong ReadULong()
+        {
+            ulong value = 0;
+            for (int i = 0; i < 8; i++) value |= (ulong)ReadByte() << (i * 8);
+            return value;
         }
 
         public string ReadString()

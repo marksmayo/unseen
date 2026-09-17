@@ -178,18 +178,25 @@ namespace Unseen.AI
             AgentEntity existing = Ctx.Entities.ByConnection(connectionId);
             if (existing != null) return;
 
+            // What the player asked to be called, if the transport carried a name and the server
+            // granted one. Falls back to the slot number: a transport with no names - offline
+            // practice, or an adapter that does not carry one - still needs the player labelled,
+            // and the fallback belongs here rather than being invented inside the transport.
+            string granted = Ctx.Net?.NameOf(connectionId);
+            string displayName = string.IsNullOrEmpty(granted) ? $"player-{connectionId}" : granted;
+
             AgentEntity candidate = PickBotToReplace();
             if (candidate == null)
             {
                 if (_spawner == null) return;
-                candidate = _spawner.Spawn(AgentKind.Player, connectionId, RandomGroundPoint(), $"player-{connectionId}");
+                candidate = _spawner.Spawn(AgentKind.Player, connectionId, RandomGroundPoint(), displayName);
                 UnseenLog.Info($"[Unseen] connection {connectionId} spawned fresh as {candidate.DisplayName}");
                 return;
             }
 
             candidate.Kind = AgentKind.Player;
             candidate.Flags &= ~AgentFlags.Bot;
-            candidate.DisplayName = $"player-{connectionId}";
+            candidate.DisplayName = displayName;
             candidate.Intent = MoveIntent.Idle;
             if (candidate.Brain != null) candidate.Brain.enabled = false;
             Ctx.Entities.SetConnection(candidate, connectionId);

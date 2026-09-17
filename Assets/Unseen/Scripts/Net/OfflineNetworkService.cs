@@ -33,6 +33,12 @@ namespace Unseen.Net
 
         public float RoundTripTime(int connectionId) => SimulatedLatency * 2f;
 
+        /// <summary>
+        /// Nobody asked to be called anything here: offline practice has a connection because the
+        /// simulation needs one, not because a person joined. The caller names them.
+        /// </summary>
+        public string NameOf(int connectionId) => null;
+
         public void Start()
         {
             ClientConnected?.Invoke(0);
