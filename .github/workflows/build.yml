@@ -1,0 +1,85 @@
+# Builds both shipping targets, so a break in either is found on the push that caused it.
+#
+# Separate from verify.yml on purpose. The tests are what you want on every push and they finish in
+# minutes; a player build takes considerably longer, and tying them together would mean waiting on
+# a build to learn a test failed. This runs on main and on demand.
+#
+# Both targets matter and they break differently: the Windows client is what players run, and the
+# Linux headless server is what the fleet runs and is the one nobody builds by hand often enough to
+# notice when it stops working.
+name: build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  players:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    strategy:
+      # Both are attempted even when one fails, because "the client broke" and "the server broke"
+      # are different problems and finding out about both at once is worth the extra minutes.
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows client
+            target: StandaloneWindows64
+            method: Unseen.EditorTools.UnseenBuild.BuildWindowsClient
+          - name: Linux headless server
+            target: StandaloneLinux64
+            method: Unseen.EditorTools.UnseenBuild.BuildLinuxServer
+
+    steps:
+      - name: Check the licence is configured
+        env:
+          LICENSE: ${{ secrets.UNITY_LICENSE }}
+          EMAIL: ${{ secrets.UNITY_EMAIL }}
+        run: |
+          if [ -z "$LICENSE" ] && [ -z "$EMAIL" ]; then
+            echo "::error::No Unity licence configured. See verify.yml for the secrets required."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Cache the Library folder
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-${{ matrix.target }}-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-${{ matrix.target }}-
+            Library-
+
+      - name: Build
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+        with:
+          unityVersion: 6000.6.0f1
+          targetPlatform: ${{ matrix.target }}
+          buildMethod: ${{ matrix.method }}
+          # Stamped with the commit, so a build handed to a playtester can be traced back to the
+          # source it came from. A bug report against an unidentifiable build is a bug report
+          # nobody can act on.
+          versioning: Custom
+          version: ${{ github.sha }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: build
+          retention-days: 14

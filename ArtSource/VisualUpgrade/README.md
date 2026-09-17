@@ -24,7 +24,18 @@ This pass uses Blender-authored meshes and motion envelopes with Unity runtime p
 
 ## Validation
 
-Results and review images are recorded after the final checks. The repeatable editor entry point is `Unseen.EditorTools.UnseenVisualUpgradeValidation.Run`. It validates mesh payloads, contact filtering, skinning, renders the generated town and poses, checks garments and probes 180 camera angles against walls.
+[Open the before/after review](review.html). Final validation completed on 18 September 2026.
+
+- Eleven exported mesh payloads passed scale, finite-geometry and collider checks.
+- Refined body: 1,029 vertices, original skin weights/bind poses retained, measured height 1.800 m.
+- Garment and animation-pose captures completed. Crouch sole samples range approximately −5 to +11 mm; prone samples −22 to +20 mm through its breathing cycle.
+- Camera collision: all 180 tested view angles stayed on the correct side of walls; the old-camera negative control failed 78 angles.
+- Real play frames: a 64-actor match, wind clock, direct/hidden/occluded combat, duplicate suppression, impact FOV and particle expiry passed.
+- Final representative scene renders completed with the gameplay lantern budget and sky-bounce lighting.
+
+Logs: `Logs/visual-upgrade-final.log`, `Logs/visual-upgrade-play.log`, and `Logs/visual-upgrade-highlights.log`. The isolated editor emitted a Unity Search indexing exception; the play harness excludes that specific editor-only stack from its gameplay error count. The checks above are targeted visual/runtime validation, not a claim that the entire project test suite was run.
+
+ The repeatable editor entry point is `Unseen.EditorTools.UnseenVisualUpgradeValidation.Run`. It validates mesh payloads, contact filtering, skinning, renders the generated town and poses, checks garments and probes 180 camera angles against walls.
 
 For actual play frames, copy `Tools/VisualUpgradePlayValidation.cs` into an isolated validation project's Editor folder and invoke `VisualUpgradePlayValidation.Run` without Unity's `-quit` flag. It exits with a result code after exercising a 64-actor match, wind, visible and occluded effects, deduplication, camera response and particle cleanup.
 

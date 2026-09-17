@@ -62,11 +62,29 @@ Phases 2 and 3 overlap heavily. Phase 0 must not overlap with anything.
 Nothing here builds a feature. All of it exists to find out whether the current design survives
 contact with sixty-four players, because the answers change what gets built afterwards.
 
-- [ ] **Load test at 64 entities on real hardware.** `ROADMAP.md` has listed this as blocked on
-      the transport; the transport now exists. Measure server frame time, not averages —
-      the 99th percentile is what players feel.
-- [ ] **Profile the generated town.** 158,394 renderers is the number to beat. Establish draw
-      calls, batches, triangles and GPU frame time on a mid-range card, not a development machine.
+- [x] **Load test at 64 entities — first numbers.** *(2026-09-18, 4 min, 45 samples, dedicated
+      server, this machine.)* Sim time: mean 6.35 ms, p50 4.95, p95 13.01, **p99 15.38**, max 15.38.
+      Against the 50 ms budget of a 20 Hz base tick that is 31%; against a 60 Hz combat tick's
+      16.7 ms it is **92%**, which is tight.
+      **Read as a floor, not a capacity figure.** 64 bots exercise the planner a human does not,
+      but do *not* exercise 64 snapshot encodes through interest management, which is the cost that
+      grows with real clients. And a development machine is not a server.
+- [ ] **Re-run the load test with real clients attached.** The figure above has `out 0 kbps`
+      throughout because nothing connected. Encoding and interest management are the parts that
+      scale with player count, and they are exactly what this run did not touch.
+- [x] **Inventory the generated town.** *(2026-09-18, `Unseen ▸ Probe Cost`.)* 154,935 renderers,
+      5.6M triangles, **32 distinct materials**, 18,745 shadow casters, 25,385 colliders.
+      The material count is fine - 32 SRP batches is not a problem. The object count is the problem:
+      **129,690 renderers (84%) are renderer-only trim on the Decoration layer**, and
+      `DarkTimber_Weathered` alone is 80,798 renderers averaging 13 triangles each.
+      **`GroundMist` is the single largest cost: 630 quads covering 174,000 m² of transparent
+      overdraw** on a 562,000 m² map - roughly 31% of the world in alpha-blended surface, paid every
+      frame whether anything is behind it or not, and every one of those quads got more expensive
+      when the depth fade, triplanar sampling and per-lantern lighting went in.
+      Shape of the problem: **not triangles, not materials - object count and overdraw.**
+- [ ] **GPU frame time on target hardware.** The inventory above says what is being drawn; it says
+      nothing about how long a frame takes. Needs a mid-range card and a target spec, neither of
+      which a headless batch run can supply.
 - [ ] **Re-measure bandwidth properly.** The first real figure is 12–19 kbps down per player with
       few contacts; `NETWORKING.md` estimates 50–65. Measure with sixty-four players actually
       visible to each other, which is the worst case the interest manager exists to prevent.

@@ -1,0 +1,80 @@
+# Compiles the project and runs the EditMode suite on every push.
+#
+# There was no CI at all before this, so the only thing standing between a broken build and the
+# next person to clone was somebody remembering to run Tools/verify.ps1. That is a poor bet on a
+# project where a single missing `using` has already cost a screenshot run, and where several bugs
+# this year were caught only because a test happened to be written for them.
+#
+# Unity in CI needs a licence. Activation uses repository secrets; without them the job reports
+# that clearly and stops, rather than failing somewhere confusing three steps later.
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # One run per branch. A push landing on top of a running build makes the earlier result
+  # irrelevant, and Unity jobs are slow enough that queueing them wastes real time.
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: EditMode tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check the licence is configured
+        # Checked first and explicitly. Without it the Unity action fails partway through
+        # activation with a message about the licensing client, which reads as a broken runner
+        # rather than as a missing secret.
+        env:
+          LICENSE: ${{ secrets.UNITY_LICENSE }}
+          EMAIL: ${{ secrets.UNITY_EMAIL }}
+        run: |
+          if [ -z "$LICENSE" ] && [ -z "$EMAIL" ]; then
+            echo "::error::No Unity licence configured. Add UNITY_LICENSE (personal) or"
+            echo "::error::UNITY_EMAIL, UNITY_PASSWORD and UNITY_SERIAL (pro) to repository secrets."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Cache the Library folder
+        # A cold Library import is most of the runtime of one of these jobs - the project generates
+        # its town at runtime but still imports several thousand assets. Keyed on the asset and
+        # package state so a change to either rebuilds it.
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-
+
+      - name: Run EditMode tests
+        uses: game-ci/unity-test-runner@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+        with:
+          unityVersion: 6000.6.0f1
+          testMode: editmode
+          artifactsPath: test-results
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          checkName: EditMode results
+
+      - name: Keep the results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results
