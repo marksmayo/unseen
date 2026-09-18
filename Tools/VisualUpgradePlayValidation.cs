@@ -86,6 +86,16 @@ public static class VisualUpgradePlayValidation
                 if(feedback.GetComponentInChildren<ParticleSystem>().particleCount!=0)throw new Exception("Impact particles did not expire");
                 foreach(var line in feedback.GetComponentsInChildren<LineRenderer>())if(line.enabled)throw new Exception("Blade trail did not expire");
                 if(errors>0)throw new Exception("Runtime produced "+errors+" errors");
+                int heroes=0;foreach(var visual in UnityEngine.Object.FindObjectsByType<AgentVisual>())
+                {
+                    if(!HeroNinjaAppearance.IsHero(visual))throw new Exception("Legacy character still active");
+                    var lod=visual.GetComponent<LODGroup>();if(lod==null || lod.lodCount!=3)throw new Exception("Missing hero LODs");
+                    var mesh=new Mesh();visual.Body.BakeMesh(mesh,true);var size=Vector3.Scale(mesh.bounds.size,visual.Body.transform.lossyScale);
+                    if(float.IsNaN(size.x)||size.magnitude>4 || size.magnitude<.1f)throw new Exception("Invalid animated hero bounds: "+size);
+                    UnityEngine.Object.Destroy(mesh);heroes++;
+                }
+                if(heroes<64)throw new Exception("Expected 64 hero visuals: "+heroes);
+                Debug.Log("[hero-runtime] PASS: "+heroes+" animated heroes, three LODs and finite skin bounds");
                 Debug.Log("[visual-runtime] PASS: effect cleanup and error-free play frames");Finish(0);
             }
         }

@@ -110,6 +110,26 @@ namespace Unseen.Tests
         }
 
         [Test]
+        public void TheLobbyWaitCanBeSetOnTheCommandLine()
+        {
+            // Ten seconds is shorter than the game's own load time. A dedicated server holds the
+            // lobby until somebody connects and then counts down, and a client spends the best part
+            // of a minute generating the town before it can connect at all - so the first player in
+            // starts a match alone while everybody else is still loading, and they arrive to a round
+            // already under way and spend it spectating.
+            //
+            // A number an operator can set, because how long to wait depends on how players arrive:
+            // matchmaking delivers a lobby of people already loaded, a bare server does not.
+            Assert.AreEqual(45f, LaunchOptions.Parse(new[] { "unseen.exe", "-lobby", "45" }).LobbySeconds);
+
+            Assert.IsFalse(LaunchOptions.Parse(new[] { "unseen.exe" }).LobbySeconds.HasValue,
+                "left alone, the match director keeps its own default");
+
+            Assert.IsFalse(LaunchOptions.Parse(new[] { "unseen.exe", "-lobby", "-3" }).LobbySeconds.HasValue,
+                "a negative wait is a typo, not an instruction");
+        }
+
+        [Test]
         public void ASwitchWithNothingAfterItDoesNotThrow()
         {
             // Trailing switches happen: a shortcut edited in a hurry, an argument the shell ate.

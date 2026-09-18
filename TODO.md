@@ -69,9 +69,17 @@ contact with sixty-four players, because the answers change what gets built afte
       **Read as a floor, not a capacity figure.** 64 bots exercise the planner a human does not,
       but do *not* exercise 64 snapshot encodes through interest management, which is the cost that
       grows with real clients. And a development machine is not a server.
-- [ ] **Re-run the load test with real clients attached.** The figure above has `out 0 kbps`
-      throughout because nothing connected. Encoding and interest management are the parts that
-      scale with player count, and they are exactly what this run did not touch.
+- [x] **Real clients attached.** *(Done 2026-09-18, `Tools/multiplayer-test.ps1`.)* A dedicated
+      server and N client processes, separate binaries over a real socket. Two clients, both seated,
+      both receiving snapshots for a full round.
+      **First real bandwidth figure: 12–16 kbps down per player** during Infiltration with few
+      contacts, against `NETWORKING.md`'s 50–65 estimate. Still not the worst case — that is sixty-
+      four players visible to each other, which is the number the interest manager exists to prevent
+      and the one still unmeasured.
+      Server sim time 15–85 ms, but **read it as noise**: three Unity processes on one machine, each
+      generating its own 160k-renderer town. The dedicated-server load test's p99 of 15 ms is the
+      better figure, and neither is from server hardware.
+      It found three real bugs, none of which any single-process test could have. See Phase 1.
 - [x] **Inventory the generated town.** *(2026-09-18, `Unseen ▸ Probe Cost`.)* 154,935 renderers,
       5.6M triangles, **32 distinct materials**, 18,745 shadow casters, 25,385 colliders.
       The material count is fine - 32 SRP batches is not a problem. The object count is the problem:
@@ -232,7 +240,26 @@ The primitives are built and tested. Most of this is wiring them to the wire.
 ### Verified at scale
 
 - [ ] **Sixty-four real clients, one match, full round.** The end-to-end proof. Two processes is
-      not evidence for sixty-four.
+      not evidence for sixty-four. `Tools/multiplayer-test.ps1 -Clients 64` is the command; whether
+      one machine can host sixty-five processes that each generate a 160k-renderer town is the
+      question, and it probably cannot.
+- [x] **A multi-process harness exists.** *(Done 2026-09-18.)* `Tools/multiplayer-test.ps1` builds
+      the player, runs it once as a server and N times as clients, and reports peak connections,
+      per-player bandwidth, snapshots received and the prediction backlog. Three bugs fell out of the
+      first three runs, every one of them invisible to a single-process test:
+      **A dedicated server was unreachable by design.** It filled its roster with bots and started a
+      match seconds after boot, and a round in progress does not admit players — so the first real
+      client was told to spectate, and so was every client after it, for ever. The lobby now holds
+      while nobody is connected.
+      **The lobby's early-start check counted bots.** `full` asked whether the roster had reached 64
+      entities, which backfill guarantees within seconds, so the countdown never ran and the first
+      human to connect started the match on the spot. Raising the lobby to ninety seconds changed
+      nothing at all, which is what exposed it. It counts connections now.
+      **The client status line printed a round trip it cannot know.** The server pings and the client
+      echoes — deliberately, so a client cannot choose the latency it is compensated for — so the
+      client's own figure was always zero. Removed rather than made up.
+      Also `-lobby <seconds>`, because a client spends most of a minute generating its town before it
+      can connect, and a ten-second countdown is shorter than the game's own load time.
 - [x] **`DestructibleRegistry` id agreement.** *(Done 2026-09-18.)* Verified by
       `Unseen ▸ Test Destructible Ids`, and it found a real defect.
       Ids came from sorting on position alone, and **around a hundred shoji panels per town share a

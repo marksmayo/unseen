@@ -78,6 +78,9 @@ namespace Unseen.Core
         private SimProfile _profile;
         private BotDirector _bots;
         private PlayerSeatSystem _seats;
+
+        /// <summary>Lobby wait from the command line, applied once the match director exists.</summary>
+        private float? _lobbySeconds;
         private ReplicationSystem _replication;
         private CombatPocketSystem _pockets;
         private MotionSystem _motion;
@@ -202,6 +205,7 @@ namespace Unseen.Core
             Net.UnseenTransport.ConnectTo = options.ConnectTo;
             Net.UnseenTransport.RequestedName = options.RequestedName;
             Net.UnseenTransport.Conditions = options.Conditions;
+            _lobbySeconds = options.LobbySeconds;
 
             if (!string.IsNullOrEmpty(options.Error)) UnseenLog.Error($"[Unseen] {options.Error}");
         }
@@ -271,6 +275,7 @@ namespace Unseen.Core
                 combat.SmokePrefab = SmokePrefab;
                 _sim.Add(new AgentEffectsSystem());
                 _match = _sim.Add(new MatchDirector());
+                if (_lobbySeconds.HasValue) _match.LobbyTimeout = _lobbySeconds.Value;
                 mist = _sim.Add(new MistZoneController());
                 _bamboo = _sim.Add(new BambooGrowthSystem());
                 _sim.Add(new Unseen.Perception.CritterStartleSystem());
@@ -643,6 +648,17 @@ namespace Unseen.Core
             }
         }
 
+        /// <summary>Mean round trip across every connection, in seconds. Zero with nobody on.</summary>
+        private float AverageRoundTrip()
+        {
+            IReadOnlyList<int> connections = _net.Connections;
+            if (connections.Count == 0) return 0f;
+
+            float total = 0f;
+            for (int i = 0; i < connections.Count; i++) total += _net.RoundTripTime(connections[i]);
+            return total / connections.Count;
+        }
+
         private void LogStatus()
         {
             if (StatusLogInterval <= 0f || Time.unscaledTime < _nextStatusLogAt) return;
@@ -652,18 +668,36 @@ namespace Unseen.Core
             // arrived, and how much of its own movement is still unconfirmed.
             if (!_profile.OwnsTheMatch)
             {
+                long inBytes = _clientView != null ? _clientView.BytesReceived : 0L;
+
                 UnseenLog.Info($"[Unseen] client | sim {_sim.LastFrameMilliseconds:0.00} ms | " +
-                          $"in {(_clientView != null ? _clientView.SnapshotsReceived : 0)} snapshots | " +
+                          $"in {(_clientView != null ? _clientView.SnapshotsReceived : 0)} snapshots " +
+                          $"{inBytes / 1024f:0.0} KiB | " +
                           $"{(_localAgent != null && _localAgent.Agent != null ? "body" : "no body yet")}, " +
                           $"{(_localAgent != null ? _localAgent.UnconfirmedInputs : 0)} inputs unconfirmed");
+
+                // No round trip on this line, deliberately. The server pings and the client echoes,
+                // so the measurement belongs to the side that uses it - a client compensated for a
+                // latency it reported itself would be choosing its own parry window. The client
+                // genuinely does not know the number, and printing a zero implied it did.
 
                 LogLocalPlayer();
                 return;
             }
 
+            // Connections and per-player bandwidth belong on this line because the whole point of
+            // the number beside them is the per-player figure, and "out 900 kbps" means nothing
+            // without knowing whether that was one client or sixty-four. The first load test
+            // reported `out 0 kbps` for four minutes and the zero was the interesting part: nothing
+            // had connected, and the line did not say so.
+            int players = _net.Connections.Count;
+            float perPlayer = players > 0 ? _replication.KilobitsPerSecond / players : 0f;
+
             UnseenLog.Info($"[Unseen] {_match.StatusLine()} | sim {_sim.LastFrameMilliseconds:0.00} ms | " +
                       $"hot {_pockets.HotAgents}/{_motion.HotAgentsLastTick} | {_interest.DescribeLoad()} | " +
-                      $"{_bots.Describe()} | out {_replication.KilobitsPerSecond:0} kbps");
+                      $"{_bots.Describe()} | {players} players | " +
+                      $"out {_replication.KilobitsPerSecond:0} kbps ({perPlayer:0.0} each) | " +
+                      $"rtt {AverageRoundTrip() * 1000f:0} ms");
 
             LogLocalPlayer();
         }

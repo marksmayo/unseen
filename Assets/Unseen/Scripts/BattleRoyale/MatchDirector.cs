@@ -115,8 +115,41 @@ namespace Unseen.BattleRoyale
 
         private void TickLobby(in SimFrame frame)
         {
+            // Nobody to play for, so nothing starts.
+            //
+            // A dedicated server filled its roster with bots within seconds of booting and started
+            // a match nobody was in. Because a round already under way does not admit new players,
+            // the first real client to arrive was told to spectate a game of sixty-four bots - and
+            // so was every client after it, for ever. The server was unreachable by design, and
+            // only a real client process could show it: in the editor and in every headless probe
+            // there is always a local player, so the lobby always had somebody in it.
+            //
+            // The countdown is pushed along rather than merely paused, so the ten seconds begin
+            // when the first player arrives instead of having quietly elapsed while the room was
+            // empty - otherwise the first to connect starts a match alone, immediately.
+            if (Ctx.Net.Connections.Count == 0)
+            {
+                _phaseEnd = frame.Time + LobbyTimeout;
+                return;
+            }
+
             int target = Ctx.Config.Match.TargetEntityCount;
-            bool full = Ctx.Entities.Count >= target;
+
+            // Full of people, not full of bots.
+            //
+            // This asked whether the roster had reached its target, and the roster is topped up
+            // with backfill bots within seconds of boot - so it was always true, and the countdown
+            // it was meant to short-circuit never ran at all. The first human to connect started
+            // the match on the spot, and everybody still loading arrived to a round in progress and
+            // spent it spectating. A ninety-second lobby made no difference whatsoever, which is
+            // how the real cause showed itself.
+            bool full = Ctx.Net.Connections.Count >= target;
+
+            // A listen server or offline practice has nobody else coming: the only human is the one
+            // running the process, and they are already here. Waiting out a lobby timer designed
+            // for players trickling in over a network would just be ten seconds of standing in the
+            // sky before every single-player match.
+            bool othersMayStillBeLoading = !Ctx.Net.IsClient;
 
             // Waiting happens in the sky, not in the street.
             //
@@ -130,7 +163,7 @@ namespace Unseen.BattleRoyale
             if (!Ctx.Config.Match.SkipInfiltration)
                 Ctx.Get<DeploymentSystem>()?.Park(_mapCenter);
 
-            if (full || frame.Time >= _phaseEnd) StartMatch(frame.Time);
+            if (full || !othersMayStillBeLoading || frame.Time >= _phaseEnd) StartMatch(frame.Time);
         }
 
         /// <summary>Resets every agent, rolls loot from the match seed and launches the drop.</summary>

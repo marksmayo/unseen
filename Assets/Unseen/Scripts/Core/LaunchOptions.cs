@@ -26,6 +26,16 @@ namespace Unseen.Core
         /// </summary>
         public Net.NetworkConditions? Conditions;
 
+        /// <summary>
+        /// Seconds to hold the lobby once somebody is in it, from `-lobby`. Null keeps the default.
+        ///
+        /// Worth an option because the right answer depends on how players arrive. Matchmaking
+        /// hands over a lobby of people who have already loaded; a bare server watches them trickle
+        /// in over a minute of town generation, and a ten-second countdown started by the first
+        /// arrival locks out everybody behind them.
+        /// </summary>
+        public float? LobbySeconds;
+
         /// <summary>What could not be read, or null when everything parsed.</summary>
         public string Error;
 
@@ -124,6 +134,11 @@ namespace Unseen.Core
 
                     case "-name":
                         if (!string.IsNullOrEmpty(next)) options.RequestedName = next;
+                        break;
+
+                    case "-lobby":
+                        if (float.TryParse(next, out float lobby) && lobby >= 0f)
+                            options.LobbySeconds = lobby;
                         break;
 
                     case "-netsim":
