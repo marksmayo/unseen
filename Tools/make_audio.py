@@ -237,6 +237,38 @@ def shuriken_hit(seed):
     return mix(gain(ring, 0.42), gain(tap, 0.7), gain(thud, 0.55))
 
 
+def splash(seed):
+    """
+    A body crossing the waterline.
+
+    Three layers, because a splash is three things happening at once. The slap is the surface
+    breaking - a bright noise burst that dies almost immediately. The body is the displaced water
+    moving, which is lower and lasts longer. And then the burbles, which are what tells the ear it
+    was water rather than a sack of sand: without them this reads as an impact on soft ground.
+
+    Deliberately not a big cinematic splash. This plays whenever anybody wades in or out, sixty-
+    four bodies in a town with a river through it, and a sound that demands attention every time
+    would be exhausting within one match.
+    """
+    rng = random.Random(seed)
+    length = 0.75
+    n = int(RATE * length)
+
+    slap = envelope(highpass(white(n, rng), 900), 0.002, 0.13, curve=3.2)
+    body = envelope(lowpass4(white(n, rng), 700), 0.010, 0.42, curve=1.9)
+
+    layers = [gain(slap, 0.62), gain(body, 0.5)]
+
+    # Burbles scattered through the tail rather than stacked at the front, so the water goes on
+    # settling after the body has passed through it.
+    for _ in range(rng.randint(5, 8)):
+        b = bubble(rng, rng.uniform(0.05, 0.13), 420, 1150)
+        offset = int(RATE * rng.uniform(0.04, 0.55))
+        layers.append(gain([0.0] * offset + b, rng.uniform(0.16, 0.34)))
+
+    return mix(*layers)
+
+
 if __name__ == '__main__':
     for i in range(3):
         write('choking_%d' % (i + 1), choking(881 + i))
@@ -244,3 +276,5 @@ if __name__ == '__main__':
         write('shuriken_whistle_%d' % (i + 1), shuriken_whistle(941 + i))
     for i in range(3):
         write('shuriken_hit_%d' % (i + 1), shuriken_hit(977 + i))
+    for i in range(4):
+        write('splash_%d' % (i + 1), splash(1013 + i))

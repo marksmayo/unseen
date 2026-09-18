@@ -369,6 +369,26 @@ namespace Unseen.Core
             public float ChokeLoudness = 0.9f;
 
             public float ChokeRadius = 30f;
+
+            [Tooltip("Depth at the feet, in metres, that counts as being in the water. Ankle deep " +
+                     "is walking through a puddle; this is the line where it becomes wading.")]
+            public float SplashDepth = 0.25f;
+
+            [Tooltip("Loudness of entering or leaving the water at a walk. " +
+                     "Audible, and meant to be. A river is cover from sight and the opposite of " +
+                     "cover from sound - crossing one is a choice between being seen and being " +
+                     "heard, and that trade is the whole reason the river is there.")]
+            public float SplashLoudness = 0.85f;
+
+            [Tooltip("How much louder a splash gets at a sprint. Multiplied in by speed, so " +
+                     "wading carefully is genuinely quieter than jumping in.")]
+            public float SplashSpeedBoost = 0.5f;
+
+            public float SplashRadius = 26f;
+
+            [Tooltip("Seconds before one body can splash again. Stops a player bobbing on the " +
+                     "waterline from ringing like an alarm.")]
+            public float SplashInterval = 0.6f;
         }
 
         [Serializable]

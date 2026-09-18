@@ -126,6 +126,32 @@ namespace Unseen.Entities
             _authoredScale = transform.localScale;
         }
 
+        private Client.SubmergedBubbles _bubbles;
+
+        /// <summary>
+        /// Bubbles for a real agent whose head is under water.
+        ///
+        /// Only for an agent. A proxy has no AgentEntity behind it and gets its bubbles from
+        /// EntityProxy, which is also the path that works when the ninja art is missing and the
+        /// proxy is a bare capsule with no AgentVisual on it at all.
+        ///
+        /// Hung off the agent's own object rather than this one. The visual carries an authored
+        /// scale and a bone hierarchy that has been 49x the intended size before now; a particle
+        /// system parented into that would inherit whatever the rig is doing.
+        /// </summary>
+        private void ShowBubbles()
+        {
+            if (_agent == null) return;
+
+            if (_bubbles == null)
+            {
+                _bubbles = _agent.GetComponent<Client.SubmergedBubbles>();
+                if (_bubbles == null) _bubbles = _agent.gameObject.AddComponent<Client.SubmergedBubbles>();
+            }
+
+            _bubbles.Under = (_agent.Flags & AgentFlags.Submerged) != 0;
+        }
+
         private void LateUpdate()
         {
             // Belt and braces against animated scale. The clips are sanitised at import, but a
@@ -135,6 +161,7 @@ namespace Unseen.Entities
                 transform.localScale = _authoredScale;
 
             ShowBlade();
+            ShowBubbles();
 
             if (Rig == null) return;
 

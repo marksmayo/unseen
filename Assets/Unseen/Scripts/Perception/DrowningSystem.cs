@@ -56,10 +56,21 @@ namespace Unseen.Perception
                     continue;
                 }
 
+                // Crossing the waterline is a separate question from drowning, and asked here
+                // because this loop is already paying to sample the water for all sixty-four
+                // bodies once a tick. A second system asking the same geometry the same question
+                // would double a cost that is measured in raycasts.
+                TrackWaterline(cfg, agent, frame);
+
                 // The eye, not the feet. Standing chest-deep is not drowning; it is the head going
                 // under that starts the clock, which is why going prone in the deep channel does
                 // and crouching on the shelf does not.
                 bool under = WaterVolume.IsUnder(agent.EyePosition);
+
+                // Replicated, so everybody else can see the bubbles. Set from the same test that
+                // drives the breath clock, so what is drawn and what is fatal cannot disagree.
+                if (under) agent.Flags |= AgentFlags.Submerged;
+                else agent.Flags &= ~AgentFlags.Submerged;
 
                 if (!under)
                 {
@@ -110,6 +121,53 @@ namespace Unseen.Perception
                 cfg.ChokeLoudness, cfg.ChokeRadius, frame.Tick);
         }
 
+        /// <summary>Which bodies were in the water last tick, so a crossing can be noticed.</summary>
+        private readonly HashSet<int> _inWater = new HashSet<int>();
+
+        private readonly Dictionary<int, float> _lastSplash = new Dictionary<int, float>(64);
+
+        /// <summary>
+        /// A splash when a body crosses the waterline, in either direction.
+        ///
+        /// Emitted into the acoustic model rather than played as a sound effect, so it occludes,
+        /// misleads and gives a position away exactly like every other noise in the game. That is
+        /// the point of it: the river is cover from sight and the opposite of cover from sound, and
+        /// crossing one should be a choice between being seen and being heard.
+        ///
+        /// Louder the faster you were going. Wading in carefully and jumping in are different acts
+        /// and should not sound the same, and a player who has understood that has been given
+        /// something to do with the understanding.
+        /// </summary>
+        private void TrackWaterline(UnseenConfig.WaterSection cfg, AgentEntity agent, in SimFrame frame)
+        {
+            bool wet = WaterVolume.DepthAt(agent.Position) > cfg.SplashDepth;
+            bool wasWet = _inWater.Contains(agent.Id.Value);
+
+            if (wet == wasWet) return;
+
+            if (wet) _inWater.Add(agent.Id.Value);
+            else _inWater.Remove(agent.Id.Value);
+
+            // Rate limited, because the waterline is a line and a body standing on it in a current
+            // will cross it over and over. Without this, treading the shallows would ring like an
+            // alarm and give away a position the player never moved from.
+            if (_lastSplash.TryGetValue(agent.Id.Value, out float last) &&
+                frame.Time - last < cfg.SplashInterval)
+                return;
+
+            _lastSplash[agent.Id.Value] = frame.Time;
+
+            float speed = agent.Motor != null
+                ? math.length(new float2(agent.Motor.Velocity.x, agent.Motor.Velocity.z))
+                : 0f;
+
+            float loudness = cfg.SplashLoudness *
+                             (1f + cfg.SplashSpeedBoost * math.saturate(speed / 8f));
+
+            Ctx.Sound.Emit(agent.Id, agent.Position, SoundKind.Splash,
+                loudness, cfg.SplashRadius, frame.Tick);
+        }
+
         /// <summary>How long this agent has been under, in seconds. Zero on the surface.</summary>
         public float HeldBreath(AgentId id)
         {
@@ -121,6 +179,12 @@ namespace Unseen.Perception
         {
             _submergedFor.Clear();
             _lastChoke.Clear();
+
+            // The waterline memory too, or the first tick of a new match reads every body standing
+            // on dry land as having just climbed out of the river.
+            _inWater.Clear();
+            _lastSplash.Clear();
+
             Submerged = 0;
             Choking = 0;
         }

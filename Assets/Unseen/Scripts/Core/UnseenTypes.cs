@@ -122,7 +122,17 @@ namespace Unseen.Core
         /// or in the hand. The owner gets the exact state, with its draw progress, from the self
         /// block, because their own blade is the one whose timing they are reading.
         /// </summary>
-        BladeDrawn = 1 << 13
+        BladeDrawn = 1 << 13,
+
+        /// <summary>
+        /// Head under water. Appended, never renumbered: this goes over the wire.
+        ///
+        /// A bit rather than something the client works out for itself. A proxy has a position and
+        /// no idea what is around it, and asking the client "is this point inside water" would be
+        /// asking it to decide something the server already knows - and to get the same answer, on
+        /// geometry it generated separately.
+        /// </summary>
+        Submerged = 1 << 14
     }
 
     public enum SoundKind : byte
@@ -158,7 +168,18 @@ namespace Unseen.Core
         ShurikenWhistle = 17,
 
         /// <summary>Steel arriving, in a body or in a wall.</summary>
-        ShurikenHit = 18
+        ShurikenHit = 18,
+
+        /// <summary>
+        /// A body crossing the waterline, in either direction. Appended, never renumbered: this
+        /// goes on the wire as a byte.
+        ///
+        /// One kind for both directions rather than two. Entering and leaving make the same noise
+        /// and differ only in how much of it, which the loudness already carries - and a sound that
+        /// announced which way somebody was going would be telling the room more than the room
+        /// could actually hear.
+        /// </summary>
+        Splash = 19
     }
 
     public enum DamageKind : byte

@@ -69,7 +69,13 @@ namespace Unseen.EditorTools
                 Entry(SoundKind.AnimalScatter, 0.7f, 0.16f, 28f, Series("animal_scatter_", 3)),
                 Entry(SoundKind.Choking, 0.95f, 0.1f, 32f, Series("choking_", 3)),
                 Entry(SoundKind.ShurikenWhistle, 0.6f, 0.18f, 26f, Series("shuriken_whistle_", 3)),
-                Entry(SoundKind.ShurikenHit, 0.95f, 0.12f, 26f, Series("shuriken_hit_", 3))
+                Entry(SoundKind.ShurikenHit, 0.95f, 0.12f, 26f, Series("shuriken_hit_", 3)),
+
+                // Four variants rather than three, and more pitch spread than most. This is the
+                // sound most likely to repeat in quick succession - a river runs through the town
+                // and a chase crosses it more than once - and a splash that is audibly the same
+                // clip every time stops reading as water within a minute.
+                Entry(SoundKind.Splash, 0.9f, 0.18f, 30f, Series("splash_", 4))
             };
 
             entries.RemoveAll(e => e.Clips == null || e.Clips.Length == 0);

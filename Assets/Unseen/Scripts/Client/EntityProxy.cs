@@ -50,6 +50,12 @@ namespace Unseen.Client
             if (_visual == null) _visual = GetComponentInChildren<Entities.AgentVisual>();
             if (_visual != null) _visual.ProxyFlags = flags;
 
+            // Bubbles for a body under the water. From the replicated flag rather than from asking
+            // the water where this proxy is: the server has already decided, and a client deciding
+            // it again on separately generated geometry is two answers waiting to disagree.
+            if (_bubbles == null) _bubbles = gameObject.AddComponent<SubmergedBubbles>();
+            _bubbles.Under = ((Core.AgentFlags)flags & Core.AgentFlags.Submerged) != 0;
+
             if (kind != Kind)
             {
                 Kind = kind;
@@ -60,6 +66,8 @@ namespace Unseen.Client
             transform.position = position;
             transform.rotation = Quaternion.Euler(0f, yaw, 0f);
         }
+
+        private SubmergedBubbles _bubbles;
 
         private void ApplyAppearance()
         {
