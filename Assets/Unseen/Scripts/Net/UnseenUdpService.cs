@@ -31,6 +31,30 @@ namespace Unseen.Net
         /// </summary>
         public const float HeartbeatIntervalSeconds = 1f;
 
+        /// <summary>The token issued to each live connection, so a returning peer can be matched.</summary>
+        private readonly Dictionary<int, ulong> _tokenById = new Dictionary<int, ulong>();
+
+        /// <summary>A name being kept for a player who might come back, and until when.</summary>
+        private struct Reservation
+        {
+            public string Name;
+            public float ExpiresAt;
+        }
+
+        private readonly Dictionary<ulong, Reservation> _reserved = new Dictionary<ulong, Reservation>();
+        private readonly List<ulong> _expiredTokens = new List<ulong>();
+
+        /// <summary>
+        /// How long a dropped player's name is kept for them.
+        ///
+        /// Must outlast any grace period the game keeps their body for, or the body is still
+        /// standing when the name it is held against has already been given to somebody else.
+        /// PlayerSeatSystem holds a body for sixty seconds; this is deliberately longer, because
+        /// the cost of being generous here is one name unavailable for half a minute and the cost
+        /// of being mean is a stranger walking into somebody else's ninja.
+        /// </summary>
+        public const float NameReservationSeconds = 90f;
+
         private float _nextHeartbeatAt;
         private readonly List<int> _connections = new List<int>();
 
@@ -40,13 +64,24 @@ namespace Unseen.Net
         private readonly NetEndpoint _serverEndpoint;
         private readonly string _requestedName;
 
+        /// <summary>
+        /// What this client presents to say it is the same player as before, or zero for somebody
+        /// arriving for the first time.
+        ///
+        /// Read back after a connection as <see cref="SessionToken"/> and handed to the next
+        /// <see cref="Join"/>. Keeping it is the caller's job, because how long a player's identity
+        /// should outlive a process is a question about the game rather than about a socket.
+        /// </summary>
+        private readonly ulong _presentedToken;
+
         private float _now;
         private float _nextConnectAttemptAt;
         private int _nextConnectionId = 1;
 
         private UnseenUdpService(NetRole role, int port, NetEndpoint server, string requestedName,
-            NetworkConditions? conditions)
+            NetworkConditions? conditions, ulong presentedToken)
         {
+            _presentedToken = presentedToken;
             Role = role;
 
             // Nullable rather than a perfect-link check, because "no simulation" and "a simulated
@@ -74,14 +109,14 @@ namespace Unseen.Net
         /// </summary>
         public static UnseenUdpService Host(int port, NetworkConditions? conditions = null)
         {
-            return new UnseenUdpService(NetRole.Server, port, default, null, conditions);
+            return new UnseenUdpService(NetRole.Server, port, default, null, conditions, 0ul);
         }
 
         /// <summary>Opens a client and begins asking to join the given server.</summary>
         public static UnseenUdpService Join(NetEndpoint server, string requestedName,
-            NetworkConditions? conditions = null)
+            NetworkConditions? conditions = null, ulong token = 0ul)
         {
-            return new UnseenUdpService(NetRole.Client, 0, server, requestedName, conditions);
+            return new UnseenUdpService(NetRole.Client, 0, server, requestedName, conditions, token);
         }
 
         /// <summary>
@@ -92,6 +127,15 @@ namespace Unseen.Net
         /// establishes anything for the breakage to matter to. Setting it on a service opened
         /// without conditions does nothing - there is no simulation in the path to configure.
         /// </summary>
+        /// <summary>
+        /// Datagrams the simulated link threw away, or zero when there is no simulation.
+        ///
+        /// So a test that believes it ran under loss can check that loss actually happened. A
+        /// suite full of "survives 50% loss" assertions is worth nothing if the weather quietly
+        /// stopped working, and that failure is invisible from the assertions themselves.
+        /// </summary>
+        public int DroppedByLink => _simulated != null ? _simulated.Dropped : 0;
+
         public NetworkConditions Conditions
         {
             get => _simulated != null ? _simulated.Conditions : default;
@@ -117,12 +161,63 @@ namespace Unseen.Net
 
         public int LocalConnectionId { get; private set; } = -1;
 
+        /// <summary>
+        /// What this client should present if it comes back. Zero until the server has admitted it.
+        ///
+        /// A name is not an identity - anybody can ask to be called Mark - and the game holds an
+        /// abandoned body against a name for a minute after its player drops. This is the thing
+        /// only the real player has.
+        /// </summary>
+        public ulong SessionToken { get; private set; }
+
         public IReadOnlyList<int> Connections => _connections;
 
         public event Action<int> ClientConnected;
         public event Action<int> ClientDisconnected;
         public event Action<int, byte[], int> ServerReceived;
         public event Action<byte[], int> ClientReceived;
+
+        /// <summary>
+        /// Datagrams the path refused to carry - too large to send in one piece.
+        ///
+        /// Counted because the alternative is what this transport did until now: `UdpSocket.Send`
+        /// has reported oversize refusals since it was written, and every one of the dozen call
+        /// sites here threw the answer away. The guard that exists to stop a snapshot being
+        /// fragmented was instead making it disappear in silence, which is the same failure it was
+        /// added to prevent - a player becoming invisible, and nothing anywhere saying why.
+        ///
+        /// Note the asymmetry with simulated loss, which is deliberate. A dropped datagram is
+        /// reported as sent because that is what a real socket does: it hands the bytes to the
+        /// operating system and says yes, and nothing ever comes back to say they died three hops
+        /// later. A refusal is different in kind - it is this machine declining, before anything
+        /// left it, for a reason it knows. That is knowledge a real sender genuinely has, so
+        /// throwing it away is a choice rather than a limitation.
+        /// </summary>
+        public int RefusedSends { get; private set; }
+
+        /// <summary>
+        /// Every datagram this service sends goes through here.
+        ///
+        /// One choke point rather than a dozen call sites each remembering to check a bool. The
+        /// last arrangement relied on each of them doing it and all twelve of them did not.
+        /// </summary>
+        private bool Emit(NetEndpoint to, byte[] payload, int length)
+        {
+            if (_socket.Send(to, payload, length)) return true;
+
+            RefusedSends++;
+
+            // Logged once. A refusal repeats every tick that produces an oversize snapshot, and a
+            // line per tick per player buries the log it was meant to write to.
+            if (RefusedSends == 1)
+            {
+                UnityEngine.Debug.LogError(
+                    $"[Unseen] a {length}-byte datagram was refused: the path carries " +
+                    $"{UdpSocket.MaxDatagramBytes}. It has not been sent, and it will not arrive.");
+            }
+
+            return false;
+        }
 
         /// <summary>The name the server settled on for a connection.</summary>
         public string NameOf(int connectionId)
@@ -155,7 +250,7 @@ namespace Unseen.Net
             _scratch.Reset();
             HandshakePackets.WritePayload(_scratch, payload, length,
                 NextSequence(connectionId), inbound.Latest, inbound.AckBits);
-            _socket.Send(peer, _scratch.Buffer, _scratch.Length);
+            Emit(peer, _scratch.Buffer, _scratch.Length);
         }
 
         public void SendToServer(byte[] payload, int length, bool reliable)
@@ -172,7 +267,7 @@ namespace Unseen.Net
             _scratch.Reset();
             HandshakePackets.WritePayload(_scratch, payload, length,
                 NextSequence(ServerConnectionId), _inbound.Latest, _inbound.AckBits);
-            _socket.Send(_serverEndpoint, _scratch.Buffer, _scratch.Length);
+            Emit(_serverEndpoint, _scratch.Buffer, _scratch.Length);
         }
 
         /// <summary>
@@ -245,7 +340,7 @@ namespace Unseen.Net
                 _scratch.Reset();
                 HandshakePackets.WriteReliablePayload(_scratch, due[i].Payload, due[i].Payload.Length,
                     NextSequence(connectionId), inbound.Latest, inbound.AckBits, due[i].Id);
-                _socket.Send(peer, _scratch.Buffer, _scratch.Length);
+                Emit(peer, _scratch.Buffer, _scratch.Length);
             }
         }
 
@@ -339,7 +434,7 @@ namespace Unseen.Net
 
                 _scratch.Reset();
                 HandshakePackets.WritePing(_scratch, _now);
-                _socket.Send(peer, _scratch.Buffer, _scratch.Length);
+                Emit(peer, _scratch.Buffer, _scratch.Length);
             }
         }
 
@@ -351,7 +446,7 @@ namespace Unseen.Net
 
             _scratch.Reset();
             HandshakePackets.WriteConnectRequest(_scratch);
-            _socket.Send(_serverEndpoint, _scratch.Buffer, _scratch.Length);
+            Emit(_serverEndpoint, _scratch.Buffer, _scratch.Length);
         }
 
         private void Handle(byte[] payload, NetEndpoint from)
@@ -412,7 +507,7 @@ namespace Unseen.Net
 
             _scratch.Reset();
             HandshakePackets.WriteChallenge(_scratch, _gate.Challenge(from, _now));
-            _socket.Send(from, _scratch.Buffer, _scratch.Length);
+            Emit(from, _scratch.Buffer, _scratch.Length);
         }
 
         private void HandleChallenge()
@@ -420,8 +515,9 @@ namespace Unseen.Net
             ulong cookie = HandshakePackets.ReadCookie(_reader);
 
             _scratch.Reset();
-            HandshakePackets.WriteChallengeResponse(_scratch, cookie, _requestedName);
-            _socket.Send(_serverEndpoint, _scratch.Buffer, _scratch.Length);
+            HandshakePackets.WriteChallengeResponse(_scratch, cookie, _requestedName,
+                SessionToken != 0ul ? SessionToken : _presentedToken);
+            Emit(_serverEndpoint, _scratch.Buffer, _scratch.Length);
         }
 
         private void HandlePing()
@@ -432,7 +528,7 @@ namespace Unseen.Net
 
             _scratch.Reset();
             HandshakePackets.WritePong(_scratch, theirClock);
-            _socket.Send(_serverEndpoint, _scratch.Buffer, _scratch.Length);
+            Emit(_serverEndpoint, _scratch.Buffer, _scratch.Length);
         }
 
         private void HandlePong(NetEndpoint from)
@@ -461,6 +557,7 @@ namespace Unseen.Net
         {
             int id = _reader.ReadInt();
             string granted = _reader.ReadString();
+            ulong token = _reader.ReadULong();
 
             // Idempotent: the server re-sends its acceptance whenever a response arrives again, so a
             // client will often see this more than once and must not announce itself twice.
@@ -468,6 +565,7 @@ namespace Unseen.Net
 
             LocalConnectionId = id;
             _nameById[id] = granted;
+            SessionToken = token;
             IsConnected = true;
 
             ClientConnected?.Invoke(id);
@@ -477,6 +575,7 @@ namespace Unseen.Net
         {
             ulong cookie = HandshakePackets.ReadCookie(_reader);
             string requested = _reader.ReadString();
+            ulong presented = _reader.ReadULong();
 
             if (!_gate.Accept(from, cookie, _now)) return;
 
@@ -496,18 +595,50 @@ namespace Unseen.Net
 
             _idByPeer[from] = id;
             _peerById[id] = from;
-            _nameById[id] = _roster.Claim(requested);
             _connections.Add(id);
+
+            // A token that matches a name still being kept is the player coming back, and they get
+            // their name rather than a fresh claim on it - which would hand them "Mark-2" while
+            // their own body still stands in the street labelled "Mark".
+            //
+            // Anything else is somebody new, whatever they have asked to be called. This is the
+            // whole difference between an identity and a request: a stranger typing the right name
+            // during the window gets a suffix, because the name is not available to be claimed.
+            if (presented != 0ul && _reserved.TryGetValue(presented, out Reservation held) &&
+                _now < held.ExpiresAt)
+            {
+                _reserved.Remove(presented);
+                _nameById[id] = held.Name;
+                _tokenById[id] = presented;
+            }
+            else
+            {
+                _nameById[id] = _roster.Claim(requested);
+                _tokenById[id] = NewSessionToken();
+            }
 
             AcknowledgeAdmission(from, id);
             ClientConnected?.Invoke(id);
         }
 
+        /// <summary>
+        /// A value a client could not have guessed, and could not have been given by anything it
+        /// typed. Derived from a fresh GUID rather than a counter or a hash of the name.
+        /// </summary>
+        private static ulong NewSessionToken()
+        {
+            Guid guid = Guid.NewGuid();
+            byte[] bytes = guid.ToByteArray();
+            return BitConverter.ToUInt64(bytes, 0) ^ BitConverter.ToUInt64(bytes, 8);
+        }
+
         private void AcknowledgeAdmission(NetEndpoint peer, int connectionId)
         {
+            _tokenById.TryGetValue(connectionId, out ulong token);
+
             _scratch.Reset();
-            HandshakePackets.WriteConnectAccepted(_scratch, connectionId, _nameById[connectionId]);
-            _socket.Send(peer, _scratch.Buffer, _scratch.Length);
+            HandshakePackets.WriteConnectAccepted(_scratch, connectionId, _nameById[connectionId], token);
+            Emit(peer, _scratch.Buffer, _scratch.Length);
         }
 
         /// <summary>
@@ -529,7 +660,7 @@ namespace Unseen.Net
 
             _scratch.Reset();
             HandshakePackets.WriteReliableAck(_scratch, messageId);
-            _socket.Send(from, _scratch.Buffer, _scratch.Length);
+            Emit(from, _scratch.Buffer, _scratch.Length);
 
             if (!SeenReliableFor(connectionId).Accept(messageId)) return;
 
@@ -610,8 +741,27 @@ namespace Unseen.Net
             ClientReceived?.Invoke(body, length);
         }
 
+        /// <summary>Gives up names nobody came back for.</summary>
+        private void ExpireReservations()
+        {
+            if (_reserved.Count == 0) return;
+
+            _expiredTokens.Clear();
+
+            foreach (KeyValuePair<ulong, Reservation> kv in _reserved)
+                if (_now >= kv.Value.ExpiresAt) _expiredTokens.Add(kv.Key);
+
+            for (int i = 0; i < _expiredTokens.Count; i++)
+            {
+                _roster.Release(_reserved[_expiredTokens[i]].Name);
+                _reserved.Remove(_expiredTokens[i]);
+            }
+        }
+
         private void ExpireSilentPeers()
         {
+            ExpireReservations();
+
             IReadOnlyList<NetEndpoint> gone = _gate.Expire(_now);
             if (gone.Count == 0) return;
 
@@ -624,13 +774,34 @@ namespace Unseen.Net
                 _peerById.Remove(id);
                 _connections.Remove(id);
 
-                // The name goes back to the pool, or a server that has been up all evening starts
-                // handing out mark-2 to the only person called Mark.
+                // The name is kept for a while rather than released outright.
+                //
+                // Releasing it immediately was the hole under the game's grace period: a body is
+                // held for a minute against the name its player was using, and the name was back in
+                // the pool the instant they dropped. Anybody could then join, ask to be called
+                // Mark, and be handed Mark's ninja.
+                //
+                // Still released in the end, or a server up all evening starts handing out mark-2
+                // to the only person called Mark.
                 if (_nameById.TryGetValue(id, out string name))
                 {
-                    _roster.Release(name);
+                    if (_tokenById.TryGetValue(id, out ulong token) && token != 0ul)
+                    {
+                        _reserved[token] = new Reservation
+                        {
+                            Name = name,
+                            ExpiresAt = _now + NameReservationSeconds
+                        };
+                    }
+                    else
+                    {
+                        _roster.Release(name);
+                    }
+
                     _nameById.Remove(id);
                 }
+
+                _tokenById.Remove(id);
 
                 ClientDisconnected?.Invoke(id);
             }

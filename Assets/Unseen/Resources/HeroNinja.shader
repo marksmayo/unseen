@@ -37,6 +37,8 @@ Shader "Unseen/HeroNinja"
             data.bakedGI=SampleSH(n);data.normalizedScreenSpaceUV=GetNormalizedScreenSpaceUV(i.positionCS);data.shadowMask=half4(1,1,1,1);
             SurfaceData surface=(SurfaceData)0;
             surface.albedo=i.color.rgb*_BaseColor.rgb*lerp(half3(1,1,1),_AccentTint.rgb,i.surface.y)*(1+weave*.035*cloth);
+            // Lift very dark cloth reflectance so its form survives the dusk lighting.
+            surface.albedo*=1+cloth*2.3+leather*.65;
             surface.metallic=metal*.55;surface.specular=half3(.04,.04,.04);
             surface.smoothness=.17*cloth+.38*leather+.58*metal+.40*step(2.5,i.surface.x)+.23*eye;
             surface.normalTS=half3(0,0,1);surface.occlusion=1;surface.alpha=1;

@@ -1,4 +1,6 @@
 using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
 using Unseen.Net;
 
 namespace Unseen.Tests
@@ -158,6 +160,12 @@ namespace Unseen.Tests
                 // eliminated twice or a zone stage advanced twice: the repair doing more damage
                 // than the loss it was repairing.
                 Assert.AreEqual(1, received, "exactly once, no matter how many copies were sent");
+
+                // The assertion that keeps the others honest. Everything above would pass just as
+                // cheerfully on a link that quietly delivered everything, and nothing in the
+                // assertions themselves could tell the difference.
+                Assert.Greater(server.DroppedByLink + client.DroppedByLink, 0,
+                    "and the link really was throwing packets away while it did it");
             }
         }
 
@@ -275,6 +283,93 @@ namespace Unseen.Tests
                 }
 
                 Assert.AreEqual(1, received, "every datagram was sent twice; one of each is a packet");
+            }
+        }
+
+        [Test]
+        public void APacketTooBigToSendIsCountedRatherThanVanishing()
+        {
+            using (var server = UnseenUdpService.Host(0))
+            using (var client = UnseenUdpService.Join(server.LocalEndpoint, "Mark"))
+            {
+                int id = -1;
+                server.ClientConnected += c => id = c;
+                Assert.IsTrue(PumpUntil(server, client, () => id >= 0), "connected");
+
+                int received = 0;
+                client.ClientReceived += (payload, length) => received++;
+
+                // UdpSocket.Send has refused oversize datagrams since it was written, and has
+                // returned that refusal to a caller that throws it away - every call site in the
+                // transport discards the result. So the guard that exists to stop a snapshot being
+                // fragmented instead makes it disappear without trace, which is the failure it was
+                // added to prevent wearing a different hat.
+                var huge = new byte[UdpSocket.MaxDatagramBytes + 1];
+
+                // Expected, because it is meant to be loud. A refusal that only increments a
+                // counter is still a snapshot vanishing in silence as far as anybody reading a log
+                // is concerned.
+                LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("refused"));
+
+                server.SendToClient(id, huge, huge.Length, reliable: false);
+
+                Assert.AreEqual(1, server.RefusedSends,
+                    "a datagram the path cannot carry must be counted, not swallowed");
+
+                for (int i = 0; i < 60; i++)
+                {
+                    server.Poll(1f / 60f);
+                    client.Poll(1f / 60f);
+                }
+
+                Assert.AreEqual(0, received, "and it genuinely does not arrive");
+            }
+        }
+
+        [Test]
+        public void AReturningPlayerGetsTheirNameBackAndAStrangerDoesNot()
+        {
+            // The hole under the grace period. A body is held for a minute against the name its
+            // player was using, because a name was the only identity this game had - and the name
+            // is handed straight back to the pool the moment the player drops. So for that whole
+            // minute anybody could join, ask to be called Mark, and be given Mark's body.
+            //
+            // Reserving the name instead does not fix it: if the roster still holds "Mark" then
+            // the real Mark is suffixed on return too, and reclaiming by name stops working at all.
+            // What is needed is not a reservation but an identity, so the server can tell the
+            // difference between the player coming back and somebody claiming to be them.
+            using (var server = UnseenUdpService.Host(0))
+            {
+                ulong token;
+
+                using (var mark = UnseenUdpService.Join(server.LocalEndpoint, "Mark"))
+                {
+                    Assert.IsTrue(PumpUntil(server, mark, () => mark.IsConnected), "Mark joins");
+                    Assert.AreEqual("Mark", mark.NameOf(mark.LocalConnectionId));
+
+                    token = mark.SessionToken;
+                    Assert.AreNotEqual(0ul, token, "and is given something to come back with");
+                }
+
+                // Mark's socket is gone, exactly as if the process had died. The server needs a
+                // while to notice, which is the window this is all about.
+                for (int i = 0; i < 40 && server.Connections.Count > 0; i++) server.Poll(1f);
+
+                using (var stranger = UnseenUdpService.Join(server.LocalEndpoint, "Mark"))
+                {
+                    Assert.IsTrue(PumpUntil(server, stranger, () => stranger.IsConnected), "joins");
+
+                    Assert.AreNotEqual("Mark", stranger.NameOf(stranger.LocalConnectionId),
+                        "asking to be called Mark is not the same as being Mark");
+                }
+
+                using (var back = UnseenUdpService.Join(server.LocalEndpoint, "Mark", token: token))
+                {
+                    Assert.IsTrue(PumpUntil(server, back, () => back.IsConnected), "Mark returns");
+
+                    Assert.AreEqual("Mark", back.NameOf(back.LocalConnectionId),
+                        "the player holding the token is the one who gets the name");
+                }
             }
         }
 

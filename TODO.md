@@ -199,12 +199,22 @@ The primitives are built and tested. Most of this is wiring them to the wire.
       disconnect produced a bot and stopped making sense the moment it did not — a class for
       steering AI had become the one deciding whether a human was in the match. Uses the previously
       unused `SimOrder.Backfill`.
-- [ ] **A reclaimed body is identified by name, which is weak.** `PlayerSeatSystem` holds an
-      abandoned body against the display name the server granted, because that is the only identity
-      the game has. The name is released back to the roster on disconnect, so during the grace
-      minute somebody could in principle take it and claim the body. Real identity is Steam
-      authentication, in Phase 2; until then, either keep the name reserved for the window or accept
-      it. Not exploitable without knowing a specific player's name and their moment of dropping.
+- [x] **A reclaimed body is identified by a session token, not by a name.** *(Done 2026-09-18.)*
+      The hole: a body is held for a minute against the display name its player was using, and the
+      transport handed that name straight back to the pool the instant they dropped — so anybody
+      could join during the window, ask to be called Mark, and be given Mark's ninja.
+      Reserving the name does **not** fix it, which is worth recording: if the roster still holds
+      "Mark" then the real Mark is suffixed on return too, and reclaiming by name stops working
+      altogether. The problem is not a missing reservation, it is a missing identity.
+      So the server issues a random token with the acceptance, the client presents it on the way
+      back, and a name is kept for 90 s against that token rather than released. A stranger typing
+      the right name during the window gets a suffix, because the name is not available to claim.
+      The reservation deliberately outlasts the game's 60 s body grace: the cost of being generous
+      is one name unavailable for half a minute, and the cost of being mean is a stranger walking
+      into somebody else's ninja.
+      Not a substitute for Steam authentication, which is still Phase 2. A token is unguessable but
+      it is not proof of who you are — it proves you are whoever held this session, which is exactly
+      and only what reclaiming a body needs.
 - [x] **Packet size cap.** *(Done 2026-09-18.)* `UdpSocket.Send` refuses anything over
       `MaxDatagramBytes` (1200) and returns whether it went, rather than letting IP fragment it.
       Oversize does not fail, it fragments - and one lost fragment takes the whole datagram, so big
@@ -241,6 +251,17 @@ The primitives are built and tested. Most of this is wiring them to the wire.
       directions, the sequence window never hands up a stale payload under reordering, and a
       duplicated datagram is handed up once. All three were argued for in comments and unverified
       until now.
+- [x] **Oversize datagrams are counted rather than swallowed.** *(Done 2026-09-18.)* `UdpSocket.Send`
+      has refused anything over 1200 bytes since it was written and returned that refusal to a
+      caller that discarded it — all twelve call sites in the transport ignored the result. The
+      guard that exists to stop a snapshot being fragmented was instead making it vanish without
+      trace, which is the same failure it was added to prevent wearing a different hat. Every send
+      now goes through one checked path, `RefusedSends` counts them, and the first is logged loudly.
+      Note the deliberate asymmetry: a datagram lost by the *simulated link* is still reported as
+      sent, because that is what a real socket does — it hands the bytes over and says yes, and
+      nothing comes back to say they died three hops later. Telling the sender would give the
+      protocol information no network offers, and the resend timer would never fire in a test. The
+      information is not lost, it lives on the link as `Dropped`/`Offered` where it belongs.
 - [ ] **Reconciliation has not been tested under loss.** The simulator exists now, but exercising
       prediction needs a client and a server in one test with a real simulation between them, which
       the EditMode suite cannot build. It is the same gap as `EncodeSnapshot` having no test.

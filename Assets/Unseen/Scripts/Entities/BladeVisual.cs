@@ -31,6 +31,8 @@ namespace Unseen.Entities
         private Transform _blade;
         private Transform _hand;
         private Transform _back;
+        private Transform _hips;
+        private bool _hero;
 
         private BladeState _state = BladeState.Sheathed;
         private float _inHand;
@@ -42,6 +44,8 @@ namespace Unseen.Entities
             if (mesh == null) return;
 
             _root = root;
+            _hero = HeroNinjaAppearance.IsHero(root.GetComponent<AgentVisual>());
+            _hips = _hero ? Bone(root,"Hips") : null;
             _hand = Bone(root, "RightHand");
 
             // Highest point on the spine first: a sword worn across the back sits by the shoulders,
@@ -160,6 +164,15 @@ namespace Unseen.Entities
         /// </summary>
         private Vector3 BackPose(out Quaternion rotation)
         {
+            if (_hero && _hips != null)
+            {
+                Vector3 up=(_back.position-_hips.position).normalized;
+                Vector3 right=Vector3.ProjectOnPlane(_root.right,up).normalized;
+                Vector3 forward=Vector3.Cross(right,up).normalized;
+                Vector3 direction=(-up*.87f-right*.48f).normalized;
+                rotation=Aim(direction,forward);
+                return _back.position+right*.11f+up*.13f-forward*.14f;
+            }
             // Grip sits high on the right, behind the body; the blade travels down and across.
             Vector3 along = (-_root.up * 0.82f - _root.right * 0.48f - _root.forward * 0.18f).normalized;
             rotation = Aim(along, _root.forward);

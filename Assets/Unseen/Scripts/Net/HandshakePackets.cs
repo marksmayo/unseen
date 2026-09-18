@@ -139,12 +139,21 @@ namespace Unseen.Net
         /// only learns their name afterwards has to invent a placeholder and then visibly rename
         /// them a moment later, for everyone, at the start of every match.
         /// </summary>
-        public static void WriteChallengeResponse(NetWriter writer, ulong cookie, string requestedName)
+        public static void WriteChallengeResponse(NetWriter writer, ulong cookie,
+            string requestedName, ulong sessionToken)
         {
             writer.WriteInt(ProtocolId);
             writer.WriteByte((byte)HandshakeMessage.ChallengeResponse);
             writer.WriteULong(cookie);
             writer.WriteString(requestedName);
+
+            // Who this player was last time, or zero for somebody new.
+            //
+            // Sent here rather than in the request for the same reason the name is: the request is
+            // unauthenticated and anybody can send one claiming anything, so the less that is read
+            // out of it before the address is proven, the better. A token read from an unproven
+            // packet would be a way to probe for valid ones from a forged address.
+            writer.WriteULong(sessionToken);
         }
 
         /// <summary>
@@ -155,12 +164,21 @@ namespace Unseen.Net
         /// here. A client that displayed the name it requested would show its player one thing while
         /// everybody else saw another.
         /// </summary>
-        public static void WriteConnectAccepted(NetWriter writer, int connectionId, string grantedName)
+        public static void WriteConnectAccepted(NetWriter writer, int connectionId,
+            string grantedName, ulong sessionToken)
         {
             writer.WriteInt(ProtocolId);
             writer.WriteByte((byte)HandshakeMessage.ConnectAccepted);
             writer.WriteInt(connectionId);
             writer.WriteString(grantedName);
+
+            // What to present when coming back.
+            //
+            // A name is not an identity - anybody can ask to be called Mark - and the game holds an
+            // abandoned body against a name for a minute after its player drops. Without something
+            // only the real player has, that minute is an open invitation. This is that something:
+            // random, per session, and never guessable from anything the player types.
+            writer.WriteULong(sessionToken);
         }
 
         /// <summary>

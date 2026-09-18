@@ -55,6 +55,22 @@ namespace Unseen.Net
 
         public NetEndpoint LocalEndpoint => _inner.LocalEndpoint;
 
+        /// <summary>Datagrams this link has thrown away.</summary>
+        public int Dropped { get; private set; }
+
+        /// <summary>Datagrams it has sent a second copy of.</summary>
+        public int Duplicated { get; private set; }
+
+        /// <summary>Datagrams sent and not yet delivered, because the link is still carrying them.</summary>
+        public int InFlightCount => _inFlight.Count;
+
+        /// <summary>
+        /// Datagrams handed over, whatever became of them. With <see cref="Dropped"/> this is what
+        /// makes the simulation auditable: a test that believes it ran under loss can check that
+        /// loss actually happened, rather than passing because nothing was ever dropped.
+        /// </summary>
+        public int Offered { get; private set; }
+
         public bool Send(NetEndpoint to, byte[] payload, int length)
         {
             // The size rule belongs to the path, not to the simulation, so it is still enforced and
@@ -64,13 +80,24 @@ namespace Unseen.Net
 
             NetworkConditions conditions = Conditions;
 
-            // Dropped, and reported as sent.
-            //
-            // A real socket hands the datagram to the operating system and says yes; nothing ever
-            // tells the sender it was lost three hops later. Returning false here would give the
-            // caller information no real network offers, and then the protocol above would be
-            // tested against a kindness it will never actually receive.
-            if (_random.NextDouble() < conditions.Loss) return true;
+            Offered++;
+
+            if (_random.NextDouble() < conditions.Loss)
+            {
+                // Counted here rather than reported to the caller.
+                //
+                // The return value stays faithful to what a socket knows: it hands the bytes to the
+                // operating system and says yes, and nothing ever comes back to say they died three
+                // hops later. Returning false would give the protocol above information no network
+                // offers, and then every mechanism built on top would be tested against a kindness
+                // it cannot rely on in production - the resend timer would never fire, because the
+                // sender would always know.
+                //
+                // But the information is not lost either. It belongs here, as something observable
+                // about the link, rather than as a falsehood in an answer the sender is given.
+                Dropped++;
+                return true;
+            }
 
             var kept = new byte[length];
             Buffer.BlockCopy(payload, 0, kept, 0, length);
@@ -80,7 +107,11 @@ namespace Unseen.Net
             // A duplicate takes its own trip and gets its own delay, so it does not necessarily
             // arrive immediately after the original - which is the case worth simulating, because a
             // copy that arrives much later is the one a naive protocol acts on twice.
-            if (_random.NextDouble() < conditions.Duplication) Hold(to, kept, conditions);
+            if (_random.NextDouble() < conditions.Duplication)
+            {
+                Duplicated++;
+                Hold(to, kept, conditions);
+            }
 
             return true;
         }

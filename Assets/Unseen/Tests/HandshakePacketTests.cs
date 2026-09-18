@@ -69,7 +69,7 @@ namespace Unseen.Tests
             const ulong cookie = 0x0123456789ABCDEFUL;
 
             var writer = new NetWriter();
-            HandshakePackets.WriteChallengeResponse(writer, cookie, "Mark");
+            HandshakePackets.WriteChallengeResponse(writer, cookie, "Mark", 0ul);
 
             var reader = new NetReader();
             reader.Attach(writer.Buffer, writer.Length);
@@ -81,6 +81,10 @@ namespace Unseen.Tests
             Assert.AreEqual(HandshakeMessage.ChallengeResponse, HandshakePackets.ReadMessage(reader));
             Assert.AreEqual(cookie, HandshakePackets.ReadCookie(reader));
             Assert.AreEqual("Mark", reader.ReadString());
+
+            // Zero for somebody arriving new. A returning player presents the token they were
+            // given last time, which is how the server tells "I am Mark" from "call me Mark".
+            Assert.AreEqual(0ul, reader.ReadULong());
         }
 
         [Test]

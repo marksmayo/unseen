@@ -90,7 +90,7 @@ namespace Unseen.Tests
 
                 var response = new NetWriter();
                 HandshakePackets.WriteChallengeResponse(
-                    response, HandshakePackets.ReadCookie(readChallenge), "Mark");
+                    response, HandshakePackets.ReadCookie(readChallenge), "Mark", 0ul);
                 client.Send(server.LocalEndpoint, response.Buffer, response.Length);
 
                 // 4. And only now is anybody admitted.
