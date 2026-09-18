@@ -119,7 +119,14 @@ namespace Unseen.BattleRoyale
             if (_ctx.Config.Match.SkipInfiltration) return requested;
 
             MatchDirector match = _ctx.Match;
-            if (match != null && match.Phase != MatchPhase.Lobby) return requested;
+
+            // No match director at all means this process is not running the match - a client,
+            // which was told this position by the server and has no business second-guessing it.
+            // Lifting it to the drop altitude would put the body a hundred metres above where the
+            // server says it is, and the first snapshot would drag it back down through the roofs.
+            if (match == null) return requested;
+
+            if (match.Phase != MatchPhase.Lobby) return requested;
 
             return new float3(requested.x, _ctx.Config.Match.GliderDeployAltitude, requested.z);
         }

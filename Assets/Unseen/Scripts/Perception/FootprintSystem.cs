@@ -19,7 +19,12 @@ namespace Unseen.Perception
     /// </summary>
     public sealed class FootprintSystem : SimSystem
     {
-        public override int Order => SimOrder.Mist - 15;
+        // One past DrowningSystem rather than level with it. They do not interact, but the sort
+        // that orders systems is not a stable one, so two systems sharing a number sit in whichever
+        // order the sort happened to leave them - and that can change because something elsewhere
+        // in the list moved. A tick order that depends on an unrelated edit is a trap, not a
+        // design.
+        public override int Order => SimOrder.Mist - 14;
         public override SimRate Rate => SimRate.Base;
 
         /// <summary>Where each agent last left a mark, so prints are spaced by stride not by tick.</summary>

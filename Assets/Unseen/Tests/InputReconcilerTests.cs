@@ -1,5 +1,6 @@
 using NUnit.Framework;
 using Unity.Mathematics;
+using Unseen.Core;
 using Unseen.Net;
 
 namespace Unseen.Tests
@@ -26,7 +27,7 @@ namespace Unseen.Tests
         [Test]
         public void PredictionMovesImmediatelyWithoutWaitingForTheServer()
         {
-            var reconciler = new InputReconciler();
+            var reconciler = new InputReconciler<float3>();
 
             reconciler.Record(1, new float3(1f, 0f, 0f), 0.1f);
             float3 predicted = reconciler.Predict(float3.zero, Step);
@@ -38,7 +39,7 @@ namespace Unseen.Tests
         [Test]
         public void AcknowledgedInputsAreForgotten()
         {
-            var reconciler = new InputReconciler();
+            var reconciler = new InputReconciler<float3>();
 
             reconciler.Record(1, new float3(1f, 0f, 0f), 0.1f);
             reconciler.Record(2, new float3(1f, 0f, 0f), 0.1f);
@@ -56,7 +57,7 @@ namespace Unseen.Tests
         [Test]
         public void ReconcilingRewindsToTheServerAndReplaysWhatItHasNotSeen()
         {
-            var reconciler = new InputReconciler();
+            var reconciler = new InputReconciler<float3>();
 
             reconciler.Record(1, new float3(1f, 0f, 0f), 0.1f);
             reconciler.Record(2, new float3(1f, 0f, 0f), 0.1f);
@@ -75,7 +76,7 @@ namespace Unseen.Tests
         [Test]
         public void AServerCorrectionWins()
         {
-            var reconciler = new InputReconciler();
+            var reconciler = new InputReconciler<float3>();
 
             reconciler.Record(1, new float3(1f, 0f, 0f), 0.1f);
             reconciler.Record(2, new float3(1f, 0f, 0f), 0.1f);
@@ -92,7 +93,7 @@ namespace Unseen.Tests
         [Test]
         public void TheBacklogCannotGrowWithoutBound()
         {
-            var reconciler = new InputReconciler();
+            var reconciler = new InputReconciler<float3>();
 
             // A server that has gone quiet - a lag spike rather than a disconnect - acknowledges
             // nothing, and every input since is kept. Same shape as a connection nothing evicts: the
@@ -100,10 +101,50 @@ namespace Unseen.Tests
             // limit of its own. An input from four seconds ago will not be usefully reconciled
             // anyway.
             for (int i = 1; i <= 5000; i++)
-                reconciler.Record((ushort)i, new float3(1f, 0f, 0f), 1f / 60f);
+                reconciler.Record((uint)i, new float3(1f, 0f, 0f), 1f / 60f);
 
-            Assert.LessOrEqual(reconciler.PendingCount, InputReconciler.MaxPending,
+            Assert.LessOrEqual(reconciler.PendingCount, InputReconciler<float3>.MaxPending,
                 "the backlog must be bounded even when the server never answers");
+        }
+
+        [Test]
+        public void ReplayCarriesTheWholeInputAndNotJustItsDirection()
+        {
+            // Where a step lands depends on far more than a direction. Sprint changes the speed,
+            // crouch and prone change it again, jump leaves the ground entirely, and the move is
+            // relative to the yaw it was made at. A reconciler that remembers only a vector replays
+            // a walk where the player sprinted - so the replayed position is wrong, the next
+            // correction is larger, and the player is nudged every time the server speaks.
+            var reconciler = new InputReconciler<MoveIntent>();
+
+            reconciler.Record(1u, new MoveIntent { Move = new float2(0f, 1f), Sprint = true }, 0.1f);
+            reconciler.Record(2u, new MoveIntent { Move = new float2(0f, 1f), Sprint = false }, 0.1f);
+
+            // Stands in for the motor: sprinting covers twice the ground.
+            float3 Step(float3 from, MoveIntent intent, float dt) =>
+                from + new float3(0f, 0f, intent.Move.y) * (intent.Sprint ? 8f : 4f) * dt;
+
+            float3 predicted = reconciler.Predict(float3.zero, Step);
+
+            Assert.AreEqual(1.2f, predicted.z, 1e-4f, "one sprinting step and one walking one");
+        }
+
+        [Test]
+        public void AcknowledgementsKeepWorkingPastTheSixteenBitRange()
+        {
+            // Input sequences are 32-bit on the wire and in MoveIntent, and the snapshot
+            // acknowledgement is too. This class held them in sixteen bits, so every call site had
+            // to narrow on the way in and be relied upon to do it identically at both ends - the
+            // exact arrangement that produces a truncation bug nobody can reproduce, because it
+            // only appears after eighteen minutes of continuous play.
+            var reconciler = new InputReconciler<float3>();
+
+            reconciler.Record(70_000u, new float3(1f, 0f, 0f), 0.1f);
+            reconciler.Record(70_001u, new float3(1f, 0f, 0f), 0.1f);
+
+            reconciler.AcknowledgeThrough(70_000u);
+
+            Assert.AreEqual(1, reconciler.PendingCount, "one input the server has not seen");
         }
     }
 }

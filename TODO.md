@@ -132,8 +132,22 @@ The primitives are built and tested. Most of this is wiring them to the wire.
       it and draws a plausible, wrong world. That pair is what the new tests exercise.
       **`EncodeSnapshot` itself still has no test** - it needs a registered agent with its
       components awake, which an EditMode run cannot supply. The call site was verified by reading.
-- [ ] **Wire `InputReconciler` into the client rig.** Prediction is movement-only by decision;
-      stealth and the parry window stay server-authoritative. *(Partial)*
+- [x] **Wire `InputReconciler` into the client rig.** *(Done 2026-09-18.)* `LocalAgentDriver` owns
+      the local ninja on a pure client: moves it on the player's own input, and on each snapshot
+      rewinds to the server's position and replays whatever the server has not acknowledged.
+      Prediction is movement-only by decision — health, stealth, stance and the parry window come
+      off the wire, and predicting stealth in particular would be inventing the number the whole
+      game is played against.
+      The reconciler is now generic in the input and holds 32-bit sequences. It remembered a bare
+      direction, which cannot replay movement: sprint and stance change the speed, a jump leaves
+      the ground, and the move is relative to the yaw it was made at. It also held sequences in
+      sixteen bits while the wire and `MoveIntent` use thirty-two, so every call site had to narrow
+      identically at both ends — a truncation bug that would first appear after eighteen minutes of
+      play.
+      **Motor state is not rewound.** The replay restores position, not the motor's vertical
+      velocity, grounded flag or stamina, so a correction that lands mid-jump or mid-fall replays
+      against the wrong internal state. Correcting it needs a ring of motor snapshots keyed by
+      sequence. Not attempted; it matters most exactly where it is hardest to notice.
 - [x] **Reliable channel for must-arrive messages.** *(Done 2026-09-18.)* `ReliableChannel` holds a
       message until the far end confirms it, resending every 0.25s rather than every tick - a
       per-tick resend turns one unacknowledged message into sixty a second, hardest exactly when
@@ -142,9 +156,24 @@ The primitives are built and tested. Most of this is wiring them to the wire.
       is still in flight. Bounded at 64, because what clears the queue is an ack that may never come.
       **Not yet carried by the transport** - the channel exists and is tested; `UnseenUdpService`
       does not use it.
-- [ ] **Client stops running its own simulation.** `UnseenBootstrap.Update` steps `_sim` for every
-      mode, so a pure client runs its own `MatchDirector` and sixty-four bots. Needs a local agent
-      driven by the snapshot self block first, or the camera has nothing to follow.
+- [x] **Client stops running its own simulation.** *(Done 2026-09-18.)* `SimProfile` names what a
+      process is responsible for — owning the match, resolving perception, moving agents,
+      replicating — and the bootstrap registers systems against that rather than registering all of
+      them in every mode. A client now runs movement and nothing else: no `MatchDirector`, no
+      sixty-four bots, no interest management, no mist controller.
+      It was not only waste. A client that simulates its own world has no reason to believe the one
+      it is sent, and prediction had nothing to predict, because the local ninja was already moving
+      under local authority. The ninja on screen was not the one the server believed in; it merely
+      started in the same place.
+      Perception in particular is never a client's answer: working out locally what you are allowed
+      to see is the exact shape of a wallhack, and the whole anti-cheat posture is that the snapshot
+      contains only what the server proved you perceived.
+      **The pure-client path is still unverified end-to-end** — it needs two processes, which is the
+      "sixty-four real clients" item below. Host and offline modes are verified by the existing
+      headless probes (results table, glider drop), both passing.
+      Known loose end: the local agent's id is assigned by the client's own registry and does not
+      match the server's `SelfId`. Nothing depends on it today — self travels in the self block, not
+      the contact list — but it is a disagreement waiting to be leaned on.
 - [ ] **Reconnect to a match in progress.** A dropped player currently becomes a bot and cannot
       return. Ten seconds of a bad hotel connection should not end someone's game.
 - [x] **Packet size cap.** *(Done 2026-09-18.)* `UdpSocket.Send` refuses anything over

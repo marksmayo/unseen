@@ -75,12 +75,14 @@ namespace Unseen.Core
         private INetworkService _net;
         private AgentSpawner _spawner;
         private MatchDirector _match;
+        private SimProfile _profile;
         private BotDirector _bots;
         private ReplicationSystem _replication;
         private CombatPocketSystem _pockets;
         private MotionSystem _motion;
         private InterestManager _interest;
         private ClientNetworkView _clientView;
+        private LocalAgentDriver _localAgent;
         private PlayerInputSource _input;
         private ThirdPersonCameraRig _camera;
         private float _nextStatusLogAt;
@@ -231,31 +233,50 @@ namespace Unseen.Core
 
         private void BuildSimulation(MapDescriptor map)
         {
+            _profile = SimProfile.For(Mode);
             _sim = new ServerSimulation(_ctx);
 
-            _sim.Add(new ServerInputSystem());
-            _sim.Add(new WorldBufferSystem());
-            _sim.Add(new InterestGridSystem());
-            _sim.Add(new StealthIndexService());
-            _interest = _sim.Add(new InterestManager());
-            _sim.Add(new AcousticPropagation());
-            _pockets = _sim.Add(new CombatPocketSystem());
-            _bots = _sim.Add(new BotDirector());
-            DeploymentSystem deployment = _sim.Add(new DeploymentSystem());
+            // Movement runs on both sides of the wire, and it is deliberately the same motor on
+            // both. A client has to move its own ninja the instant the key goes down rather than
+            // wait out the round trip, and a prediction written as a second implementation of
+            // movement disagrees with the first - so every correction the server sends would snap
+            // the player somewhere they did not ask to be.
             _motion = _sim.Add(new MotionSystem());
             WorldBoundsSystem bounds = _sim.Add(new WorldBoundsSystem());
-            CombatDirector combat = _sim.Add(new CombatDirector());
-            _sim.Add(new AgentEffectsSystem());
-            _match = _sim.Add(new MatchDirector());
-            MistZoneController mist = _sim.Add(new MistZoneController());
-            _bamboo = _sim.Add(new BambooGrowthSystem());
-            _sim.Add(new Unseen.Perception.CritterStartleSystem());
-            Unseen.Perception.DrowningSystem drowning = _sim.Add(new Unseen.Perception.DrowningSystem());
-            Unseen.Combat.ShurikenSystem shuriken = _sim.Add(new Unseen.Combat.ShurikenSystem());
-            _sim.Add(new Unseen.Perception.FootprintSystem());
-            _replication = _sim.Add(new ReplicationSystem());
 
-            combat.SmokePrefab = SmokePrefab;
+            DeploymentSystem deployment = null;
+            MistZoneController mist = null;
+            Unseen.Perception.DrowningSystem drowning = null;
+            Unseen.Combat.ShurikenSystem shuriken = null;
+
+            if (_profile.ResolvesPerception)
+            {
+                _sim.Add(new WorldBufferSystem());
+                _sim.Add(new InterestGridSystem());
+                _sim.Add(new StealthIndexService());
+                _interest = _sim.Add(new InterestManager());
+                _sim.Add(new AcousticPropagation());
+                _pockets = _sim.Add(new CombatPocketSystem());
+            }
+
+            if (_profile.OwnsTheMatch)
+            {
+                _sim.Add(new ServerInputSystem());
+                _bots = _sim.Add(new BotDirector());
+                deployment = _sim.Add(new DeploymentSystem());
+                CombatDirector combat = _sim.Add(new CombatDirector());
+                combat.SmokePrefab = SmokePrefab;
+                _sim.Add(new AgentEffectsSystem());
+                _match = _sim.Add(new MatchDirector());
+                mist = _sim.Add(new MistZoneController());
+                _bamboo = _sim.Add(new BambooGrowthSystem());
+                _sim.Add(new Unseen.Perception.CritterStartleSystem());
+                drowning = _sim.Add(new Unseen.Perception.DrowningSystem());
+                shuriken = _sim.Add(new Unseen.Combat.ShurikenSystem());
+                _sim.Add(new Unseen.Perception.FootprintSystem());
+            }
+
+            if (_profile.Replicates) _replication = _sim.Add(new ReplicationSystem());
 
             _sim.Initialize();
 
@@ -263,6 +284,15 @@ namespace Unseen.Core
             float radius = map != null ? map.Radius : 200f;
 
             bounds.Configure(map);
+
+            // Destructible ids are agreed by both sides from sorted positions rather than by a
+            // handshake, so a client builds the same index a server does - it has to, or a shoji
+            // the server says is broken is a different shoji here.
+            _ctx.Destructibles.BuildIndex();
+
+            // Everything past here belongs to whoever is running the match. A client is told all
+            // of it.
+            if (!_profile.OwnsTheMatch) return;
 
             // The spirit forest belongs to the level, so the system is handed the one the
             // generator planted rather than building its own.
@@ -292,7 +322,6 @@ namespace Unseen.Core
             _match.MatchStarted += _ => _hud?.NoteMatchStarted();
             _match.Configure(_spawner, center, radius, Seed);
             _bots.Configure(_spawner, center, radius);
-            _ctx.Destructibles.BuildIndex();
 
             // Deployment registers itself for lookup by the match director.
             _ctx.Register(deployment);
@@ -309,6 +338,17 @@ namespace Unseen.Core
             _clientView.ProxyPrefab = ProxyPrefab;
             _clientView.SmokePrefab = SmokePrefab;
             _clientView.Bind(_net, Config, _ctx.Destructibles, _input, _ctx.Entities);
+
+            // A pure client owns exactly one agent - its own - and is told about every other thing
+            // in the world. On a host or offline build the local agent is the server's own agent,
+            // already simulated in this process, so there is no round trip to hide and nothing for
+            // prediction to do but correct itself against itself.
+            if (!_profile.OwnsTheMatch)
+            {
+                _localAgent = rig.AddComponent<LocalAgentDriver>();
+                _localAgent.View = _clientView;
+                _localAgent.Bind(_ctx, _net, _spawner, _input, Net.UnseenTransport.RequestedName);
+            }
 
             var cameraHost = new GameObject("PlayerCamera");
             cameraHost.tag = "MainCamera";
@@ -594,6 +634,19 @@ namespace Unseen.Core
         {
             if (StatusLogInterval <= 0f || Time.unscaledTime < _nextStatusLogAt) return;
             _nextStatusLogAt = Time.unscaledTime + StatusLogInterval;
+
+            // A client has none of these systems, so it reports what it is actually doing: what
+            // arrived, and how much of its own movement is still unconfirmed.
+            if (!_profile.OwnsTheMatch)
+            {
+                UnseenLog.Info($"[Unseen] client | sim {_sim.LastFrameMilliseconds:0.00} ms | " +
+                          $"in {(_clientView != null ? _clientView.SnapshotsReceived : 0)} snapshots | " +
+                          $"{(_localAgent != null && _localAgent.Agent != null ? "body" : "no body yet")}, " +
+                          $"{(_localAgent != null ? _localAgent.UnconfirmedInputs : 0)} inputs unconfirmed");
+
+                LogLocalPlayer();
+                return;
+            }
 
             UnseenLog.Info($"[Unseen] {_match.StatusLine()} | sim {_sim.LastFrameMilliseconds:0.00} ms | " +
                       $"hot {_pockets.HotAgents}/{_motion.HotAgentsLastTick} | {_interest.DescribeLoad()} | " +
