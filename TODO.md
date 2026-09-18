@@ -187,11 +187,24 @@ The primitives are built and tested. Most of this is wiring them to the wire.
       at. Rejoining mid-round gets no body either, or leaving and coming back is the same escape by
       a longer route.
       Killed through the ordinary damage path with a `Disconnected` cause, so placement, the kill
-      feed, the standings row and the death other players watch all work already. Verified by
-      `Unseen ▸ Test Disconnect`, seven assertions, headless.
-      **The cost, accepted:** ten seconds of a bad hotel connection now ends someone's game. If that
-      turns out to bite, the middle ground is a grace period — the body stands still and vulnerable
-      for a few seconds before dying, so a brief drop is survivable and a deliberate one is not.
+      feed, the standings row and the death other players watch all work already.
+      **One minute of grace** *(Mark's call)*: the body is abandoned rather than killed outright. It
+      stands where it was left, idle, alive, visible and entirely killable. Come back inside the
+      minute and it is yours again; leave it and it dies; let somebody find it first and it dies the
+      ordinary way with their name on it. That last part is what stops the window being a free
+      minute of invulnerability for anyone willing to pull a cable at the right moment.
+      Verified by `Unseen ▸ Test Disconnect` — three scenarios in three separate matches, sixteen
+      assertions, headless, because a body can only die once and each of these is a different death.
+      `PlayerSeatSystem` owns all of this now. It was in `BotDirector`, which made sense while a
+      disconnect produced a bot and stopped making sense the moment it did not — a class for
+      steering AI had become the one deciding whether a human was in the match. Uses the previously
+      unused `SimOrder.Backfill`.
+- [ ] **A reclaimed body is identified by name, which is weak.** `PlayerSeatSystem` holds an
+      abandoned body against the display name the server granted, because that is the only identity
+      the game has. The name is released back to the roster on disconnect, so during the grace
+      minute somebody could in principle take it and claim the body. Real identity is Steam
+      authentication, in Phase 2; until then, either keep the name reserved for the window or accept
+      it. Not exploitable without knowing a specific player's name and their moment of dropping.
 - [x] **Packet size cap.** *(Done 2026-09-18.)* `UdpSocket.Send` refuses anything over
       `MaxDatagramBytes` (1200) and returns whether it went, rather than letting IP fragment it.
       Oversize does not fail, it fragments - and one lost fragment takes the whole datagram, so big

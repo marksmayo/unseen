@@ -12,8 +12,13 @@ using Unseen.Entities;
 namespace Unseen.AI
 {
     /// <summary>
-    /// Owns the bot population: keeps the lobby topped up to 64 entities, hands a bot slot over to
-    /// an arriving human and takes it back on disconnect, and throttles how often each brain thinks.
+    /// Owns the bot population: keeps the lobby topped up to 64 entities and throttles how often
+    /// each brain thinks.
+    ///
+    /// Who sits in which body is PlayerSeatSystem's business, not this class's. It lived here while
+    /// a disconnect produced a bot, which made a kind of sense; once leaving cost a player their
+    /// round instead, a class for steering AI had quietly become the one deciding whether a human
+    /// was in the match.
     ///
     /// The perception aggregation that decides those tick rates runs as a Burst job over the
     /// interest sets, so the cost of having 63 bots watching each other stays off the main thread.
@@ -50,9 +55,6 @@ namespace Unseen.AI
             _targetPositions = new NativeArray<float3>(MaxPairs, Allocator.Persistent);
             _confidence = new NativeArray<float>(MaxPairs, Allocator.Persistent);
             _pairScores = new NativeArray<float>(MaxPairs, Allocator.Persistent);
-
-            Ctx.Net.ClientConnected += OnClientConnected;
-            Ctx.Net.ClientDisconnected += OnClientDisconnected;
         }
 
         public void Configure(AgentSpawner spawner, float3 mapCenter, float mapRadius)
@@ -170,101 +172,10 @@ namespace Unseen.AI
         }
 
         /// <summary>
-        /// A human arriving takes over a bot rather than joining a 63-entity match as a 64th.
-        /// The bot body, its inventory and its position all carry over, so backfill is seamless.
+        /// A bot whose body an arriving human can take over. Public because the seating decision
+        /// belongs to PlayerSeatSystem, while which bot is expendable is a question about bots.
         /// </summary>
-        private void OnClientConnected(int connectionId)
-        {
-            AgentEntity existing = Ctx.Entities.ByConnection(connectionId);
-            if (existing != null) return;
-
-            // Nobody joins a round already under way. Somebody arriving mid-match watches until it
-            // ends and plays the next one.
-            //
-            // This is the other half of a disconnect killing the body: without it, leaving and
-            // rejoining is the same escape by a longer route - out of a fight you were losing, back
-            // in somewhere else with a fresh one. It also removes the question of where a late
-            // arrival would be put, which has no good answer in a shrinking circle: in the safe
-            // middle is a gift, out at the edge is a death sentence, and either way somebody has a
-            // stranger appear beside them out of nothing.
-            if (Ctx.Match != null && Ctx.Match.Phase != MatchPhase.Lobby)
-            {
-                UnseenLog.Info($"[Unseen] connection {connectionId} arrived mid-round; spectating until it ends");
-                return;
-            }
-
-            // What the player asked to be called, if the transport carried a name and the server
-            // granted one. Falls back to the slot number: a transport with no names - offline
-            // practice, or an adapter that does not carry one - still needs the player labelled,
-            // and the fallback belongs here rather than being invented inside the transport.
-            string granted = Ctx.Net?.NameOf(connectionId);
-            string displayName = string.IsNullOrEmpty(granted) ? $"player-{connectionId}" : granted;
-
-            AgentEntity candidate = PickBotToReplace();
-            if (candidate == null)
-            {
-                if (_spawner == null) return;
-                candidate = _spawner.Spawn(AgentKind.Player, connectionId, RandomGroundPoint(), displayName);
-                UnseenLog.Info($"[Unseen] connection {connectionId} spawned fresh as {candidate.DisplayName}");
-                return;
-            }
-
-            candidate.Kind = AgentKind.Player;
-            candidate.Flags &= ~AgentFlags.Bot;
-            candidate.DisplayName = displayName;
-            candidate.Intent = MoveIntent.Idle;
-            if (candidate.Brain != null) candidate.Brain.enabled = false;
-            Ctx.Entities.SetConnection(candidate, connectionId);
-
-            UnseenLog.Info($"[Unseen] connection {connectionId} took over bot slot {candidate.Id}");
-        }
-
-        /// <summary>
-        /// A disconnect kills the body. It used to be handed to a bot to keep the match full.
-        ///
-        /// That was wrong in three ways at once. It rewarded disconnecting: a player losing a fight
-        /// could pull the cable and have the problem taken over by an AI that did not know it was
-        /// losing. It made the results table lie, because the row read "bot-014 finished fourth"
-        /// about a player who was never in the match under that name. And the body kept playing, so
-        /// somebody could be stalked and killed by a ninja whose player left ten minutes earlier -
-        /// in a game whose entire loop is working out who you are looking at.
-        ///
-        /// Killed through the ordinary damage path rather than deleted. Placement, the kill feed,
-        /// the standings row and the death other players watch all already know what a death is,
-        /// and none of them know anything about an agent that simply stops existing.
-        /// </summary>
-        private void OnClientDisconnected(int connectionId)
-        {
-            AgentEntity agent = Ctx.Entities.ByConnection(connectionId);
-            if (agent == null) return;
-
-            // Unseated first, so nothing goes looking for a player behind this body again.
-            Ctx.Entities.SetConnection(agent, -1);
-
-            if (!agent.IsAlive || Ctx.Combat == null)
-            {
-                UnseenLog.Info($"[Unseen] connection {connectionId} left; {agent.DisplayName} was already out");
-                return;
-            }
-
-            Ctx.Combat.ApplyDamage(new DamageInfo
-            {
-                Attacker = AgentId.None,
-                Victim = agent.Id,
-                Kind = DamageKind.Disconnected,
-
-                // Far past any health pool rather than exactly the remaining amount. A disconnect
-                // is not a fight to be survived by a point, and reading the pool here would make
-                // this depend on rules that belong to combat.
-                Amount = 1e9f,
-                Point = agent.TorsoPosition,
-                Direction = agent.Forward
-            });
-
-            UnseenLog.Info($"[Unseen] connection {connectionId} left; {agent.DisplayName} is out");
-        }
-
-        private AgentEntity PickBotToReplace()
+        public AgentEntity PickBotToReplace()
         {
             // Prefer a living bot that is not currently in a fight, so nobody inherits a losing
             // clash they never started.
@@ -404,8 +315,6 @@ namespace Unseen.AI
 
         public override void Shutdown()
         {
-            Ctx.Net.ClientConnected -= OnClientConnected;
-            Ctx.Net.ClientDisconnected -= OnClientDisconnected;
 
             if (_botPositions.IsCreated) _botPositions.Dispose();
             if (_targetPositions.IsCreated) _targetPositions.Dispose();

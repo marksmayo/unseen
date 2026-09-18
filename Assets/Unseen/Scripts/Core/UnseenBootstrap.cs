@@ -77,6 +77,7 @@ namespace Unseen.Core
         private MatchDirector _match;
         private SimProfile _profile;
         private BotDirector _bots;
+        private PlayerSeatSystem _seats;
         private ReplicationSystem _replication;
         private CombatPocketSystem _pockets;
         private MotionSystem _motion;
@@ -263,6 +264,7 @@ namespace Unseen.Core
             {
                 _sim.Add(new ServerInputSystem());
                 _bots = _sim.Add(new BotDirector());
+                _seats = _sim.Add(new PlayerSeatSystem());
                 deployment = _sim.Add(new DeploymentSystem());
                 CombatDirector combat = _sim.Add(new CombatDirector());
                 combat.SmokePrefab = SmokePrefab;
@@ -322,6 +324,7 @@ namespace Unseen.Core
             _match.MatchStarted += _ => _hud?.NoteMatchStarted();
             _match.Configure(_spawner, center, radius, Seed);
             _bots.Configure(_spawner, center, radius);
+            _seats.Configure(_spawner, _bots);
 
             // Deployment registers itself for lookup by the match director.
             _ctx.Register(deployment);
