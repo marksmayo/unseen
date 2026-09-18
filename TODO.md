@@ -233,8 +233,33 @@ The primitives are built and tested. Most of this is wiring them to the wire.
 
 - [ ] **Sixty-four real clients, one match, full round.** The end-to-end proof. Two processes is
       not evidence for sixty-four.
-- [ ] **`DestructibleRegistry` id agreement under real conditions.** Server and client derive ids
-      from sorted positions with no handshake. Elegant, and entirely unproven across a network.
+- [x] **`DestructibleRegistry` id agreement.** *(Done 2026-09-18.)* Verified by
+      `Unseen ▸ Test Destructible Ids`, and it found a real defect.
+      Ids came from sorting on position alone, and **around a hundred shoji panels per town share a
+      centre to the nearest centimetre** — a doorway has a panel on each face of the wall, both
+      centred on the same point. The comparison returned "equal" for every one of those pairs and
+      the sort behind it is not stable, so their order was whatever the sort happened to leave.
+      It agreed between two builds anyway, which is what made it dangerous: it agrees only while
+      both sides feed the sort an identically ordered list, and a dedicated server does not build
+      the same objects as a client (`EnableVisualUpgrade` differs by mode). The first time the two
+      lists differed, a hundred panels would have swapped identities — the server saying "panel 47
+      is broken" while a different wall opened on somebody's screen. A free look into a room, in a
+      game about not being seen, and it would have been reported as walls falling apart on their own.
+      Sorting now falls back to facing, which separates the two panels of a doorway. That took three
+      seeds from 106/116/94 collisions to none. One residual pair was two loot chests generated in
+      the same spot — a content bug rather than an id-scheme one, since no ordering can separate two
+      identical poses; chests are now placed with a minimum separation and a deterministic fallback
+      when the random draws will not cooperate. `BuildIndex` warns if any pair is still inseparable,
+      because the symptom is very far from the cause.
+      Two lesser things fell out of it. `BuildIndex` sorted destroyed objects and threw, because a
+      panel leaves the static registry in `OnDisable` and that does not run in edit mode — the same
+      asymmetry the generator already works around for registration, with no matching path back. It
+      now filters. And the first version of the probe passed perfectly while proving nothing: the
+      generated town is a root object beside the bootstrap rather than under it, so tearing down the
+      bootstrap left the town standing and the second "independent" build reused the first one's
+      objects. Two different seeds producing identical towns is what gave it away.
+      **Still not proven across two processes.** This is two builds in one editor, which is strong
+      evidence about determinism and no evidence at all about a real client and a real server.
 - [x] **Packet loss and jitter testing.** *(Done 2026-09-18.)* `IDatagramSocket` is the seam and
       `SimulatedSocket` sits in it, dropping, delaying, duplicating and reordering on a seeded RNG.
       Asked for with `NetworkConditions` on `Host`/`Join`, or `-netsim domestic|mobile` on the

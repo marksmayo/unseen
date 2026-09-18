@@ -5274,15 +5274,59 @@ namespace Unseen.Environment
             lantern.EnsureRegistered();
         }
 
+        /// <summary>
+        /// Chests never placed on top of one another.
+        ///
+        /// Two at the same spot is a visual mess - a chest inside a chest - and quietly a netcode
+        /// bug as well. Destructible ids are agreed between server and client by sorting on pose
+        /// and counting, with no list exchanged, so two objects at the same pose are two objects
+        /// the ordering cannot separate. Their ids then depend on whatever the sort happened to
+        /// leave, and the two machines need not leave the same thing.
+        ///
+        /// A metre and a half apart, and the chest is a metre wide. Retried a bounded number of
+        /// times and then placed anyway: a compound that is genuinely too crowded should look
+        /// cluttered rather than end up with fewer chests than the loot budget expects.
+        /// </summary>
+        private const float ChestSeparation = 1.5f;
+
+        private static readonly List<Vector3> _chestsHere = new List<Vector3>();
+
         private void PlaceContainers(Transform parent, float half)
         {
             int count = Mathf.RoundToInt(ContainersPerCompound * (0.5f + (float)_random.NextDouble()));
+            _chestsHere.Clear();
+
             for (int i = 0; i < count; i++)
             {
-                var position = new Vector3(
-                    (float)(_random.NextDouble() * 2f - 1f) * (half - 2f),
-                    0.45f,
-                    (float)(_random.NextDouble() * 2f - 1f) * (half - 2f));
+                Vector3 position = default;
+
+                for (int attempt = 0; attempt < 8; attempt++)
+                {
+                    position = new Vector3(
+                        (float)(_random.NextDouble() * 2f - 1f) * (half - 2f),
+                        0.45f,
+                        (float)(_random.NextDouble() * 2f - 1f) * (half - 2f));
+
+                    if (!TooCloseToAnotherChest(position)) break;
+                }
+
+                // Randomness alone is not enough in a small compound: eight draws inside a few
+                // square metres can all land on top of something. So when it has not worked, stop
+                // asking and move it - a fixed step in a fixed direction, wrapped inside the
+                // compound, which always terminates and always ends up somewhere both machines
+                // will compute identically.
+                float span = Mathf.Max(1f, (half - 2f) * 2f);
+
+                for (int nudge = 0; nudge < 24 && TooCloseToAnotherChest(position); nudge++)
+                {
+                    position.x += ChestSeparation * 1.1f;
+                    if (position.x > half - 2f) position.x -= span;
+
+                    position.z += ChestSeparation * 0.7f;
+                    if (position.z > half - 2f) position.z -= span;
+                }
+
+                _chestsHere.Add(position);
 
                 var host = new GameObject("Chest").transform;
                 host.SetParent(parent, false);
@@ -5296,6 +5340,15 @@ namespace Unseen.Environment
                 container.Table = Table != null ? Table : EnsureRuntimeLootTable();
                 container.EnsureRegistered();
             }
+        }
+
+        private static bool TooCloseToAnotherChest(Vector3 candidate)
+        {
+            for (int i = 0; i < _chestsHere.Count; i++)
+                if ((_chestsHere[i] - candidate).sqrMagnitude < ChestSeparation * ChestSeparation)
+                    return true;
+
+            return false;
         }
 
         // ---------------------------------------------------------------- helpers
