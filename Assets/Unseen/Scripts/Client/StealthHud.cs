@@ -532,6 +532,8 @@ namespace Unseen.Client
                     return "taken by the forest";
                 case DamageKind.Drowning:
                     return "drowned";
+                case DamageKind.Disconnected:
+                    return "left";
                 default:
                     return by != null ? $"eliminated by {by}" : "eliminated";
             }

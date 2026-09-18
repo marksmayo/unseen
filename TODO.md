@@ -176,8 +176,22 @@ The primitives are built and tested. Most of this is wiring them to the wire.
       Known loose end: the local agent's id is assigned by the client's own registry and does not
       match the server's `SelfId`. Nothing depends on it today — self travels in the self block, not
       the contact list — but it is a disagreement waiting to be leaned on.
-- [ ] **Reconnect to a match in progress.** A dropped player currently becomes a bot and cannot
-      return. Ten seconds of a bad hotel connection should not end someone's game.
+- [x] **A disconnect ends that player's round.** *(Done 2026-09-18, Mark's call.)* Reconnecting
+      into play was the original plan and was dropped for a simpler rule: leaving kills the body,
+      and rejoining puts you in the spectator camera until the round ends.
+      Handing the body to a bot was wrong three times over. It rewarded disconnecting — a player
+      losing a fight could pull the cable and have it taken over by an AI that did not know it was
+      losing. It made the results table lie: "bot-014 finished fourth" about somebody who was never
+      in the match under that name. And the body kept playing, so a ninja whose player left ten
+      minutes ago could stalk and kill you, in a game whose loop is working out who you are looking
+      at. Rejoining mid-round gets no body either, or leaving and coming back is the same escape by
+      a longer route.
+      Killed through the ordinary damage path with a `Disconnected` cause, so placement, the kill
+      feed, the standings row and the death other players watch all work already. Verified by
+      `Unseen ▸ Test Disconnect`, seven assertions, headless.
+      **The cost, accepted:** ten seconds of a bad hotel connection now ends someone's game. If that
+      turns out to bite, the middle ground is a grace period — the body stands still and vulnerable
+      for a few seconds before dying, so a brief drop is survivable and a deliberate one is not.
 - [x] **Packet size cap.** *(Done 2026-09-18.)* `UdpSocket.Send` refuses anything over
       `MaxDatagramBytes` (1200) and returns whether it went, rather than letting IP fragment it.
       Oversize does not fail, it fragments - and one lost fragment takes the whole datagram, so big

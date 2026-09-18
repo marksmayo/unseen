@@ -178,6 +178,21 @@ namespace Unseen.AI
             AgentEntity existing = Ctx.Entities.ByConnection(connectionId);
             if (existing != null) return;
 
+            // Nobody joins a round already under way. Somebody arriving mid-match watches until it
+            // ends and plays the next one.
+            //
+            // This is the other half of a disconnect killing the body: without it, leaving and
+            // rejoining is the same escape by a longer route - out of a fight you were losing, back
+            // in somewhere else with a fresh one. It also removes the question of where a late
+            // arrival would be put, which has no good answer in a shrinking circle: in the safe
+            // middle is a gift, out at the edge is a death sentence, and either way somebody has a
+            // stranger appear beside them out of nothing.
+            if (Ctx.Match != null && Ctx.Match.Phase != MatchPhase.Lobby)
+            {
+                UnseenLog.Info($"[Unseen] connection {connectionId} arrived mid-round; spectating until it ends");
+                return;
+            }
+
             // What the player asked to be called, if the transport carried a name and the server
             // granted one. Falls back to the slot number: a transport with no names - offline
             // practice, or an adapter that does not carry one - still needs the player labelled,
@@ -204,29 +219,49 @@ namespace Unseen.AI
             UnseenLog.Info($"[Unseen] connection {connectionId} took over bot slot {candidate.Id}");
         }
 
-        /// <summary>A disconnect hands the body straight back to a bot so the match stays full.</summary>
+        /// <summary>
+        /// A disconnect kills the body. It used to be handed to a bot to keep the match full.
+        ///
+        /// That was wrong in three ways at once. It rewarded disconnecting: a player losing a fight
+        /// could pull the cable and have the problem taken over by an AI that did not know it was
+        /// losing. It made the results table lie, because the row read "bot-014 finished fourth"
+        /// about a player who was never in the match under that name. And the body kept playing, so
+        /// somebody could be stalked and killed by a ninja whose player left ten minutes earlier -
+        /// in a game whose entire loop is working out who you are looking at.
+        ///
+        /// Killed through the ordinary damage path rather than deleted. Placement, the kill feed,
+        /// the standings row and the death other players watch all already know what a death is,
+        /// and none of them know anything about an agent that simply stops existing.
+        /// </summary>
         private void OnClientDisconnected(int connectionId)
         {
             AgentEntity agent = Ctx.Entities.ByConnection(connectionId);
             if (agent == null) return;
 
+            // Unseated first, so nothing goes looking for a player behind this body again.
             Ctx.Entities.SetConnection(agent, -1);
-            agent.Kind = AgentKind.Bot;
-            agent.Flags |= AgentFlags.Bot;
-            agent.DisplayName = $"bot-{agent.Id.Value:000}";
 
-            BotBrain brain = agent.Brain;
-            if (brain == null)
+            if (!agent.IsAlive || Ctx.Combat == null)
             {
-                brain = agent.gameObject.GetComponent<BotBrain>();
-                if (brain == null) brain = agent.gameObject.AddComponent<BotBrain>();
-                brain.Bind(agent);
-                agent.Brain = brain;
+                UnseenLog.Info($"[Unseen] connection {connectionId} left; {agent.DisplayName} was already out");
+                return;
             }
 
-            brain.enabled = true;
-            brain.ResetBrain();
-            UnseenLog.Info($"[Unseen] connection {connectionId} left; {agent.DisplayName} is now a bot");
+            Ctx.Combat.ApplyDamage(new DamageInfo
+            {
+                Attacker = AgentId.None,
+                Victim = agent.Id,
+                Kind = DamageKind.Disconnected,
+
+                // Far past any health pool rather than exactly the remaining amount. A disconnect
+                // is not a fight to be survived by a point, and reading the pool here would make
+                // this depend on rules that belong to combat.
+                Amount = 1e9f,
+                Point = agent.TorsoPosition,
+                Direction = agent.Forward
+            });
+
+            UnseenLog.Info($"[Unseen] connection {connectionId} left; {agent.DisplayName} is out");
         }
 
         private AgentEntity PickBotToReplace()

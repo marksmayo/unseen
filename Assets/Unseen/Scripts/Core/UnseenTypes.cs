@@ -174,7 +174,17 @@ namespace Unseen.Core
         SpiritForest = 5,
 
         /// <summary>Drowned. Held under, or held yourself under too long.</summary>
-        Drowning = 6
+        Drowning = 6,
+
+        /// <summary>
+        /// The player left. The body dies rather than being handed to a bot.
+        ///
+        /// A cause of its own rather than being folded into one of the above, because the results
+        /// table is the only account of the match a losing player gets and it should not have to
+        /// invent a story. "Left" is the truth, and it is also the useful answer: a match full of
+        /// these is a connectivity problem, and one that reads as mist damage tells nobody that.
+        /// </summary>
+        Disconnected = 7
     }
 
     /// <summary>One tick of intent produced by a human client or a bot brain. Always validated server-side.</summary>

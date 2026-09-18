@@ -545,7 +545,16 @@ namespace Unseen.Core
             if (_camera == null || _net.LocalConnectionId < 0) return;
 
             AgentEntity local = _ctx.Entities.ByConnection(_net.LocalConnectionId);
-            if (local == null) return;
+
+            // No body at all: joined or rejoined while a round was under way, so there is nothing
+            // to follow and nothing coming until the next match. Watching somebody else is the only
+            // thing left, and it is the same view a dead player gets - which is the point, because
+            // arriving mid-round and being eliminated are the same situation from the seat.
+            if (local == null)
+            {
+                Spectate(null);
+                return;
+            }
 
             // Dead is not the same as finished.
             //
