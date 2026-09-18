@@ -95,6 +95,7 @@ namespace Unseen.Entities
         {
             if (Body == null) return;
 
+            if (HeroNinjaAppearance.IsHero(this)) return; // Bounds are authored with the new rig.
             Body.updateWhenOffscreen = false; // explicit bounds are cheaper than recomputing per frame
             // Local space, so these are pre-scale metres on the model, not world metres.
             Body.localBounds = new Bounds(new Vector3(0f, 1f, 0f), new Vector3(3f, 4.5f, 3f));
@@ -110,6 +111,11 @@ namespace Unseen.Entities
         {
             if (Body == null) Body = GetComponentInChildren<SkinnedMeshRenderer>();
             NinjaBodyArt.Apply(this);
+            if (HeroNinjaAppearance.IsHero(this))
+            {
+                HeroNinjaAppearance.Apply(this, material);
+                return;
+            }
             if (material == null || Body == null) return;
             Body.sharedMaterial = Unseen.Environment.WeatheredMaterials.Fabric(material);
         }

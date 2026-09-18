@@ -85,6 +85,31 @@ namespace Unseen.Tests
         }
 
         [Test]
+        public void ABadNetworkCanBeAskedForOnTheCommandLine()
+        {
+            // Developing on loopback means every judgement about how the game feels is made on a
+            // connection no player will ever have. Prediction, the resend timer and the parry
+            // window all exist to hide a round trip that is zero on this machine, so here they are
+            // indistinguishable from doing nothing at all.
+            LaunchOptions domestic = LaunchOptions.Parse(new[] { "unseen.exe", "-netsim", "domestic" });
+
+            Assert.IsTrue(domestic.Conditions.HasValue, "asked for weather, got weather");
+            Assert.Greater(domestic.Conditions.Value.Latency, 0f, "with a round trip worth hiding");
+
+            LaunchOptions mobile = LaunchOptions.Parse(new[] { "unseen.exe", "-netsim", "mobile" });
+            Assert.Greater(mobile.Conditions.Value.Loss, domestic.Conditions.Value.Loss,
+                "and a worse one when a worse one is asked for");
+
+            // Nothing asked for is a real socket with nothing in front of it, which is what a
+            // shipping build must get.
+            Assert.IsFalse(LaunchOptions.Parse(new[] { "unseen.exe" }).Conditions.HasValue);
+
+            // A word nobody recognises is a typo, and quietly playing on a perfect link would hide
+            // that the flag did nothing at all.
+            Assert.IsNotEmpty(LaunchOptions.Parse(new[] { "unseen.exe", "-netsim", "wat" }).Error);
+        }
+
+        [Test]
         public void ASwitchWithNothingAfterItDoesNotThrow()
         {
             // Trailing switches happen: a shortcut edited in a hurry, an argument the shell ate.

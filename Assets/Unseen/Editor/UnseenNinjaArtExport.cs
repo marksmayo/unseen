@@ -24,7 +24,7 @@ namespace Unseen.EditorTools
                 Mesh original = set.NinjaVisual.GetComponentInChildren<SkinnedMeshRenderer>().sharedMesh;
                 var visual = set.Attach(host.transform, 0);
                 Mesh refined = visual.Body.sharedMesh;
-                if (!refined.name.EndsWith("_Refined") || original.vertexCount != refined.vertexCount)
+                if ((!Unseen.Entities.HeroNinjaAppearance.IsHero(visual) && !refined.name.EndsWith("_Refined")) || original.vertexCount != refined.vertexCount)
                     throw new Exception("Refined ninja topology mismatch");
                 BoneWeight[] before = original.boneWeights, after = refined.boneWeights;
                 for (int i = 0; i < before.Length; i++)

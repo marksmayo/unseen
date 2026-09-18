@@ -14,7 +14,8 @@ namespace Unseen.Net
     /// </summary>
     public sealed class UnseenUdpService : INetworkService, IDisposable
     {
-        private readonly UdpSocket _socket;
+        private readonly IDatagramSocket _socket;
+        private readonly SimulatedSocket _simulated;
         private readonly ConnectionGatekeeper _gate;
         private readonly PlayerRoster _roster = new PlayerRoster();
 
@@ -43,10 +44,19 @@ namespace Unseen.Net
         private float _nextConnectAttemptAt;
         private int _nextConnectionId = 1;
 
-        private UnseenUdpService(NetRole role, int port, NetEndpoint server, string requestedName)
+        private UnseenUdpService(NetRole role, int port, NetEndpoint server, string requestedName,
+            NetworkConditions? conditions)
         {
             Role = role;
-            _socket = new UdpSocket(port);
+
+            // Nullable rather than a perfect-link check, because "no simulation" and "a simulated
+            // link that currently happens to be flawless" are different things and only one of
+            // them can be degraded later. Asked for nothing, nothing is wrapped: no allocation, no
+            // queue, no clock, and the same call path the transport always had.
+            var real = new UdpSocket(port);
+            _simulated = conditions.HasValue ? new SimulatedSocket(real, conditions.Value) : null;
+            _socket = (IDatagramSocket)_simulated ?? real;
+
             _serverEndpoint = server;
             _requestedName = requestedName;
 
@@ -56,16 +66,36 @@ namespace Unseen.Net
             _gate = new ConnectionGatekeeper(unchecked((ulong)Guid.NewGuid().GetHashCode() * 0x9E3779B97F4A7C15UL));
         }
 
-        /// <summary>Opens a server on a port, or on one the OS picks when given zero.</summary>
-        public static UnseenUdpService Host(int port)
+        /// <summary>
+        /// Opens a server on a port, or on one the OS picks when given zero.
+        ///
+        /// The conditions describe the link to pretend this machine is on. Left out, it is the one
+        /// it is actually on.
+        /// </summary>
+        public static UnseenUdpService Host(int port, NetworkConditions? conditions = null)
         {
-            return new UnseenUdpService(NetRole.Server, port, default, null);
+            return new UnseenUdpService(NetRole.Server, port, default, null, conditions);
         }
 
         /// <summary>Opens a client and begins asking to join the given server.</summary>
-        public static UnseenUdpService Join(NetEndpoint server, string requestedName)
+        public static UnseenUdpService Join(NetEndpoint server, string requestedName,
+            NetworkConditions? conditions = null)
         {
-            return new UnseenUdpService(NetRole.Client, 0, server, requestedName);
+            return new UnseenUdpService(NetRole.Client, 0, server, requestedName, conditions);
+        }
+
+        /// <summary>
+        /// The simulated link this end is on, if it was opened with one.
+        ///
+        /// Settable so a connection can be established cleanly and then degraded, which is the
+        /// interesting moment and otherwise unreachable: a link that was always broken never
+        /// establishes anything for the breakage to matter to. Setting it on a service opened
+        /// without conditions does nothing - there is no simulation in the path to configure.
+        /// </summary>
+        public NetworkConditions Conditions
+        {
+            get => _simulated != null ? _simulated.Conditions : default;
+            set { if (_simulated != null) _simulated.Conditions = value; }
         }
 
         public NetRole Role { get; }
@@ -252,7 +282,7 @@ namespace Unseen.Net
 
             if (IsClient && !IsConnected && _now >= _nextConnectAttemptAt) SendConnectRequest();
 
-            _socket.Poll();
+            _socket.Poll(deltaTime);
 
             while (_socket.TryReceive(out byte[] payload, out NetEndpoint from))
                 Handle(payload, from);

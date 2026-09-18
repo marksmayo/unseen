@@ -225,8 +225,27 @@ The primitives are built and tested. Most of this is wiring them to the wire.
       not evidence for sixty-four.
 - [ ] **`DestructibleRegistry` id agreement under real conditions.** Server and client derive ids
       from sorted positions with no handshake. Elegant, and entirely unproven across a network.
-- [ ] **Packet loss and jitter testing.** Use a network simulator. 2% loss and 150 ms jitter is an
-      ordinary evening on domestic broadband.
+- [x] **Packet loss and jitter testing.** *(Done 2026-09-18.)* `IDatagramSocket` is the seam and
+      `SimulatedSocket` sits in it, dropping, delaying, duplicating and reordering on a seeded RNG.
+      Asked for with `NetworkConditions` on `Host`/`Join`, or `-netsim domestic|mobile` on the
+      command line — developing on loopback means every judgement about how the game feels is made
+      on a connection no player will ever have, and prediction, the resend timer and the parry
+      window all hide a round trip that is zero on this machine.
+      Nullable rather than a "is it perfect" check: no simulation and a simulated link that is
+      currently flawless are different things, and only one of them can be degraded mid-connection,
+      which is the interesting moment.
+      **The simulator is tested before anything is tested against it** — eight assertions including
+      one that jitter genuinely makes packets overtake each other. A simulator that quietly did
+      nothing would turn every "survives loss" test into a vacuous one.
+      What it found: nothing. The reliable channel delivers exactly once through 50% loss in both
+      directions, the sequence window never hands up a stale payload under reordering, and a
+      duplicated datagram is handed up once. All three were argued for in comments and unverified
+      until now.
+- [ ] **Reconciliation has not been tested under loss.** The simulator exists now, but exercising
+      prediction needs a client and a server in one test with a real simulation between them, which
+      the EditMode suite cannot build. It is the same gap as `EncodeSnapshot` having no test.
+- [ ] **No sustained-loss soak.** The tests fire a handful of messages. Nothing has run for minutes
+      at 8% loss watching for a backlog that never drains or a window that drifts.
 
 ### Anti-cheat
 

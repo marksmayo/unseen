@@ -20,6 +20,12 @@ namespace Unseen.Core
         public NetEndpoint? ConnectTo;
         public string RequestedName;
 
+        /// <summary>
+        /// A worse network to pretend this machine is on, from `-netsim domestic` or
+        /// `-netsim mobile`. Null means the real one, which is what a shipping build gets.
+        /// </summary>
+        public Net.NetworkConditions? Conditions;
+
         /// <summary>What could not be read, or null when everything parsed.</summary>
         public string Error;
 
@@ -118,6 +124,31 @@ namespace Unseen.Core
 
                     case "-name":
                         if (!string.IsNullOrEmpty(next)) options.RequestedName = next;
+                        break;
+
+                    case "-netsim":
+                        // Named conditions rather than five separate numeric flags. The useful
+                        // question is "does this hold up on a normal home connection", not "what
+                        // does 37 ms of jitter feel like", and a name is something you can ask a
+                        // playtester to reproduce over the phone.
+                        switch (next)
+                        {
+                            case "domestic":
+                                options.Conditions = Net.NetworkConditions.Domestic;
+                                break;
+
+                            case "mobile":
+                                options.Conditions = Net.NetworkConditions.Mobile;
+                                break;
+
+                            default:
+                                // Refused rather than ignored. Silently playing on a perfect link
+                                // is the one outcome that hides the flag having done nothing, and
+                                // the whole point of asking for it was to stop trusting a perfect
+                                // link.
+                                options.Error = $"unknown -netsim '{next}'. Expected domestic or mobile.";
+                                break;
+                        }
                         break;
                 }
             }

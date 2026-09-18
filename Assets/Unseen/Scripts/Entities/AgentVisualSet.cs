@@ -74,9 +74,11 @@ namespace Unseen.Entities
 
             // Cloth last, so it is cut against a body that already has its skin and its bones in
             // the pose it was imported in.
-            if (Garments) NinjaGarments.Fit(visual, Cloth, id);
-
-            NinjaEquipmentArt.Fit(visual);
+            if (!HeroNinjaAppearance.IsHero(visual))
+            {
+                if (Garments) NinjaGarments.Fit(visual, Cloth, id);
+                NinjaEquipmentArt.Fit(visual);
+            }
 
             // The katana, after the rest of the equipment so it is the outermost thing on the back.
             visual.gameObject.AddComponent<BladeVisual>()

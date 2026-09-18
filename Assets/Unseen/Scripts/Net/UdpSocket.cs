@@ -13,7 +13,7 @@ namespace Unseen.Net
     /// test. What is left here is the part that genuinely cannot be tested without one, so the
     /// less of it there is, the better.
     /// </summary>
-    public sealed class UdpSocket : IDisposable
+    public sealed class UdpSocket : IDatagramSocket
     {
         private readonly Socket _socket;
         private readonly byte[] _receiveBuffer = new byte[2048];
@@ -118,8 +118,13 @@ namespace Unseen.Net
             }
         }
 
-        /// <summary>Drains everything waiting on the socket, up to the per-poll cap.</summary>
-        public void Poll()
+        /// <summary>
+        /// Drains everything waiting on the socket, up to the per-poll cap.
+        ///
+        /// The elapsed time is ignored here and used by <see cref="SimulatedSocket"/>, which holds
+        /// packets for a while and needs a clock to know when to let them go.
+        /// </summary>
+        public void Poll(float deltaTime = 0f)
         {
             for (int i = 0; i < MaxReceivesPerPoll; i++)
             {

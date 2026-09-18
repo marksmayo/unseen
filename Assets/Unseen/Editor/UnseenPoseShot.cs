@@ -25,6 +25,9 @@ namespace Unseen.EditorTools
         [MenuItem("Unseen/Art/Capture Animation Poses", priority = 58)]
         public static void Capture()
         {
+            var activeSet=Unseen.Entities.AgentVisualSet.Load();
+            if(activeSet!=null && Unseen.Entities.HeroNinjaAppearance.IsHero(activeSet.NinjaVisual.GetComponent<Unseen.Entities.AgentVisual>()))
+            { UnseenHeroNinjaTools.CaptureAndValidate(); return; }
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
             if (prefab == null)
             {

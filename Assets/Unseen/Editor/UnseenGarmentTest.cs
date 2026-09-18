@@ -52,6 +52,15 @@ namespace Unseen.EditorTools
                     return;
                 }
 
+                if (HeroNinjaAppearance.IsHero(visual))
+                {
+                    var lods=visual.GetComponent<LODGroup>();
+                    if(lods==null || lods.lodCount!=3 || visual.GetComponentsInChildren<Collider>(true).Length!=0)throw new System.Exception("Hero garment/LOD contract failed");
+                    foreach(var skin in visual.GetComponentsInChildren<SkinnedMeshRenderer>())
+                        if(skin.sharedMesh.boneWeights.Length!=skin.sharedMesh.vertexCount || skin.sharedMaterial.shader.name!="Unseen/HeroNinja")throw new System.Exception("Hero garment skinning/material missing");
+                    Debug.Log("[garments] PASS: integrated weighted clothing, three detail levels, no decorative colliders");
+                    return;
+                }
                 var garments = visual.GetComponent<NinjaGarments>();
 
                 bool dressed = garments != null && garments.StrandCount == 3;

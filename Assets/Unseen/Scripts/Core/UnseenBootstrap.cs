@@ -201,6 +201,7 @@ namespace Unseen.Core
             Net.UnseenTransport.ListenPort = options.ListenPort;
             Net.UnseenTransport.ConnectTo = options.ConnectTo;
             Net.UnseenTransport.RequestedName = options.RequestedName;
+            Net.UnseenTransport.Conditions = options.Conditions;
 
             if (!string.IsNullOrEmpty(options.Error)) UnseenLog.Error($"[Unseen] {options.Error}");
         }

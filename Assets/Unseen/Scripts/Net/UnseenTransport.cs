@@ -30,6 +30,17 @@ namespace Unseen.Net
         /// <summary>Port for a dedicated server. Zero lets the OS choose, which tests want.</summary>
         public static int ListenPort = DefaultPort;
 
+        /// <summary>
+        /// A worse network to pretend this machine is on, set from the command line.
+        ///
+        /// The reason this is a launch option rather than a test fixture: developing on loopback
+        /// means every judgement about how the game feels is made on a connection no player will
+        /// ever have. Prediction, the resend timer and the interpolation all exist to hide a round
+        /// trip that is zero here, so on this machine they are all indistinguishable from doing
+        /// nothing at all. `-netsim domestic` is how you find out whether they work.
+        /// </summary>
+        public static NetworkConditions? Conditions;
+
         public static INetworkService Create(LaunchMode mode)
         {
             // An explicitly registered adapter always wins. This is the seam a third-party
@@ -43,10 +54,10 @@ namespace Unseen.Net
             switch (mode)
             {
                 case LaunchMode.DedicatedServer:
-                    return UnseenUdpService.Host(ListenPort);
+                    return UnseenUdpService.Host(ListenPort, Conditions);
 
                 case LaunchMode.Client when ConnectTo.HasValue:
-                    return UnseenUdpService.Join(ConnectTo.Value, RequestedName);
+                    return UnseenUdpService.Join(ConnectTo.Value, RequestedName, Conditions);
 
                 case LaunchMode.Client:
                     // Asked to be a client with nowhere to go. Falling through to loopback would

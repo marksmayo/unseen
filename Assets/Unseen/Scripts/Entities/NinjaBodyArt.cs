@@ -14,6 +14,7 @@ namespace Unseen.Entities
         public static void Apply(AgentVisual visual)
         {
             if (visual.Body == null || visual.Body.sharedMesh == null) return;
+            if (HeroNinjaAppearance.IsHero(visual)) return;
             if (_shape == null)
             {
                 TextAsset asset = Resources.Load<TextAsset>("BlenderArt/NinjaBody");
