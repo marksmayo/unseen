@@ -83,6 +83,7 @@ namespace Unseen.Entities
             if (Rig == null) Rig = GetComponentInChildren<Animator>();
             if (Body == null) Body = GetComponentInChildren<SkinnedMeshRenderer>();
             NinjaBodyArt.Apply(this);
+            AnnounceBody();
             FixCullingBounds();
         }
 
@@ -124,6 +125,26 @@ namespace Unseen.Entities
         {
             transform.localScale *= scale;
             _authoredScale = transform.localScale;
+        }
+
+        private static bool _bodyAnnounced;
+
+        /// <summary>
+        /// Says once, per session, which ninja body is actually on screen.
+        ///
+        /// There are two generations of this art and three ways for the wrong one to be worn, all
+        /// of which render something plausible: the Hero mesh, the older sculpt applied over
+        /// characterMedium, and characterMedium raw when the sculpt could not be applied. The last
+        /// of those shipped in every player build once and was caught by looking hard at a
+        /// screenshot. A build should be able to answer the question itself.
+        /// </summary>
+        private void AnnounceBody()
+        {
+            if (_bodyAnnounced || Body == null || Body.sharedMesh == null) return;
+            _bodyAnnounced = true;
+
+            Core.UnseenLog.Info($"[ninja-art] body mesh '{Body.sharedMesh.name}', " +
+                      $"{Body.sharedMesh.vertexCount} vertices");
         }
 
         private Client.SubmergedBubbles _bubbles;

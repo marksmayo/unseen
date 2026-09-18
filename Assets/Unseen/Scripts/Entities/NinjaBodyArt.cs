@@ -10,6 +10,10 @@ namespace Unseen.Entities
         [Serializable] private sealed class Shape { public Vector3[] vertices; public float scale; }
         private static Shape _shape;
         private static readonly Dictionary<Mesh, Mesh> Meshes = new Dictionary<Mesh, Mesh>();
+        private static bool _announced;
+
+        /// <summary>Whether the sculpt has actually been applied to anything this session.</summary>
+        public static bool Applied => _announced;
 
         public static void Apply(AgentVisual visual)
         {
@@ -18,7 +22,20 @@ namespace Unseen.Entities
             if (_shape == null)
             {
                 TextAsset asset = Resources.Load<TextAsset>("BlenderArt/NinjaBody");
-                if (asset == null) return;
+
+                // Said out loud rather than returned from in silence.
+                //
+                // Every way this can fail ends with the agent rendering correctly-ish in the
+                // unsculpted body, which is why it shipped broken once already and was only caught
+                // by looking closely at a screenshot. A missing export and a working one looked
+                // exactly the same from outside.
+                if (asset == null)
+                {
+                    Debug.LogError("[ninja-art] Resources/BlenderArt/NinjaBody is missing, so the " +
+                                   "Blender refinement cannot be applied and every agent will use " +
+                                   "the unsculpted body. Re-run Tools/refine_ninja.py.");
+                    return;
+                }
                 _shape = JsonUtility.FromJson<Shape>(asset.text);
                 Resources.UnloadAsset(asset);
             }
@@ -56,6 +73,15 @@ namespace Unseen.Entities
             }
             visual.Body.sharedMesh = mesh;
             visual.ApplyArtScale(_shape.scale);
+
+            // Once per source mesh, not once per agent: sixty-four of these would be noise. The
+            // point is that a build can be asked whether the sculpt is in it, and answer.
+            if (!_announced)
+            {
+                _announced = true;
+                Core.UnseenLog.Info($"[ninja-art] Blender refinement applied to '{source.name}': " +
+                          $"{_shape.vertices.Length} vertices, scale {_shape.scale:0.000}");
+            }
         }
     }
 }
