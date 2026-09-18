@@ -50,6 +50,17 @@ namespace Unseen.Net
         public int Tick;
         public float ServerTime;
 
+        /// <summary>
+        /// The last input of this client's the server has acted on.
+        ///
+        /// What makes reconciliation possible. A predicting client holds every input it has sent
+        /// and has not seen confirmed; this is the line under which it can stop holding them, and
+        /// the point from which it replays the rest onto the authoritative position. Without it
+        /// there is no line, so the client either replays a backlog that only grows or gives up
+        /// predicting and wears the round trip on every step.
+        /// </summary>
+        public uint AcknowledgedInput;
+
         public AgentId SelfId;
         public float3 SelfPosition;
         public float SelfYaw;
@@ -124,10 +135,43 @@ namespace Unseen.Net
 
     public static class SnapshotProtocol
     {
-        // Bumped when the standings table was appended. A client on the old version reading a new
-        // snapshot would run off the end of the buffer partway through the table and decode
-        // garbage, so the handshake rejects the mismatch instead.
-        public const byte Version = 2;
+        // Bumped when the acknowledged input joined the header. Four bytes at the front moves
+        // every field behind it, so a client on the old version does not fail to read a new
+        // snapshot - it reads one field's worth of the next field, all the way down, and draws a
+        // world nobody sent. The version byte is the cheap place to catch that.
+        public const byte Version = 3;
+
+        /// <summary>
+        /// The front of every snapshot, written and read in one place.
+        ///
+        /// Both directions live together deliberately. The body is decoded by offset - there are no
+        /// field tags on the wire - so a field added to the encoder and forgotten in the decoder
+        /// does not throw, it shifts everything after it and produces a plausible, wrong world.
+        /// One definition per end of the wire is how that stops being possible to do by accident.
+        /// </summary>
+        public static void WriteHeader(NetWriter writer, int tick, float time, uint acknowledgedInput)
+        {
+            writer.WriteByte((byte)NetMessage.Snapshot);
+            writer.WriteByte(Version);
+            writer.WriteInt(tick);
+            writer.WriteFloat(time);
+            WriteAcknowledgedInput(writer, acknowledgedInput);
+        }
+
+        /// <summary>
+        /// Reads a header written by <see cref="WriteHeader"/>, or returns false and consumes
+        /// nothing further if it is not one.
+        /// </summary>
+        public static bool ReadHeader(NetReader reader, SnapshotData into)
+        {
+            if (reader.ReadByte() != (byte)NetMessage.Snapshot) return false;
+            if (reader.ReadByte() != Version) return false;
+
+            into.Tick = reader.ReadInt();
+            into.ServerTime = reader.ReadFloat();
+            into.AcknowledgedInput = ReadAcknowledgedInput(reader);
+            return true;
+        }
 
         /// <summary>
         /// The three utility slots and the set of things in reach.
@@ -180,10 +224,12 @@ namespace Unseen.Net
         {
             float quantum = ctx.Config.Network.PositionQuantum;
 
-            writer.WriteByte((byte)NetMessage.Snapshot);
-            writer.WriteByte(Version);
-            writer.WriteInt(tick);
-            writer.WriteFloat(time);
+            // The agent's own intent is the acknowledgement, rather than a second copy of the
+            // number kept alongside it. ServerInputSystem assigns the intent it accepted straight
+            // onto the agent, so this is definitionally the last input the server acted on - and
+            // when the agent is gone or dead and nothing is being applied, it stops advancing on
+            // its own, which is exactly what it should say.
+            WriteHeader(writer, tick, time, self.Intent.Sequence);
 
             // Own state is complete: you always know exactly where you are and how hidden you are.
             writer.WriteInt(self.Id.Value);
@@ -317,13 +363,9 @@ namespace Unseen.Net
 
         public static bool DecodeSnapshot(NetReader reader, SnapshotData into, float quantum)
         {
-            byte message = reader.ReadByte();
-            if (message != (byte)NetMessage.Snapshot) return false;
-            if (reader.ReadByte() != Version) return false;
+            if (!ReadHeader(reader, into)) return false;
 
             into.Clear();
-            into.Tick = reader.ReadInt();
-            into.ServerTime = reader.ReadFloat();
 
             into.SelfId = new AgentId(reader.ReadInt());
             into.SelfPosition = reader.ReadPosition(quantum);

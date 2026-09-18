@@ -54,10 +54,12 @@ the "no hidden entities" property is provable by reading one file. Quantisation:
 Snapshot layout:
 
 ```
+--- header (one definition, written and read in the same place) ---
 byte    message id (1 = snapshot)
 byte    protocol version
 int32   tick
 float   server time
+uint32  acknowledged input
 --- self (always complete: you always know your own state) ---
 int32   entity id
 pos     position
@@ -65,6 +67,8 @@ angle   yaw, angle pitch
 norm    health fraction, norm stealth index
 uint16  flags
 byte    stance, byte locomotion state
+byte    utility slot 0, 1, 2 (UtilityEffect, 0 for empty)
+byte    prompts (what is in reach right now, for the HUD)
 --- contacts (only what this observer earned) ---
 byte    count
   per:  int32 id, byte visibility kind, pos position, norm confidence,
@@ -80,7 +84,31 @@ byte    count
   per:  byte kind, uint16 target id, pos position, float radius, float duration
 --- zone and match ---
 pos     mist centre, float mist radius, byte stage, byte match phase, uint16 alive
+--- result state (sent every snapshot, not once when the match ends) ---
+int32   winner, float seconds to phase end, uint16 own placement, uint16 own kills
+--- standings (populated only in PostMatch, empty otherwise, unsorted) ---
+byte    count
+  per:  int32 id, string name, uint16 placement, uint16 kills,
+        byte cause (255 = survived), int32 killer
 ```
+
+**The acknowledged input is the number reconciliation rests on.** It is the last input of *this*
+client's that the server has acted on, so it belongs in the header rather than the self block only
+by convenience — it is as much a fact about the connection as the tick is. A predicting client
+holds every input it has sent and not yet seen confirmed; this is the line under which it can stop
+holding them, and the point it replays the rest from onto the authoritative position. Without it
+there is no line, and a client either replays a backlog that only grows or gives up predicting.
+
+It is taken from the agent's own `Intent`, which is what `ServerInputSystem` assigned when it
+accepted the input — so it is the input the server *acted on*, not merely the one it received. When
+an agent is dead or gone and nothing is being applied, the number stops advancing, which is the
+honest answer.
+
+The whole body is read back **by offset** — there are no field tags on the wire. A field added to
+the encoder and forgotten in the decoder therefore does not throw: it shifts everything after it
+and produces a plausible, entirely wrong world. Two defences. The header is written and read by one
+pair of functions that live beside each other, and the protocol version is bumped on every layout
+change so a mismatched client is refused at the second byte rather than left to decode garbage.
 
 Input is 13 bytes: sequence, two quantised axes, yaw, pitch, a button bitfield, guard zone and the
 utility slot.

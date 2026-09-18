@@ -122,8 +122,16 @@ The primitives are built and tested. Most of this is wiring them to the wire.
       connection so one player's loss cannot disturb another's ordering; the client keeps one,
       since it only hears from one server. Stale and duplicate payloads are dropped before they
       reach the game.
-- [ ] **Server reports last-processed input in the snapshot.** Prerequisite for reconciliation.
-      Wire-format change — update `NETWORKING.md` in the same commit.
+- [x] **Server reports last-processed input in the snapshot.** *(Done 2026-09-18.)* In the header,
+      taken from the agent's own `Intent` - which is what `ServerInputSystem` assigned when it
+      accepted the input, so it is the input the server *acted on* rather than merely received, and
+      no second copy of the number exists to fall out of step. Protocol version 2 → 3;
+      `docs/NETWORKING.md` updated in the same commit.
+      Header extracted into one write/read pair, because the body is decoded by offset: a field
+      added to the encoder and forgotten in the decoder does not throw, it shifts everything after
+      it and draws a plausible, wrong world. That pair is what the new tests exercise.
+      **`EncodeSnapshot` itself still has no test** - it needs a registered agent with its
+      components awake, which an EditMode run cannot supply. The call site was verified by reading.
 - [ ] **Wire `InputReconciler` into the client rig.** Prediction is movement-only by decision;
       stealth and the parry window stay server-authoritative. *(Partial)*
 - [x] **Reliable channel for must-arrive messages.** *(Done 2026-09-18.)* `ReliableChannel` holds a
