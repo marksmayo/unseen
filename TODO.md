@@ -154,8 +154,10 @@ The primitives are built and tested. Most of this is wiring them to the wire.
       congestion is what delayed the acknowledgement. Acknowledgement is per message, not "through
       N": acks arrive out of order, and retiring everything below a sequence silently discards what
       is still in flight. Bounded at 64, because what clears the queue is an ack that may never come.
-      **Not yet carried by the transport** - the channel exists and is tested; `UnseenUdpService`
-      does not use it.
+      **Carried by the transport** *(2026-09-18)* - `ReliablePayload` and `ReliableAck` packets, a
+      channel per connection, and a separate id window per peer so a resend is acknowledged again
+      but not acted on twice. The `reliable` flag on `INetworkService` had been ignored by every
+      implementation of it since it was written.
 - [x] **Client stops running its own simulation.** *(Done 2026-09-18.)* `SimProfile` names what a
       process is responsible for — owning the match, resolving perception, moving agents,
       replicating — and the bootstrap registers systems against that rather than registering all of

@@ -83,6 +83,40 @@ namespace Unseen.Tests
         }
 
         [Test]
+        public void AReliableMessageIsHeldUntilTheFarEndConfirmsIt()
+        {
+            using (var server = UnseenUdpService.Host(0))
+            using (var client = UnseenUdpService.Join(server.LocalEndpoint, "Mark"))
+            {
+                int id = -1;
+                server.ClientConnected += c => id = c;
+                Assert.IsTrue(PumpUntil(server, client, () => id >= 0), "connected");
+
+                int received = 0;
+                byte[] body = null;
+                client.ClientReceived += (payload, length) => { received++; body = payload; };
+
+                // The shape of a match-start or a zone-stage message: something that happens once
+                // and has no successor. The reliable flag has been on this interface since it was
+                // written and has been ignored by every implementation of it, so a message sent
+                // this way was exactly as droppable as a snapshot - and unlike a snapshot, nothing
+                // comes along afterwards to put the client right.
+                server.SendToClient(id, new byte[] { 42, 7 }, 2, reliable: true);
+
+                Assert.IsTrue(PumpUntil(server, client, () => received > 0),
+                    "a reliable message should reach the client");
+
+                Assert.AreEqual(42, body[0], "with its bytes intact");
+
+                // Pumped again rather than asserted straight away: the confirmation is a round
+                // trip of its own, and the loop above stops the instant the message lands - before
+                // the server has polled again to hear about it.
+                Assert.IsTrue(PumpUntil(server, client, () => server.UnacknowledgedMessages(id) == 0),
+                    "and should be retired once the client confirms it, not resent for ever");
+            }
+        }
+
+        [Test]
         public void AVanishedClientIsEventuallyDeclaredGone()
         {
             using (var server = UnseenUdpService.Host(0))

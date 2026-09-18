@@ -109,6 +109,17 @@ namespace Unseen.Net
         {
             if (!_peerById.TryGetValue(connectionId, out NetEndpoint peer)) return;
 
+            if (reliable)
+            {
+                ChannelFor(connectionId).Queue(Copy(payload, length));
+
+                // Sent from here rather than waiting for the next Poll. The first attempt at a
+                // message that matters should not be held back by up to a frame for no reason;
+                // Poll's job is the resends, which are the part that needs a clock.
+                FlushReliable(connectionId, peer);
+                return;
+            }
+
             SequenceWindow inbound = WindowFor(connectionId);
 
             _scratch.Reset();
@@ -121,10 +132,91 @@ namespace Unseen.Net
         {
             if (!IsConnected) return;
 
+            if (reliable)
+            {
+                ChannelFor(ServerConnectionId).Queue(Copy(payload, length));
+                FlushReliable(ServerConnectionId, _serverEndpoint);
+                return;
+            }
+
             _scratch.Reset();
             HandshakePackets.WritePayload(_scratch, payload, length,
                 NextSequence(ServerConnectionId), _inbound.Latest, _inbound.AckBits);
             _socket.Send(_serverEndpoint, _scratch.Buffer, _scratch.Length);
+        }
+
+        /// <summary>
+        /// The caller's bytes, kept.
+        ///
+        /// A reliable message outlives the call that made it - that is the entire point - and every
+        /// sender above this reuses one buffer for the next message. Holding the caller's array
+        /// would mean resending whatever happened to be in it a quarter of a second later, which is
+        /// a bug that only appears under loss, and then sends the wrong thing.
+        /// </summary>
+        private static byte[] Copy(byte[] payload, int length)
+        {
+            var kept = new byte[length];
+            Buffer.BlockCopy(payload, 0, kept, 0, length);
+            return kept;
+        }
+
+        /// <summary>How many messages to this connection are still unconfirmed.</summary>
+        public int UnacknowledgedMessages(int connectionId)
+        {
+            return _reliable.TryGetValue(connectionId, out ReliableChannel channel)
+                ? channel.OutstandingCount
+                : 0;
+        }
+
+        private readonly Dictionary<int, ReliableChannel> _reliable = new Dictionary<int, ReliableChannel>();
+
+        /// <summary>
+        /// Reliable message ids seen from each peer, so a resend is not acted on twice.
+        ///
+        /// Separate from the packet sequence window, because a resend is a new datagram with a new
+        /// sequence: the packet window has never seen it and will let it through, correctly. What
+        /// must not happen twice is the thing the message describes - an elimination, a zone stage -
+        /// and that is what this tracks.
+        /// </summary>
+        private readonly Dictionary<int, SequenceWindow> _seenReliable = new Dictionary<int, SequenceWindow>();
+
+        private ReliableChannel ChannelFor(int connectionId)
+        {
+            if (_reliable.TryGetValue(connectionId, out ReliableChannel channel)) return channel;
+
+            channel = new ReliableChannel();
+            _reliable[connectionId] = channel;
+            return channel;
+        }
+
+        private SequenceWindow SeenReliableFor(int connectionId)
+        {
+            if (_seenReliable.TryGetValue(connectionId, out SequenceWindow window)) return window;
+
+            window = new SequenceWindow();
+            _seenReliable[connectionId] = window;
+            return window;
+        }
+
+        /// <summary>Sends everything this connection is owed: first attempts and expired waits.</summary>
+        private void FlushReliable(int connectionId, NetEndpoint peer)
+        {
+            if (!_reliable.TryGetValue(connectionId, out ReliableChannel channel)) return;
+
+            IReadOnlyList<ReliableChannel.Message> due = channel.Due(_now);
+            if (due.Count == 0) return;
+
+            SequenceWindow inbound = connectionId == ServerConnectionId && IsClient
+                ? _inbound
+                : WindowFor(connectionId);
+
+            for (int i = 0; i < due.Count; i++)
+            {
+                _scratch.Reset();
+                HandshakePackets.WriteReliablePayload(_scratch, due[i].Payload, due[i].Payload.Length,
+                    NextSequence(connectionId), inbound.Latest, inbound.AckBits, due[i].Id);
+                _socket.Send(peer, _scratch.Buffer, _scratch.Length);
+            }
         }
 
         /// <summary>The id a client files the server's own connection state under.</summary>
@@ -165,11 +257,37 @@ namespace Unseen.Net
             while (_socket.TryReceive(out byte[] payload, out NetEndpoint from))
                 Handle(payload, from);
 
+            ResendReliable();
+
             if (IsServer)
             {
                 SendHeartbeats();
                 ExpireSilentPeers();
             }
+        }
+
+        /// <summary>
+        /// Sends again anything the far end has not confirmed and whose wait has expired.
+        ///
+        /// The channel decides what is due; this only knows where to put it. A message that is
+        /// never acknowledged goes out every quarter second until the connection times out and
+        /// takes the whole channel with it, which is the right end for it: at that point the peer
+        /// is gone, not merely slow.
+        /// </summary>
+        private void ResendReliable()
+        {
+            if (IsServer)
+            {
+                for (int i = 0; i < _connections.Count; i++)
+                {
+                    if (_peerById.TryGetValue(_connections[i], out NetEndpoint peer))
+                        FlushReliable(_connections[i], peer);
+                }
+
+                return;
+            }
+
+            if (IsConnected) FlushReliable(ServerConnectionId, _serverEndpoint);
         }
 
         /// <summary>
@@ -231,6 +349,14 @@ namespace Unseen.Net
 
                 case HandshakeMessage.Payload:
                     HandlePayload(payload, from);
+                    break;
+
+                case HandshakeMessage.ReliablePayload:
+                    HandleReliablePayload(payload, from);
+                    break;
+
+                case HandshakeMessage.ReliableAck:
+                    HandleReliableAck(from);
                     break;
 
                 case HandshakeMessage.Ping when IsClient:
@@ -354,20 +480,75 @@ namespace Unseen.Net
             _socket.Send(peer, _scratch.Buffer, _scratch.Length);
         }
 
+        /// <summary>
+        /// A reliable payload: confirm it, then hand it up only if it has not been seen before.
+        ///
+        /// Acknowledged before the duplicate check, and deliberately. A copy arriving means the
+        /// first acknowledgement was lost, not that the sender is confused - so the one thing it
+        /// must not do is stay silent, or the sender goes on resending a message that arrived the
+        /// first time for as long as the connection lasts.
+        /// </summary>
+        private void HandleReliablePayload(byte[] payload, NetEndpoint from)
+        {
+            PayloadHeader header = HandshakePackets.ReadPayloadHeader(_reader);
+            ushort messageId = _reader.ReadUShort();
+
+            // Only from somebody who completed a handshake, same as any other payload.
+            int connectionId = ServerConnectionId;
+            if (IsServer && !_idByPeer.TryGetValue(from, out connectionId)) return;
+
+            _scratch.Reset();
+            HandshakePackets.WriteReliableAck(_scratch, messageId);
+            _socket.Send(from, _scratch.Buffer, _scratch.Length);
+
+            if (!SeenReliableFor(connectionId).Accept(messageId)) return;
+
+            // Not run through the packet ordering window. A resend is a fresh datagram carrying a
+            // message that is already old, so the window would reject it for being out of order -
+            // discarding, for lateness, the one kind of message whose whole purpose is to arrive
+            // eventually. Its own id has already established that this is not a repeat.
+            Deliver(payload, from, HandshakePackets.ReliablePayloadHeaderBytes,
+                header.Sequence, checkOrder: false);
+        }
+
+        private void HandleReliableAck(NetEndpoint from)
+        {
+            ushort messageId = _reader.ReadUShort();
+
+            int connectionId = ServerConnectionId;
+            if (IsServer && !_idByPeer.TryGetValue(from, out connectionId)) return;
+
+            if (_reliable.TryGetValue(connectionId, out ReliableChannel channel))
+                channel.Acknowledge(messageId);
+        }
+
         private void HandlePayload(byte[] payload, NetEndpoint from)
         {
             // The reader is already past the protocol id and message type, so this is the ordering
             // header sitting in front of the game's own bytes.
             PayloadHeader header = HandshakePackets.ReadPayloadHeader(_reader);
 
+            Deliver(payload, from, HandshakePackets.PayloadHeaderBytes,
+                header.Sequence, checkOrder: true);
+        }
+
+        /// <summary>
+        /// Hands a payload's game bytes up to the simulation, having established who sent it.
+        ///
+        /// <paramref name="checkOrder"/> is false only for reliable messages, which have already
+        /// been deduplicated by their own id and must not then be dropped for arriving late.
+        /// </summary>
+        private void Deliver(byte[] payload, NetEndpoint from, int headerBytes,
+            ushort sequence, bool checkOrder)
+        {
             // The game's bytes start after our header. Copied out rather than passed with an offset
             // because INetworkService hands the simulation a buffer and a length, and every reader
             // above this has always started at zero.
-            int length = payload.Length - HandshakePackets.PayloadHeaderBytes;
+            int length = payload.Length - headerBytes;
             if (length <= 0) return;
 
             var body = new byte[length];
-            Buffer.BlockCopy(payload, HandshakePackets.PayloadHeaderBytes, body, 0, length);
+            Buffer.BlockCopy(payload, headerBytes, body, 0, length);
 
             if (IsServer)
             {
@@ -385,7 +566,7 @@ namespace Unseen.Net
                 // Stale or repeated: the packet arrived, and the window has recorded that, but
                 // handing it up would apply an older input over a newer one - a player taking a
                 // step they had already taken, or taking one backwards.
-                if (!WindowFor(id).Accept(header.Sequence)) return;
+                if (checkOrder && !WindowFor(id).Accept(sequence)) return;
 
                 ServerReceived?.Invoke(id, body, length);
                 return;
@@ -394,7 +575,7 @@ namespace Unseen.Net
             // Same on the client, where the cost is worse: a snapshot that left the server before
             // the one already drawn drags every position backwards for a frame, and what a player
             // sees is rubber-banding they will blame on their connection.
-            if (!_inbound.Accept(header.Sequence)) return;
+            if (checkOrder && !_inbound.Accept(sequence)) return;
 
             ClientReceived?.Invoke(body, length);
         }

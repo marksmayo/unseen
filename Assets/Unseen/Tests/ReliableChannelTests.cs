@@ -31,6 +31,26 @@ namespace Unseen.Tests
         }
 
         [Test]
+        public void EveryDueMessageCarriesTheIdTheFarEndWillAcknowledge()
+        {
+            var channel = new ReliableChannel();
+
+            ushort first = channel.Queue(new byte[] { 1 });
+            ushort second = channel.Queue(new byte[] { 2 });
+
+            System.Collections.Generic.IReadOnlyList<ReliableChannel.Message> due = channel.Due(0f);
+
+            // Without the id travelling with the payload there is nothing to put on the wire, so
+            // the receiver has nothing to acknowledge and the channel resends for ever. A queue
+            // that hands back anonymous bytes cannot be the thing that makes a message reliable -
+            // it is just a list.
+            Assert.AreEqual(2, due.Count);
+            Assert.AreEqual(first, due[0].Id, "the id Queue issued, so the ack can name it");
+            Assert.AreEqual(second, due[1].Id);
+            Assert.AreEqual(2, due[1].Payload[0], "alongside the bytes it belongs to");
+        }
+
+        [Test]
         public void AnAcknowledgedMessageStopsBeingSent()
         {
             var channel = new ReliableChannel();

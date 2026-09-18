@@ -36,6 +36,25 @@ namespace Unseen.Net
         /// </summary>
         public const int MaxOutstanding = 64;
 
+        /// <summary>
+        /// A message on its way out, with the id the far end will name when it acknowledges.
+        ///
+        /// The id has to travel with the bytes. A queue that hands back anonymous payloads cannot
+        /// make anything reliable: the receiver has nothing to acknowledge, so nothing is ever
+        /// retired and the same message goes out every quarter second for the rest of the match.
+        /// </summary>
+        public readonly struct Message
+        {
+            public readonly ushort Id;
+            public readonly byte[] Payload;
+
+            public Message(ushort id, byte[] payload)
+            {
+                Id = id;
+                Payload = payload;
+            }
+        }
+
         private struct Outgoing
         {
             public ushort Id;
@@ -45,7 +64,7 @@ namespace Unseen.Net
         }
 
         private readonly List<Outgoing> _outstanding = new List<Outgoing>();
-        private readonly List<byte[]> _due = new List<byte[]>();
+        private readonly List<Message> _due = new List<Message>();
 
         private ushort _nextId;
 
@@ -69,7 +88,7 @@ namespace Unseen.Net
         ///
         /// The returned list is reused between calls, so read it before calling again.
         /// </summary>
-        public IReadOnlyList<byte[]> Due(float atSeconds)
+        public IReadOnlyList<Message> Due(float atSeconds)
         {
             _due.Clear();
 
@@ -83,7 +102,7 @@ namespace Unseen.Net
                 message.SentAt = atSeconds;
                 _outstanding[i] = message;
 
-                _due.Add(message.Payload);
+                _due.Add(new Message(message.Id, message.Payload));
             }
 
             return _due;

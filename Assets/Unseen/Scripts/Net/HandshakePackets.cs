@@ -55,7 +55,27 @@ namespace Unseen.Net
         Ping = 6,
 
         /// <summary>A heartbeat returned, carrying the timestamp it came with.</summary>
-        Pong = 7
+        Pong = 7,
+
+        /// <summary>
+        /// Game traffic that has to arrive, carrying the id the receiver will name when it does.
+        ///
+        /// Separate from an ordinary payload rather than a flag inside one, so the two extra bytes
+        /// are paid only by the messages that need them. Reliable traffic is rare - a match
+        /// starting, a zone stage closing, an elimination - and snapshots are the opposite: sixty a
+        /// second, per player, of something that is replaced rather than repeated.
+        /// </summary>
+        ReliablePayload = 8,
+
+        /// <summary>
+        /// Confirmation that one reliable message arrived, by id.
+        ///
+        /// Its own packet, and deliberately tiny. Piggybacking it on the next ordinary payload
+        /// would be cheaper on the wire and wrong on a quiet connection: a client with nothing to
+        /// say sends nothing, so the acknowledgement would wait for traffic that is not coming and
+        /// the server would resend a message that arrived the first time.
+        /// </summary>
+        ReliableAck = 9
     }
 
     /// <summary>
@@ -171,6 +191,41 @@ namespace Unseen.Net
             for (int i = 0; i < length; i++) writer.WriteByte(payload[i]);
         }
 
+        /// <summary>
+        /// Bytes before a reliable payload: the ordinary header plus the message id.
+        /// </summary>
+        public const int ReliablePayloadHeaderBytes = PayloadHeaderBytes + 2;
+
+        /// <summary>
+        /// Wraps a payload that has to arrive, with the id the far end will acknowledge.
+        ///
+        /// The ordering header is carried as well, and it does the same job it always does: the
+        /// resend is a fresh packet with a fresh sequence, so a reliable message still takes its
+        /// place in the ordering the receiver is tracking. The message id is a separate count from
+        /// the packet sequence on purpose - one identifies a datagram, the other identifies a
+        /// thing that happened, and a resend of the second is a different value of the first.
+        /// </summary>
+        public static void WriteReliablePayload(NetWriter writer, byte[] payload, int length,
+            ushort sequence, ushort ack, uint ackBits, ushort messageId)
+        {
+            writer.WriteInt(ProtocolId);
+            writer.WriteByte((byte)HandshakeMessage.ReliablePayload);
+            writer.WriteUShort(sequence);
+            writer.WriteUShort(ack);
+            writer.WriteUInt(ackBits);
+            writer.WriteUShort(messageId);
+
+            for (int i = 0; i < length; i++) writer.WriteByte(payload[i]);
+        }
+
+        /// <summary>Confirms one reliable message by id.</summary>
+        public static void WriteReliableAck(NetWriter writer, ushort messageId)
+        {
+            writer.WriteInt(ProtocolId);
+            writer.WriteByte((byte)HandshakeMessage.ReliableAck);
+            writer.WriteUShort(messageId);
+        }
+
         /// <summary>Reads the ordering header that follows the message type on a payload.</summary>
         public static PayloadHeader ReadPayloadHeader(NetReader reader)
         {
@@ -218,7 +273,7 @@ namespace Unseen.Net
             byte kind = reader.ReadByte();
 
             return kind >= (byte)HandshakeMessage.ConnectRequest &&
-                   kind <= (byte)HandshakeMessage.Pong
+                   kind <= (byte)HandshakeMessage.ReliableAck
                 ? (HandshakeMessage)kind
                 : HandshakeMessage.Unknown;
         }
