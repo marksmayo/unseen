@@ -117,6 +117,21 @@ namespace Unseen.BattleRoyale
 
             if (Reclaim(connectionId, displayName)) return;
 
+            // Not while this server is on its way out.
+            //
+            // A rolling deploy asks each server to go in turn, and one that kept seating players
+            // while draining would put somebody through a minute of loading for two minutes of
+            // play before dropping them - a deploy they had no part in, arriving as a disconnect.
+            // Reclaiming is allowed above, deliberately: somebody already in this match coming back
+            // is finishing it, not starting one.
+            var life = Ctx.Get<Net.ServerLifecycle>();
+
+            if (life != null && !life.AcceptsPlayers)
+            {
+                UnseenLog.Info($"[Unseen] connection {connectionId} arrived while draining; not seated");
+                return;
+            }
+
             // Nobody joins a round already under way. Somebody arriving mid-match watches until it
             // ends and plays the next one.
             //

@@ -385,8 +385,30 @@ Everything a stranger needs in order to get from "bought it" to "playing", witho
       Australian and European players in one match.
 - [ ] **Server browser or quick-play, decided.** Affects the whole UI flow.
 - [ ] **Autoscaling and cost model.** Know what a concurrent player costs before launch, not after.
-- [ ] **Health checks, graceful drain, rolling deploys.** A server update must not kill matches
-      in progress.
+- [x] **Graceful drain.** *(Done 2026-09-20.)* `ServerLifecycle` holds both halves of "a server
+      update must not kill matches in progress", and the two ways to get it wrong are symmetrical.
+      Health is "the simulation stepped", not "the process is running" — a server that is up but not
+      ticking is the worst case for everybody in it: the port still accepts, the pod still looks
+      alive, and sixty-four players stand frozen in a town. A ninety-second startup grace, because
+      generating the town takes most of a minute and a probe that failed during that would have the
+      orchestrator kill every server it ever launched.
+      A shutdown request means "finish what you are doing". `Application.wantsToQuit` refuses once,
+      the server stops accepting players, the match plays out, and it exits when the match ends — or
+      after 25 s, because a match that will not end would otherwise hold the pod until SIGKILL,
+      which is the abrupt ending draining exists to avoid. Keep that under the pod's
+      `terminationGracePeriodSeconds` or the kinder deadline never applies.
+      Reclaiming a body is still allowed while draining: somebody already in this match coming back
+      is finishing it, not starting one.
+      Verified by `Unseen ▸ Test Drain` — nine assertions in a live match: the drain arrives, the
+      match keeps running, nobody is dropped, and a fresh arrival is turned away.
+- [ ] **Agones health pings and rolling deploys.** `ServerLifecycle` answers the questions; nothing
+      asks them yet. Agones health is an SDK call to the sidecar on `$AGONES_SDK_HTTP_PORT`
+      (`/health`, `/ready`, `/gameserver`), and the drain hook is the sidecar's shutdown rather than
+      a bare SIGTERM. Both are small HTTP calls, and neither can be tested without a cluster — which
+      is why they are separated from the logic above rather than written blind.
+- [ ] **Nothing registers a server with the matchmaker.** The queue, the front door and the client
+      all work; a server coming up does not announce itself, so the fleet is always empty. Needs the
+      same Agones sidecar as the item above to know its own external address.
 
 ### Build and release pipeline
 

@@ -91,6 +91,11 @@ namespace Unseen.Core
         private ThirdPersonCameraRig _camera;
         private float _nextStatusLogAt;
 
+        /// <summary>Health and drain state, shared with the systems that have to respect it.</summary>
+        private readonly ServerLifecycle _life = new ServerLifecycle();
+
+        private bool _quitting;
+
         public SimContext Context => _ctx;
         public ServerSimulation Simulation => _sim;
         public INetworkService Network => _net;
@@ -138,6 +143,12 @@ namespace Unseen.Core
 
             _net = CreateNetworkService();
             _ctx = new SimContext(Config, transform, _net, Seed);
+
+            // Registered so the seat system can refuse players while draining. A server on its way
+            // out is not a place to send somebody who will load for a minute and be dropped.
+            _ctx.Register(_life);
+
+            Application.wantsToQuit += OnWantsToQuit;
             _ctx.Sound = new SoundEventBus();
             _ctx.Destructibles = new DestructibleRegistry();
 
@@ -444,17 +455,17 @@ namespace Unseen.Core
             tonemapping.mode.Override(UnityEngine.Rendering.Universal.TonemappingMode.ACES);
 
             var colour = profile.Add<UnityEngine.Rendering.Universal.ColorAdjustments>(true);
-            colour.postExposure.Override(.85f);
-            colour.contrast.Override(10f);
+            colour.postExposure.Override(1.05f);
+            colour.contrast.Override(2.5f);
             colour.saturation.Override(-4f);
 
             // Cold shadows, warm lights. This is the whole palette in one effect: everything unlit
             // falls toward indigo and everything a lantern touches goes amber, which is what makes
             // a single paper lamp read as fire from across a courtyard.
             var split = profile.Add<UnityEngine.Rendering.Universal.SplitToning>(true);
-            split.shadows.Override(new Color(0.24f, 0.34f, 0.62f));
+            split.shadows.Override(new Color(0.39f, 0.44f, 0.55f));
             split.highlights.Override(new Color(0.92f, 0.66f, 0.34f));
-            split.balance.Override(-18f);
+            split.balance.Override(-8f);
 
             // Bloom, thresholded above everything except flame.
             //
@@ -466,7 +477,7 @@ namespace Unseen.Core
             // blooming as hard as the lamp lighting it, which is how a row of shrubs came out
             // acid green.
             bloom.threshold.Override(1.15f);
-            bloom.intensity.Override(.55f);
+            bloom.intensity.Override(.32f);
             bloom.scatter.Override(0.72f);
             bloom.tint.Override(new Color(1f, 0.86f, 0.66f));
 
@@ -474,7 +485,7 @@ namespace Unseen.Core
             // same job as a shadowed proscenium: it pushes the eye to the middle of the frame and
             // makes the edges feel like somewhere you cannot see into.
             var vignette = profile.Add<UnityEngine.Rendering.Universal.Vignette>(true);
-            vignette.intensity.Override(0.2f);
+            vignette.intensity.Override(0.09f);
             vignette.smoothness.Override(0.42f);
             vignette.color.Override(new Color(0.02f, 0.03f, 0.06f));
 
@@ -482,7 +493,7 @@ namespace Unseen.Core
             // at these exposures on an eight bit display.
             var grain = profile.Add<UnityEngine.Rendering.Universal.FilmGrain>(true);
             grain.type.Override(UnityEngine.Rendering.Universal.FilmGrainLookup.Thin1);
-            grain.intensity.Override(0.22f);
+            grain.intensity.Override(0.10f);
             grain.response.Override(0.85f);
 
             volume.profile = profile;
@@ -541,8 +552,56 @@ namespace Unseen.Core
             _net.Poll(dt);
             _sim.Advance(dt);
 
+            // Health is "the simulation stepped", not "the process is running". A server that is
+            // up but not simulating is the worst case for everybody in it: the port still accepts,
+            // the pod still looks alive, and sixty-four players stand frozen in a town.
+            _life.Ticked(_sim.Time);
+            LeaveIfDrained();
+
             BindCameraToLocalAgent();
             LogStatus();
+        }
+
+        /// <summary>
+        /// Quits once a drain has finished, and not before.
+        ///
+        /// The deadline is the lifecycle's, not Kubernetes'. A match that will not end would
+        /// otherwise hold the pod until the grace period expires and SIGKILL arrives - which is
+        /// precisely the abrupt ending draining exists to avoid, so it leaves on its own terms
+        /// while it still can.
+        /// </summary>
+        private void LeaveIfDrained()
+        {
+            if (!_life.IsDraining) return;
+
+            bool matchRunning = _match != null &&
+                                _match.Phase != BattleRoyale.MatchPhase.Lobby &&
+                                _match.Phase != BattleRoyale.MatchPhase.PostMatch;
+
+            if (!_life.ShouldExit(_sim.Time, matchRunning)) return;
+
+            UnseenLog.Info($"[Unseen] drained after {_life.Describe(_sim.Time)}; exiting");
+            _quitting = true;
+            Application.Quit();
+        }
+
+        /// <summary>
+        /// Takes a shutdown request as "finish what you are doing", not "stop now".
+        ///
+        /// This is the whole of "a server update must not kill matches in progress". A rolling
+        /// deploy asks every server in the fleet to go, one at a time, and a server that obeys
+        /// immediately ends a match for sixty-four people - the update arriving as a crash, from
+        /// the player's side. Refusing the quit once, draining, and leaving when the match is over
+        /// turns a deploy into something nobody in the game notices.
+        /// </summary>
+        private bool OnWantsToQuit()
+        {
+            if (_quitting || _life == null) return true;
+
+            _life.Drain(_sim != null ? _sim.Time : 0f);
+            UnseenLog.Info("[Unseen] asked to stop; draining rather than dropping the match");
+
+            return false;
         }
 
         /// <summary>
@@ -697,7 +756,7 @@ namespace Unseen.Core
                       $"hot {_pockets.HotAgents}/{_motion.HotAgentsLastTick} | {_interest.DescribeLoad()} | " +
                       $"{_bots.Describe()} | {players} players | " +
                       $"out {_replication.KilobitsPerSecond:0} kbps ({perPlayer:0.0} each) | " +
-                      $"rtt {AverageRoundTrip() * 1000f:0} ms");
+                      $"rtt {AverageRoundTrip() * 1000f:0} ms | {_life.Describe(_sim.Time)}");
 
             LogLocalPlayer();
         }
