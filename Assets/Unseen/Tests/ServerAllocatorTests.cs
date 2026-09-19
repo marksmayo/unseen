@@ -93,6 +93,39 @@ namespace Unseen.Tests
         }
 
         [Test]
+        public void AServerTakenOutOfTheFleetStopsReceivingPlayers()
+        {
+            var allocator = new ServerAllocator(capacity: 4);
+            allocator.Register("doomed");
+            allocator.Register("healthy");
+
+            // A pod evicted, a node lost, a server drained for a deploy. Leaving it in the fleet is
+            // worse than having one fewer machine: the packing prefers the fullest server with room,
+            // so a dead one keeps being chosen, and every player sent there bounces.
+            allocator.Remove("doomed");
+
+            for (int i = 0; i < 4; i++)
+                Assert.AreEqual("healthy", allocator.Allocate(), "nobody goes to a server that is gone");
+
+            Assert.IsNull(allocator.Allocate(), "and the fleet is a machine smaller, honestly");
+        }
+
+        [Test]
+        public void RemovingAServerTwiceIsHarmless()
+        {
+            var allocator = new ServerAllocator(capacity: 1);
+            allocator.Register("a");
+
+            // Kubernetes will happily tell you about the same deletion more than once, and an
+            // orchestrator retrying is not a reason to throw inside a matchmaker.
+            Assert.DoesNotThrow(() => allocator.Remove("a"));
+            Assert.DoesNotThrow(() => allocator.Remove("a"));
+            Assert.DoesNotThrow(() => allocator.Remove("never-existed"));
+
+            Assert.IsNull(allocator.Allocate(), "an empty fleet has nothing to give");
+        }
+
+        [Test]
         public void ReleasingAServerNobodyRegisteredDoesNotPoisonTheName()
         {
             var allocator = new ServerAllocator(capacity: 1);

@@ -360,8 +360,27 @@ Everything a stranger needs in order to get from "bought it" to "playing", witho
 ### Matchmaking and infrastructure
 
 - [ ] **Deploy the Agones fleet for real.** `Server/k8s/agones-fleet.yaml` has never run.
-- [ ] **Matchmaking service.** `ServerAllocator` has the packing logic, tested; it needs an HTTP
-      front end, a queue, and a client that talks to it. *(Partial)*
+- [x] **Matchmaking service.** *(Done 2026-09-20.)* `Matchmaker` is the queue in front of the
+      fleet: tickets rather than a blocking call, because the wait is unbounded and the thing
+      waiting is a game that has to keep drawing frames. First come first served, packing preserved,
+      and a waiting player is told how many are ahead — a queue with no number on it is a spinner,
+      and a spinner is where players decide the game is broken.
+      `MatchmakerHost` is the front door and `MatchmakerClient` the game's side, over a real socket
+      in the tests. Hand-rolled HTTP on `TcpListener` rather than `HttpListener`, which wants a URL
+      reservation on Windows and fails for anyone who has not run a command as administrator.
+      The protocol is line-oriented text, tested as text: a reply a client cannot read is
+      indistinguishable from a service that is down. It refuses an unknown status word rather than
+      defaulting, so a newer matchmaker saying something cautious cannot be read by an older client
+      as permission to connect, and it refuses an address with no port rather than handing the
+      transport something it cannot dial.
+      Two real bugs came out of building it. `ServerAllocator` had no way to remove a dead server,
+      so the packing would keep choosing a machine that had been evicted. And the host was designed
+      to be pumped from outside, which cannot work: a client asking is a blocking call, so nothing
+      can answer it from the thread that is waiting. The host owns a thread now, and the matchmaker
+      belongs to that thread — which is what keeps the part with all the decisions in it free of
+      locks.
+      **Not deployed.** It runs and is tested; nothing has put it in front of a real fleet, and
+      nothing registers servers with it yet — that is the Agones item below.
 - [ ] **Regional servers.** A stealth game with a latency-compensated parry window cannot put
       Australian and European players in one match.
 - [ ] **Server browser or quick-play, decided.** Affects the whole UI flow.

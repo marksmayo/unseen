@@ -64,6 +64,26 @@ namespace Unseen.Net
         }
 
         /// <summary>
+        /// Takes a server out of the fleet: evicted, crashed, drained for a deploy.
+        ///
+        /// Leaving a dead server registered is worse than being a machine short. The packing
+        /// prefers the fullest server that still has room, so a dead one goes on being chosen
+        /// ahead of the live ones, and every player sent there bounces off a machine that is not
+        /// answering. A fleet that is honestly smaller is a fleet that still works.
+        ///
+        /// Both halves, or the name is poisoned: an id left in the occupancy table cannot be
+        /// registered again, because Register returns early for anything it already knows about,
+        /// and Agones reuses fleet names.
+        /// </summary>
+        public void Remove(string id)
+        {
+            if (string.IsNullOrEmpty(id)) return;
+
+            _ids.Remove(id);
+            _occupancy.Remove(id);
+        }
+
+        /// <summary>
         /// Gives a slot back when a player leaves that server.
         ///
         /// Without it occupancy only ever climbs, and a fleet that has been up for a day reports
