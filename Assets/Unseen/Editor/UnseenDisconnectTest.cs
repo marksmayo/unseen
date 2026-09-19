@@ -95,7 +95,16 @@ namespace Unseen.EditorTools
             ok &= Check("the cause says what happened", player.DeathCause == DamageKind.Disconnected);
             ok &= Check("nobody is credited with the kill", player.Killer == AgentId.None);
             ok &= Check("it takes a placement like any other elimination", player.Placement > 0);
-            ok &= Check("and the match is one player shorter", ctx.Entities.AliveCount == aliveBefore - 1);
+            // Counted as "this body is out", not as "the roster shrank by exactly one".
+            //
+            // The strict version measured the wrong thing and only ever passed by luck. Sixty-three
+            // seconds of grace is sixty-three seconds of everybody else fighting, and it started
+            // failing the moment the melee input bug was fixed - because bots could suddenly land
+            // the sword hits they had been swinging and missing for the life of the katana. A test
+            // of disconnection should not depend on how lethal the AI happens to be.
+            ok &= Check("the body is out of the match", !player.IsAlive);
+            ok &= Check("and is not counted among the living",
+                ctx.Entities.AliveCount <= aliveBefore - 1);
 
             // Past the window there is nothing to come back to. Rejoining mid-round never hands out
             // a fresh body, or leaving and returning would be the same escape by a longer route.

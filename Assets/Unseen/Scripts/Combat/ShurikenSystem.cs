@@ -301,7 +301,14 @@ namespace Unseen.Combat
         /// algebra that is easy to get subtly wrong, and at these speeds and sizes a dozen samples
         /// along the path is both obviously correct and cheaper to read.
         /// </summary>
-        private static bool SegmentsClose(float3 from, float3 direction, float distance,
+        /// <summary>
+        /// Whether a blade's path passes within a radius of a body, treated as a vertical segment.
+        ///
+        /// Public so the hit window can be tested as arithmetic. It is the one number in the
+        /// shuriken that decides whether the weapon feels precise or fussy, and it deserves to be
+        /// pinned somewhere that does not need a match running.
+        /// </summary>
+        public static bool SegmentsClose(float3 from, float3 direction, float distance,
             float3 low, float3 high, float radius, out float along)
         {
             along = 0f;

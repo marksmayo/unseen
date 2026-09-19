@@ -458,8 +458,14 @@ namespace Unseen.Core
                      "to be lobbed is a blade that misses, and it announces the thrower.")]
             public float ThrowRangeMetres = 26f;
 
-            [Tooltip("How near the body the blade has to pass to count as a hit, in metres.")]
-            public float HitRadiusMetres = 0.42f;
+            [Tooltip("How near the body the blade has to pass to count as a hit, in metres. " +
+                     "Doubled from 0.42 on play feedback: throws that visibly connected were being " +
+                     "read as misses, and a weapon you have one of, that you have to go and pick " +
+                     "up again, should not also demand the precision of a rifle. At 0.84 this is " +
+                     "roughly two and a half body radii, so it is forgiving on purpose - expect " +
+                     "some throws that look like near misses to land, and dial it back here if " +
+                     "that reads as aim assist rather than as a fair weapon.")]
+            public float HitRadiusMetres = 0.84f;
 
             [Tooltip("How big the star is drawn, across the points, in metres. A real one is " +
                      "about fifteen centimetres and at that size it is invisible in flight, so " +

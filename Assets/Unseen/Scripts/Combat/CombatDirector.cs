@@ -45,6 +45,15 @@ namespace Unseen.Combat
         private readonly List<CombatEvent> _events = new List<CombatEvent>(64);
         private readonly Dictionary<int, bool> _guardHeld = new Dictionary<int, bool>(64);
         private readonly Dictionary<int, bool> _attackHeld = new Dictionary<int, bool>(64);
+
+        /// <summary>
+        /// One waiting attack per agent, for presses that arrived before the blade was out.
+        ///
+        /// Keyed rather than kept on AgentCombat so the rule lives in one testable place: the
+        /// timing is subtle enough that it was wrong for the whole life of the katana, and a
+        /// MonoBehaviour field cannot be tested without a scene.
+        /// </summary>
+        private readonly Dictionary<int, AttackBuffer> _attackBuffer = new Dictionary<int, AttackBuffer>(64);
         private readonly Dictionary<int, byte> _utilityHeld = new Dictionary<int, byte>(64);
 
         /// <summary>Optional smoke prefab. A bare gameplay volume is created when this is null.</summary>
@@ -118,11 +127,25 @@ namespace Unseen.Combat
             else agent.Flags &= ~AgentFlags.BladeDrawn;
 
             bool attackPressed = RisingEdge(_attackHeld, agent.Id.Value, intent.AttackLight || intent.AttackHeavy);
-            if (!attackPressed || !melee.CanAct(now)) return;
 
-            // Nothing to swing with yet. The press is not thrown away - it started the draw above -
-            // so the swing simply arrives when the blade does, which is the cost of having run.
-            if (!melee.Blade.CanStrike) return;
+            // Held until the blade is ready, rather than discarded.
+            //
+            // This is what the comment here always claimed and the code never did. The press is
+            // what starts the draw, so the blade is never ready on the frame of the press - and a
+            // held button produces no second rising edge, so the swing was refused for ever. Every
+            // first attack, and every attack after a sprint, went nowhere.
+            //
+            // Ticked before CanAct so a press during a recovery or a stagger is still remembered:
+            // those are exactly the moments a player mashes the button, and swallowing those was
+            // half of what made the sword feel unresponsive.
+            if (!_attackBuffer.TryGetValue(agent.Id.Value, out AttackBuffer buffered))
+            {
+                buffered = new AttackBuffer();
+                _attackBuffer[agent.Id.Value] = buffered;
+            }
+
+            bool swing = buffered.Tick(attackPressed, melee.Blade.CanStrike && melee.CanAct(now), now);
+            if (!swing) return;
 
             // A silent takedown always beats a swing when it is available.
             if (TryBeginTakedown(agent, frame)) return;
