@@ -166,5 +166,74 @@ namespace Unseen.Tests
                     "and should still send what fits");
             }
         }
+
+        [Test]
+        public void SendingToAClosedPortDoesNotKillTheReceiveLoop()
+        {
+            // The Windows behaviour the constructor's SIO_UDP_CONNRESET call exists to suppress.
+            //
+            // A datagram sent to a port nobody is listening on provokes an ICMP unreachable, and
+            // Windows reports that back on the *next receive* of the sending socket as a connection
+            // reset - on a connectionless socket, about a packet that was never part of a
+            // connection. Left alone it surfaces as an exception that ends the receive loop.
+            //
+            // Which makes it a server-killer rather than a curiosity: a client quitting is an
+            // ordinary event, the server keeps sending snapshots for a moment afterwards, and the
+            // reply to those is exactly this. One player closing the game would stop the server
+            // hearing from everybody else.
+            //
+            // What this pins is the guarantee, not the mechanism, and the difference was worth
+            // finding out. Removing the IOControl call leaves this test passing - because Poll
+            // catches SocketException and returns, so a reset merely ends one drain early and the
+            // next poll carries on. The catch is doing the protective work; the IOControl is a
+            // second layer that stops the error being raised in the first place.
+            //
+            // So the call itself is not pinned by anything, and no reasonable test would pin it:
+            // the only observable difference is one poll cycle of delay, which is exactly the kind
+            // of timing assertion that fails on a loaded machine for no reason. Recorded in TODO
+            // rather than covered by a flaky test pretending to.
+            using (var server = new UdpSocket(0))
+            using (var client = new UdpSocket(0))
+            {
+                NetEndpoint nobody = ClosedPort();
+
+                // Several, because the error arrives asynchronously and one might race past the
+                // receive that follows it.
+                for (int i = 0; i < 8; i++) client.Send(nobody, new byte[] { 1 }, 1);
+
+                for (int i = 0; i < 20; i++)
+                {
+                    client.Poll();
+                    System.Threading.Thread.Sleep(1);
+                }
+
+                // The socket must still work. Not "must not have thrown" - the throw is caught
+                // inside Poll, and a caught exception that quietly ends the drain leaves a socket
+                // that looks alive and hears nothing.
+                server.Send(client.LocalEndpoint, new byte[] { 42 }, 1);
+
+                byte[] arrived = null;
+                Assert.IsTrue(
+                    PumpUntil(server, client, () =>
+                        client.TryReceive(out arrived, out NetEndpoint _)),
+                    "the client should still receive after provoking an ICMP unreachable");
+
+                Assert.AreEqual(42, arrived[0], "and receive the right bytes");
+            }
+        }
+
+        /// <summary>
+        /// An endpoint with certainly nothing on it: bound, read back, then closed.
+        ///
+        /// Better than picking a number and hoping. A hard-coded high port is usually free and
+        /// occasionally is not, and a test that fails on one machine a month is worse than no test.
+        /// </summary>
+        private static NetEndpoint ClosedPort()
+        {
+            using (var doomed = new UdpSocket(0))
+            {
+                return doomed.LocalEndpoint;
+            }
+        }
     }
 }

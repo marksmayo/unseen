@@ -172,6 +172,10 @@ namespace Unseen.Net
             // own seat once the server fills up.
             if (_established.ContainsKey(peer))
             {
+                // Counted as hearing from them, not merely tolerated. This is the only traffic a
+                // client sends between asking to join and being told it is in, so a repeat that
+                // did not refresh the clock would leave a connection unrefreshed at exactly the
+                // moment it is most fragile.
                 _established[peer] = atSeconds;
                 return true;
             }

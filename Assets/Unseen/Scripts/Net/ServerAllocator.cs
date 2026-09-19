@@ -76,6 +76,12 @@ namespace Unseen.Net
         /// </summary>
         public void Release(string id)
         {
+            // Unknown ids are left alone entirely rather than written with a negative count.
+            //
+            // Not only to avoid the negative: Register returns early for any id it already has an
+            // entry for, so writing one here for a server that has not registered yet would drop
+            // that server on the floor for good - it would boot, report healthy, and never be
+            // allocated a single player.
             if (!_occupancy.TryGetValue(id, out int taken)) return;
 
             _occupancy[id] = taken > 0 ? taken - 1 : 0;

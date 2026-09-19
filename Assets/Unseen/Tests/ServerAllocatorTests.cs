@@ -65,5 +65,52 @@ namespace Unseen.Tests
             Assert.AreEqual(server, allocator.Allocate(),
                 "the freed slot should be handed to the next player");
         }
+
+        [Test]
+        public void ADoubleReleaseDoesNotInventCapacity()
+        {
+            var allocator = new ServerAllocator(capacity: 2);
+            allocator.Register("only-one");
+
+            string server = allocator.Allocate();
+
+            // Released twice: one player left, and something upstream counted it twice. That is a
+            // bookkeeping mistake and it will happen - a disconnect races a match ending, an
+            // orchestrator retries a call it thought had failed.
+            //
+            // The wrong response is to let the count go negative, because a negative occupancy is
+            // capacity that does not exist. A small accounting error then becomes players being
+            // routed to a server with no room for them, which presents as a failed join nobody can
+            // reproduce rather than as the counting bug it is.
+            allocator.Release(server);
+            allocator.Release(server);
+
+            Assert.AreEqual(server, allocator.Allocate(), "the real slot is genuinely free");
+            Assert.AreEqual(server, allocator.Allocate(), "and so is the second");
+
+            Assert.IsNull(allocator.Allocate(),
+                "but the third does not exist, however many times the second was given back");
+        }
+
+        [Test]
+        public void ReleasingAServerNobodyRegisteredDoesNotPoisonTheName()
+        {
+            var allocator = new ServerAllocator(capacity: 1);
+
+            // A disconnect arriving for a server the allocator has not been told about: an
+            // orchestrator retrying, or a machine restarting with the name it had before. Agones
+            // fleets reuse names, so this is ordinary rather than exotic.
+            Assert.DoesNotThrow(() => allocator.Release("tokyo-1"));
+
+            // The trap is not the release, it is what comes after. Releasing an unknown id without
+            // a guard writes an entry for it, and Register returns early for any id it already has
+            // an entry for - so the server would be silently dropped on the floor: never added to
+            // the fleet, never allocated to, and nothing anywhere saying why. A server that boots,
+            // reports healthy and receives no players is close to undiagnosable.
+            allocator.Register("tokyo-1");
+
+            Assert.AreEqual("tokyo-1", allocator.Allocate(),
+                "a name released before it was registered must still be usable afterwards");
+        }
     }
 }

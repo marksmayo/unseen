@@ -474,8 +474,23 @@ Specific items already known, not covered above.
 
 - [ ] **Smoke bomb visuals unverified.** Billboarding, seventeen puffs and dithered shadows have
       never been seen by a person. The dithered shadow may read as noise.
-- [ ] **Untested lines from the netcode work** — `Heard`-on-`Accept`, `ServerAllocator.Release`
-      flooring at zero, the Windows `SIO_UDP_CONNRESET` call.
+- [x] **Untested lines from the netcode work.** *(Done 2026-09-19.)* Four tests, each proved red by
+      deleting the line it claims to pin and watching it fail — a green test written against code
+      that already works proves only that it compiled.
+      That step earned its keep twice. One test passed with the line removed: releasing an unknown
+      server id. It turned out the guard's real job is not the negative count at all — `Register`
+      returns early for any id it already has an entry for, so a release arriving before a
+      registration would drop that server on the floor permanently. It would boot, report healthy,
+      and never be allocated a player. Agones reuses fleet names, so it is a live path. The test
+      now pins that.
+      The other was the reverse: the `SIO_UDP_CONNRESET` test passes with the call removed, because
+      `Poll` catches `SocketException` and the next poll carries on regardless. The catch is doing
+      the protective work and the IOControl is a second layer. The test keeps the guarantee that
+      matters — a socket survives provoking an ICMP unreachable — and the comment no longer claims
+      to cover the call.
+- [ ] **The `SIO_UDP_CONNRESET` call is not pinned by any test.** Its only observable effect is one
+      poll cycle of delay, and asserting on that is the kind of timing test that fails on a loaded
+      machine for no reason. Deliberately uncovered rather than covered badly.
 - [x] **`ApplyCommandLine` is testable.** *(Done 2026-09-18.)* Reading moved to
       `LaunchOptions.Parse(string[])`, six tests. The extraction itself introduced a regression -
       a struct field is always present, so "always present" became "always applied" and every

@@ -207,6 +207,35 @@ namespace Unseen.Tests
         }
 
         [Test]
+        public void ARepeatedResponseCountsAsHearingFromThePeer()
+        {
+            var gate = new ConnectionGatekeeper(Secret);
+
+            NetEndpoint peer = Peer(1);
+            ulong cookie = gate.Challenge(peer, 1f);
+
+            Assert.IsTrue(gate.Accept(peer, cookie, 1.1f), "admitted");
+
+            // A duplicated challenge response, which UDP produces as a matter of course and which a
+            // client also sends deliberately when our acceptance did not arrive. It is the only
+            // thing the server hears from a client that has asked to join and not yet been told it
+            // is in - so if it does not count as hearing from them, the one moment a connection is
+            // most fragile is the moment nothing refreshes it.
+            //
+            // Late enough that the original admission has gone stale. Without the refresh this peer
+            // is evicted while it is visibly, repeatedly talking.
+            float nearlyTimedOut = 1.1f + ConnectionGatekeeper.ConnectionTimeoutSeconds - 0.5f;
+
+            Assert.IsTrue(gate.Accept(peer, gate.Challenge(peer, nearlyTimedOut), nearlyTimedOut),
+                "a peer already in keeps its seat when it asks again");
+
+            gate.Expire(nearlyTimedOut + 1f);
+
+            Assert.AreEqual(1, gate.TrackedPeerCount,
+                "and the repeat should have refreshed it, not merely been tolerated");
+        }
+
+        [Test]
         public void AnAdmittedPeerCannotFloodTheServerWithTraffic()
         {
             var gate = new ConnectionGatekeeper(Secret);
