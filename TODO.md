@@ -424,14 +424,40 @@ Everything a stranger needs in order to get from "bought it" to "playing", witho
       licensing client, which reads as a broken runner rather than a missing setting.
       Needs either `UNITY_LICENSE` (personal) or `UNITY_EMAIL` + `UNITY_PASSWORD` + `UNITY_SERIAL`.
 - [ ] **Automated Steam depot upload** (steamcmd) with branch support so testers get builds.
-- [ ] **Versioning and build stamping**, visible in-game and in crash reports.
+- [x] **Versioning and build stamping.** *(Done 2026-09-20.)* Version, short commit, build time and
+      whether the tree was dirty, written into `Resources/BuildStamp.txt` by the build itself and
+      logged unconditionally at startup — the one line worth more in a player's log than in anybody's
+      editor.
+      A resource rather than generated code: generated source must exist before compilation, which
+      is before the build meant to produce it, and forgetting once leaves a binary confidently
+      reporting the commit before the one it contains. The dirty flag matters for the same reason —
+      most builds are made from a working tree with changes in it, and a bare commit is a lie about
+      those.
+      Degrades to "unknown build" rather than throwing or salvaging a field: a confident wrong
+      answer is worse than none when the whole purpose is to be trusted.
 - [ ] **Code signing** for the Windows binary.
 
 ### Telemetry and support
 
 - [ ] **Crash reporting.** Nothing is installed. Ship without it and you will be guessing.
 - [ ] **Gameplay analytics** — match length, zone deaths, weapon use, disconnect rate.
-- [ ] **Server-side logging and alerting**, with retention. The verbose gate already exists.
+- [x] **Server-side logging.** *(Done 2026-09-20.)* `ServerLog` writes UTC-timestamped, levelled,
+      categorised lines with the level early enough that grep needs only a prefix. Errors and
+      warnings are counted, so "was it healthy overnight" is a number rather than a grep.
+      Repeats are folded: one system throwing every tick is sixty lines a second, three hundred
+      thousand in an hour, and the first — only interesting — line buried a quarter of a million
+      lines up. Folding is keyed on level, category and text together, so the second distinct
+      failure in a cascade is never hidden by the first.
+      `Flush` exists because the first version missed the case that matters: a tally was only
+      written when the next identical line escaped the fold, so a burst that *stopped* left one line
+      claiming it happened once — the shape of every incident closed as "could not reproduce".
+      Stdout by default. A process that rotates its own files inside a cluster duplicates what the
+      cluster already does, and does it worse.
+- [ ] **Alerting has no destination.** The counts and levels exist; nothing sends them anywhere.
+      Needs a service chosen, which is a decision with cost and privacy attached.
+- [ ] **Nothing routes through `ServerLog` yet.** The class is built and tested; the game still logs
+      through `UnseenLog` to the Unity console. Converting is mechanical but wide, and worth doing
+      when something actually consumes the structure.
 - [ ] **Player reporting and moderation tooling.** The name system already resists impersonation;
       it needs a reporting path and a ban mechanism behind it.
 
