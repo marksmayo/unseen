@@ -22,6 +22,15 @@ namespace Unseen.Client
         public const string FileName = "settings.cfg";
 
         [Header("Look")]
+        /// <summary>
+        /// What this player asked to be called, remembered between sessions.
+        ///
+        /// A request rather than an identity: the server sanitises it and may suffix it if somebody
+        /// already has it. Kept here so nobody has to type it every time they launch, which is the
+        /// sort of small friction that stops people playing a second round.
+        /// </summary>
+        public string PlayerName = "";
+
         public float MouseSensitivity = 2.2f;
         public bool InvertY;
 

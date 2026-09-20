@@ -495,9 +495,32 @@ The largest and least predictable phase. It is also the one that decides whether
 
 ### UI and UX
 
-- [ ] **Main menu, settings, keybinding, video options.** `SettingsMenu` exists; it is not a
-      shippable front end.
-- [ ] **Name entry in the UI.** The transport and server side are done; there is no text field.
+- [x] **Main menu.** *(Done 2026-09-20, Mark's ask.)* Name, single player with a bot count, host,
+      join with LAN discovery, settings, exit — and the build stamp in the corner, which is the only
+      place a player will ever see which build they are running.
+      The game used to drop straight into a match on launch: no way to choose a name, no way to
+      reach another machine without editing a shortcut, and no way out but Alt-F4.
+      Everything it collects is a launch option that already existed, so the menu is a front end for
+      the command line rather than a second way to start the game. A launch that named a mode never
+      sees it — being second-guessed would break every playtest shortcut — and a dedicated server
+      never sees it at all, because a fleet whose servers wait for a click is a fleet that looks
+      healthy and never starts a match.
+      **Settings, keybinding and video options still go through the existing `SettingsMenu`**, which
+      is reachable from here but is not a front end anybody designed.
+- [ ] **LAN discovery.** *(Done 2026-09-20.)* Servers beacon once a second on their own UDP port;
+      listeners collect them and forget one after three missed beacons, so a server does not flicker
+      out from under a cursor on a busy wireless network. The address comes from where the datagram
+      arrived and only the port from inside it — a beacon that could claim its own address would be
+      a way to point a whole room at somebody else's machine. Names go through `PlayerName`, because
+      a server name is typed by one person and shown to everybody, which is the same problem.
+      A host filters its own beacon out: broadcast comes back to the machine that sent it, and
+      finding yourself at the top of your own server list is the first thing anybody notices.
+      Fails quietly and says why — a network that refuses broadcast leaves a line explaining it
+      rather than an empty list that lies about there being no games.
+- [x] **Name entry in the UI.** *(Done 2026-09-20.)* In the main menu, remembered between sessions,
+      and shown as the server would grant it rather than as typed — a player who was not shown the
+      sanitised result would learn what they are actually called by reading it over somebody else's
+      head in a match.
       *(Partial)*
 - [ ] **Match flow** — lobby, loading, spawn, death, spectate, results, requeue.
 - [ ] **Onboarding.** Stealth games are unusually easy to be bad at without understanding why.

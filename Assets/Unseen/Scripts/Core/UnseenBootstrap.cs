@@ -96,6 +96,7 @@ namespace Unseen.Core
 
         private bool _quitting;
 
+
         public SimContext Context => _ctx;
         public ServerSimulation Simulation => _sim;
         public INetworkService Network => _net;
@@ -110,8 +111,40 @@ namespace Unseen.Core
 
         private bool _booted;
 
+        /// <summary>
+        /// What to call this server on the local network, or null not to announce it.
+        ///
+        /// Set by the menu when hosting. A dedicated server does not advertise on a LAN because
+        /// nobody is on its LAN: it is found through the matchmaker, which is a different problem
+        /// with a different answer.
+        /// </summary>
+        public string AdvertiseAs;
+
+        private LanDiscovery _beacon;
+
         private void Awake()
         {
+            // The menu comes first, unless something has already chosen.
+            //
+            // A launch that named a mode - a dedicated server, a shortcut with -connect on it - has
+            // been told what to do, and putting a menu in front of that would be ignoring what was
+            // asked for. On a headless machine it would also wait forever for a click.
+            // Read here rather than relying on ApplyCommandLine, which runs inside Boot - and Boot
+            // is the thing the menu decides whether to call. Parsing twice costs nothing and keeps
+            // the ordering obvious.
+            LaunchOptions launch = LaunchOptions.Parse(System.Environment.GetCommandLineArgs());
+
+            // Batch mode is asked about here, where the environment is known, rather than inside
+            // the policy. A probe or a CI run has nobody at the keyboard whatever the mode says.
+            if (!Application.isBatchMode &&
+                MainMenu.ShouldShow(launch.HasMode ? launch.Mode : Mode, launch.HasMode))
+            {
+                var menu = new GameObject("Main Menu");
+                menu.transform.SetParent(transform, false);
+                menu.AddComponent<MainMenu>().Open(this, Boot);
+                return;
+            }
+
             if (FirstLoadIntro.ShouldPlay(Mode == LaunchMode.DedicatedServer))
             {
                 var intro = new GameObject("First Load Intro");
@@ -565,9 +598,29 @@ namespace Unseen.Core
             // the pod still looks alive, and sixty-four players stand frozen in a town.
             _life.Ticked(_sim.Time);
             LeaveIfDrained();
+            Advertise(dt);
 
             BindCameraToLocalAgent();
             LogStatus();
+        }
+
+        /// <summary>
+        /// Shouts this server's name across the local network while it is worth joining.
+        ///
+        /// Stops the moment it starts draining, because a beacon is an invitation and a server on
+        /// its way out has nothing to invite anybody to - somebody who acted on a stale one would
+        /// load for a minute into a match that is already ending.
+        /// </summary>
+        private void Advertise(float deltaTime)
+        {
+            if (string.IsNullOrEmpty(AdvertiseAs) || !_net.IsServer) return;
+
+            if (_beacon == null) _beacon = new LanDiscovery(listening: false);
+
+            if (_life.IsDraining) return;
+
+            _beacon.Poll(deltaTime, AdvertiseAs, Net.UnseenTransport.ListenPort,
+                _net.Connections.Count, Config.Network.MaxPlayers);
         }
 
         /// <summary>
