@@ -13,7 +13,7 @@ observed, not by what is believed to work:
 
 ---
 
-## Honest state, 2026-09-17
+## Honest state, 2026-09-20
 
 The engineering underneath is unusually strong for a project with no art. The netcode is
 server-authoritative with real interest management, the stealth model is computed server-side,
@@ -24,18 +24,25 @@ What is missing is nearly everything between "the simulation is correct" and "a 
 | | |
 | --- | --- |
 | Simulation, AI, stealth, combat | Largely built, some of it unverified at scale |
-| Netcode transport | Works across two processes; prediction and sequencing not on the wire |
-| Art | Greybox. The town is procedural placeholder geometry |
-| Performance at 64 players | **Never measured.** Biggest unknown in the project |
+| Netcode transport | Sequencing, acks, prediction and reliability all on the wire; two real client processes verified, sixty-four not |
+| Art | Town is still procedural greybox. Characters are not: a Hero ninja mesh and a cinematic pass are in flight |
+| Performance at 64 players | Sim measured (p99 15 ms, bots only). **GPU frame time still never measured** |
 | Steam | Nothing. No SDK, no app ID, no store presence |
-| Infrastructure | Manifests written, never deployed |
-| CI, telemetry, crash reporting | None |
+| Infrastructure | Manifests written, never deployed. Matchmaker and drain logic built and tested, nothing wired to a cluster |
+| CI | Runs the suite and both builds on every push |
+| Telemetry, crash reporting | None |
 | Legal, ratings, compliance | Not begun |
 
-**The single largest technical risk** is that the generated town reports **158,394 renderers and
-25,385 colliders**, with one static-batching call and no LOD groups anywhere in the project. That
-is a single-player-sized scene being asked to host sixty-four networked players. Until that is
+**The single largest technical risk is unchanged:** the generated town reports **161,219 renderers
+and 25,561 colliders**, with one static-batching call and no LOD groups anywhere in the project.
+That is a single-player-sized scene being asked to host sixty-four networked players. Until it is
 measured on target hardware, every schedule below is a guess.
+
+**The second is that almost nothing has been seen.** The suite is 192 tests and eight headless
+probes, and they are good at what they cover — but the water splash, the bubbles, the smoke bomb,
+the main menu and the whole URP upgrade have been proven not to throw and not proven to look like
+anything. Three bugs this week were "fine in the editor, broken in a player build", and each was
+found by running the binary rather than by a test.
 
 ---
 
@@ -383,7 +390,10 @@ Everything a stranger needs in order to get from "bought it" to "playing", witho
       nothing registers servers with it yet — that is the Agones item below.
 - [ ] **Regional servers.** A stealth game with a latency-compensated parry window cannot put
       Australian and European players in one match.
-- [ ] **Server browser or quick-play, decided.** Affects the whole UI flow.
+- [ ] **Server browser or quick-play, decided.** Half-answered by accident: the main menu now has a
+      LAN browser, and the matchmaker is a quick-play queue. Nobody has decided which one a player
+      on the internet gets, or whether both appear — and the menu currently offers only the LAN
+      list, so the matchmaker has no way into the game at all.
 - [ ] **Autoscaling and cost model.** Know what a concurrent player costs before launch, not after.
 - [x] **Graceful drain.** *(Done 2026-09-20.)* `ServerLifecycle` holds both halves of "a server
       update must not kill matches in progress", and the two ways to get it wrong are symmetrical.
@@ -505,9 +515,13 @@ The largest and least predictable phase. It is also the one that decides whether
       sees it — being second-guessed would break every playtest shortcut — and a dedicated server
       never sees it at all, because a fleet whose servers wait for a click is a fleet that looks
       healthy and never starts a match.
-      **Settings, keybinding and video options still go through the existing `SettingsMenu`**, which
-      is reachable from here but is not a front end anybody designed.
-- [ ] **LAN discovery.** *(Done 2026-09-20.)* Servers beacon once a second on their own UDP port;
+      **Never seen by anybody.** It compiles, its logic is tested and the binary boots, but not one
+      pixel of it has been looked at — and IMGUI layout is exactly the kind of thing that is wrong
+      the moment a human opens it.
+- [ ] **Settings, keybinding and video options.** `SettingsMenu` exists and the main menu reaches
+      it, but nobody designed it as a front end: no video options at all, and the keybinding screen
+      predates the menu it now hangs off.
+- [x] **LAN discovery.** *(Done 2026-09-20.)* Servers beacon once a second on their own UDP port;
       listeners collect them and forget one after three missed beacons, so a server does not flicker
       out from under a cursor on a busy wireless network. The address comes from where the datagram
       arrived and only the port from inside it — a beacon that could claim its own address would be
@@ -517,6 +531,9 @@ The largest and least predictable phase. It is also the one that decides whether
       finding yourself at the top of your own server list is the first thing anybody notices.
       Fails quietly and says why — a network that refuses broadcast leaves a line explaining it
       rather than an empty list that lies about there being no games.
+      **Proven only on one machine.** The tests pass here and deliberately tolerate a network that
+      will not carry broadcast, because some will not. Two real machines on one network is the only
+      thing that settles it.
 - [x] **Name entry in the UI.** *(Done 2026-09-20.)* In the main menu, remembered between sessions,
       and shown as the server would grant it rather than as typed — a player who was not shown the
       sanitised result would learn what they are actually called by reading it over somebody else's
@@ -555,6 +572,45 @@ The largest and least predictable phase. It is also the one that decides whether
 - [ ] **Community management and moderation.**
 - [ ] **Balance from telemetry**, not from opinion.
 - [ ] **Anti-cheat response loop.** Cheats arrive after launch, not before.
+
+---
+
+## Combat, after this week's fixes
+
+Two changes on 2026-09-20 altered how the game plays, and neither has been played.
+
+- [ ] **The bots can fight now.** The melee input bug swallowed the first click of every fight and
+      every click out of a sprint — for bots as much as for players, since they go through the same
+      path. Fixing it made them land the sword hits they had been swinging and missing for the life
+      of the katana. A disconnect test that assumed a stable roster started failing within the hour.
+      Expect the game to be meaningfully harder and the bot difficulty numbers to be wrong.
+- [ ] **The shuriken window is deliberately generous.** Doubled to 0.84 m on play feedback, which is
+      about two and a half body radii. Some throws that look like near misses will land. It is one
+      config field; dial it back by feel if it reads as aim assist rather than as a fair weapon.
+- [ ] **Nobody has played a match since either change.** Both were verified by headless probes,
+      which prove a hit registers and say nothing about whether combat feels right.
+
+---
+
+## Traps set this week
+
+Things that are correct today and will quietly stop being correct.
+
+- [ ] **The drain deadline and the pod grace period are set in different files.** `ServerLifecycle`
+      waits 25 s for a match to finish; `agones-fleet.yaml` gives the pod 30 s before SIGKILL. The
+      first must stay under the second or the kinder deadline never applies and a deploy goes back
+      to killing matches. Nothing checks this, and the two files are edited by different people for
+      different reasons.
+- [ ] **Three call sites reach shaders by name** and are only safe because the shaders are in the
+      Always Included list. `UnseenShaderInclusion.ReachedByName` has to be kept in step with them.
+      The proper fix is a material asset per call site, which is how the rest of the project does
+      it — `GreyboxMaterialSet` and `MistVisual` both carry comments explaining why.
+- [ ] **A reclaimed body is matched by display name.** Closed the obvious hole with a session token
+      in the transport, but `PlayerSeatSystem` still keys abandoned bodies on the granted name.
+      Fine until two things want to be identities at once; Steam auth is the real answer.
+- [ ] **The matchmaker's ticket ids are sequential per process.** Fine for a single instance,
+      guessable and colliding the moment there are two. It needs the same treatment the reconnect
+      token got.
 
 ---
 
@@ -621,3 +677,8 @@ Specific items already known, not covered above.
    frame budget supports thirty-two, that is a better game than sixty-four that stutters.
 
 Answer these before Phase 3 begins. Everything after them is expensive to undo.
+
+A fourth has appeared since these were written: **how a player on the internet finds a match.** The
+LAN browser and the matchmaker queue are both built and neither is reachable from the game's own
+menu. It changes the UI flow and it is the difference between a game two people can play in a room
+and a game strangers can play at all.
