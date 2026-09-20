@@ -64,6 +64,9 @@ namespace Unseen.EditorTools
                 return;
             }
 
+            // Stamped before the player is built, so the binary and the stamp cannot disagree.
+            StampThisBuild();
+
             Directory.CreateDirectory(Path.GetDirectoryName(options.locationPathName) ?? ".");
 
             BuildReport report = BuildPipeline.BuildPlayer(options);
@@ -77,6 +80,81 @@ namespace Unseen.EditorTools
             }
 
             Fail($"{label} build {summary.result} with {summary.totalErrors} errors");
+        }
+
+        /// <summary>
+        /// Writes which build this is, for the binary to read back at startup.
+        ///
+        /// A resource rather than generated code. Generated source has to exist before compilation,
+        /// which is before the build that is meant to produce it - a loop with a sharp edge, where
+        /// forgetting once leaves the binary confidently reporting the commit before the one it
+        /// actually contains. A file written here is written and read in the order it is built.
+        ///
+        /// Never fails the build. A machine without git on its path, or a source tree unpacked from
+        /// an archive, should produce an unstamped build rather than no build - the stamp is a
+        /// convenience for diagnosis and not a thing worth refusing to ship over.
+        /// </summary>
+        public static void StampThisBuild()
+        {
+            string commit = Git("rev-parse --short HEAD");
+            bool dirty = !string.IsNullOrEmpty(Git("status --porcelain"));
+
+            if (string.IsNullOrEmpty(commit))
+            {
+                Debug.LogWarning("[Unseen] no git commit available; this build will not identify itself");
+                commit = string.Empty;
+            }
+
+            string version = PlayerSettings.bundleVersion;
+            if (string.IsNullOrEmpty(version)) version = "0.0.0";
+
+            string text = Unseen.Core.BuildStamp.Write(
+                version, commit, DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"), dirty);
+
+            const string directory = "Assets/Unseen/Resources";
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(Path.Combine(directory, Unseen.Core.BuildStamp.ResourcePath + ".txt"), text);
+
+            AssetDatabase.Refresh();
+
+            Debug.Log($"[Unseen] stamped {version} {commit}{(dirty ? "+" : string.Empty)}");
+        }
+
+        /// <summary>Runs a git command and returns its output, or empty if git is not available.</summary>
+        private static string Git(string arguments)
+        {
+            try
+            {
+                var process = new System.Diagnostics.Process
+                {
+                    StartInfo = new System.Diagnostics.ProcessStartInfo("git", arguments)
+                    {
+                        WorkingDirectory = Path.GetDirectoryName(Application.dataPath),
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    }
+                };
+
+                process.Start();
+                string output = process.StandardOutput.ReadToEnd();
+
+                // Bounded, because a build must not hang on a git command that is waiting for
+                // something - credentials, a lock, a prompt nobody will ever answer.
+                if (!process.WaitForExit(5000))
+                {
+                    try { process.Kill(); } catch { }
+                    return string.Empty;
+                }
+
+                return process.ExitCode == 0 ? output.Trim() : string.Empty;
+            }
+            catch
+            {
+                // No git on the path, or a sandbox that will not spawn processes.
+                return string.Empty;
+            }
         }
 
         private static void Fail(string message)

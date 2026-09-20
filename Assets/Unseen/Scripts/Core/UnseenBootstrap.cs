@@ -183,6 +183,14 @@ namespace Unseen.Core
 
             if (Mode != LaunchMode.DedicatedServer) BuildClientRig();
 
+            // Which build this is, first and unconditionally.
+            //
+            // Not behind VerboseStartup, unlike everything else here. The gate exists to stop a
+            // shipped build greeting its player with thirty lines of internal counts, and this is
+            // the one line that is worth more in a player's log than in anybody's editor: it is
+            // what turns "it did it again on Tuesday's build" into a commit.
+            Debug.Log($"[Unseen] build {BuildStamp.Current.Describe()}");
+
             if (VerboseStartup)
             {
                 UnseenLog.Info($"[Unseen] booted as {Mode} seed {Seed} | {_ctx.Destructibles.Describe()} | " +
